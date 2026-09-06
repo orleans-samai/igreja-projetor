@@ -1,0 +1,284 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Instrument Sans", "Segoe UI", system-ui, sans-serif;
+  --font-display: "Fraunces", "Instrument Sans", Georgia, serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+
+  --color-bg: #0b0c10;
+  --color-surface: #12141a;
+  --color-elevated: #1b1e27;
+  --color-fg: #e8eaef;
+  --color-muted: #9aa1ad;
+  --color-subtle: #6b7380;
+  --color-primary: #d5dae3;
+  --color-primary-fg: #0b0c10;
+  --color-accent: #c4543a;
+  --color-accent-fg: #fff7f4;
+  --color-danger: #c45c5c;
+  --color-live: #c4543a;
+  --color-border: #262a33;
+  --color-ring: #d5dae3;
+  --color-ok: #5a9a72;
+  --color-paper: #f3efe6;
+  --color-paper-fg: #1c1a16;
+  --color-stage: #05060a;
+  --color-stage-fg: #f4f1ea;
+  --color-bible-fg: #f7f3ea;
+  --color-bible-law: #d1982e;
+  --color-bible-hist: #d0652a;
+  --color-bible-wisdom: #c43c3c;
+  --color-bible-prophet: #7a3d94;
+  --color-bible-gospel: #2d6cb0;
+  --color-bible-acts: #1a8a96;
+  --color-bible-paul: #2d8f4e;
+  --color-bible-general: #3a7d40;
+  --color-bible-rev: #8a9c32;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 22px;
+
+  --shadow-border: 0 0 0 1px rgb(255 255 255 / 0.08);
+  --shadow-border-hover: 0 0 0 1px rgb(255 255 255 / 0.13);
+
+  --motion-quick: 150ms;
+  --motion-fast: 250ms;
+  --ease-smooth-out: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    color-scheme: dark;
+  }
+
+  html,
+  body,
+  #app {
+    min-height: 100%;
+    background: var(--color-bg);
+    color: var(--color-fg);
+  }
+
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+
+  ::selection {
+    background: color-mix(in oklab, var(--color-primary) 28%, transparent);
+  }
+
+  input,
+  textarea,
+  select {
+    font-family: inherit;
+  }
+}
+
+@layer components {
+  .field {
+    height: 36px;
+    border-radius: var(--radius-md);
+    background: var(--color-elevated);
+    padding-inline: 10px;
+    font-size: 0.875rem;
+    color: var(--color-fg);
+    box-shadow: var(--shadow-border);
+    outline: none;
+  }
+
+  .field:focus-visible {
+    box-shadow: 0 0 0 2px var(--color-ring);
+  }
+}
+
+@utility font-display {
+  font-family: var(--font-display);
+}
+
+.lumen-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklab, var(--color-fg) 22%, transparent) transparent;
+}
+
+.lumen-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.lumen-scroll::-webkit-scrollbar-thumb {
+  background: color-mix(in oklab, var(--color-fg) 18%, transparent);
+  border-radius: 99px;
+}
+
+.slide-text {
+  paint-order: stroke fill;
+  text-wrap: balance;
+}
+
+.slide-clock {
+  font-variant-numeric: tabular-nums;
+  font-size: 52px;
+  letter-spacing: 0.04em;
+}
+
+.preview-well {
+  background: color-mix(in oklab, var(--color-bg) 78%, black);
+}
+
+.lumen-switch {
+  position: relative;
+  width: 2.25rem;
+  height: 1.25rem;
+  flex-shrink: 0;
+  border-radius: 99px;
+  background: var(--color-elevated);
+  box-shadow: var(--shadow-border);
+}
+
+.lumen-switch::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 1rem;
+  height: 1rem;
+  border-radius: 99px;
+  background: var(--color-muted);
+  transition: transform var(--motion-quick) var(--ease-smooth-out);
+}
+
+.lumen-switch[data-on="true"] {
+  background: var(--color-ok);
+}
+
+.lumen-switch[data-on="true"]::after {
+  transform: translateX(1rem);
+  background: var(--color-fg);
+}
+
+.lumen-switch:disabled {
+  opacity: 0.4;
+}
+
+.bible-mosaic {
+  display: grid;
+  grid-template-columns: repeat(11, minmax(0, 1fr));
+  grid-template-rows: repeat(6, minmax(0, 1fr));
+  gap: 1px;
+  min-height: 0;
+  flex: 1.5 1 0;
+}
+
+.bible-nums {
+  display: grid;
+  gap: 1px;
+  min-height: 100%;
+  grid-auto-rows: minmax(2.25rem, 1fr);
+}
+
+.bible-nums-ch {
+  grid-template-columns: repeat(9, minmax(0, 1fr));
+}
+
+.bible-nums-vs {
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+}
+
+.bible-tile {
+  display: flex;
+  min-width: 0;
+  min-height: 44px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 2px;
+  padding: 2px 4px;
+  color: var(--color-bible-fg);
+  text-align: center;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.35);
+  transition:
+    filter var(--motion-quick) var(--ease-smooth-out),
+    box-shadow var(--motion-quick) var(--ease-smooth-out);
+}
+
+.bible-tile-abbr {
+  font-size: clamp(0.72rem, 1.15vw, 1.12rem);
+  font-weight: 650;
+  line-height: 1.05;
+  letter-spacing: 0.01em;
+}
+
+.bible-tile-name {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: clamp(0.5rem, 0.62vw, 0.68rem);
+  line-height: 1.2;
+  opacity: 0.86;
+}
+
+.bible-tile-num {
+  font-size: clamp(0.8rem, 1.1vw, 1rem);
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (min-width: 768px) {
+  .bible-tile {
+    min-height: 0;
+  }
+}
+
+@media (max-width: 767px) {
+  .bible-mosaic {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    grid-template-rows: none;
+    min-height: 22rem;
+  }
+
+  .bible-nums-ch,
+  .bible-nums-vs {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+}
+
+.bible-tile:hover {
+  z-index: 1;
+  filter: brightness(1.1);
+}
+
+.bible-tile[data-on="true"] {
+  box-shadow: inset 0 0 0 2px var(--color-bible-fg);
+  filter: brightness(0.62);
+}
+
+.bible-tile[data-on="true"]:hover {
+  filter: brightness(0.72);
+}
+
+.bible-tile-law { background: var(--color-bible-law); }
+.bible-tile-hist { background: var(--color-bible-hist); }
+.bible-tile-wisdom { background: var(--color-bible-wisdom); }
+.bible-tile-prophet { background: var(--color-bible-prophet); }
+.bible-tile-gospel { background: var(--color-bible-gospel); }
+.bible-tile-acts { background: var(--color-bible-acts); }
+.bible-tile-paul { background: var(--color-bible-paul); }
+.bible-tile-general { background: var(--color-bible-general); }
+.bible-tile-rev { background: var(--color-bible-rev); }
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

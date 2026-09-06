@@ -1,0 +1,30 @@
+# deps e build
+node_modules/
+.node_modules.lock
+dist/
+dist-win/
+desktop/www/
+.output/
+.vercel/
+.tanstack/
+*.asar
+
+# instalador gerado (rebuild com npm run win:exe)
+artifacts/
+*.exe
+
+# ambiente local
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+Thumbs.db
+
+# plataforma / rascunho
+.grok/
+AGENTS.md
+AGENTS.project.md
+startup.sh
+screenshots/
+attachments/
