@@ -31,8 +31,64 @@ import {
   findBookByTyped,
 } from "@/lib/bible-books";
 import { cn } from "@/lib/cn";
+import { fold } from "@/lib/fold";
 import type { LiveFrame } from "@/lib/types";
 import { useLumenStore } from "@/store/lumen-store";
+
+/** Rótulo de seção: o que faltava para os três níveis se distinguirem. */
+function Rotulo({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="text-caption font-medium uppercase tracking-wide text-subtle">{children}</p>
+  );
+}
+
+/**
+ * Um testamento e seus livros.
+ *
+ * O filete colorido na borda esquerda carrega a seção — lei, profetas,
+ * evangelhos. É a memória que a equipe já tem, sem o preenchimento saturado
+ * que fazia o livro selecionado desaparecer no meio dos vizinhos.
+ */
+function Testamento({
+  titulo,
+  livros,
+  atual,
+  aoEscolher,
+}: {
+  titulo: string;
+  livros: typeof BOOKS;
+  atual: number;
+  aoEscolher: (id: number) => void;
+}) {
+  if (livros.length === 0) return null;
+  return (
+    <div>
+      <Rotulo>
+        {titulo} <span className="tnum text-subtle">{livros.length}</span>
+      </Rotulo>
+      <div className="bible-mosaic mt-1.5">
+        {livros.map((book) => (
+          <button
+            key={book.id}
+            type="button"
+            title={book.name}
+            aria-label={book.name}
+            aria-pressed={book.id === atual}
+            data-on={book.id === atual}
+            onClick={() => aoEscolher(book.id)}
+            style={
+              { "--secao": `var(--color-bible-${bookSection(book.id)})` } as React.CSSProperties
+            }
+            className="bible-tile focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
+          >
+            <span className="bible-tile-abbr">{bookShort(book)}</span>
+            <span className="bible-tile-name">{bookTinyName(book)}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function isTypingTarget(el: EventTarget | null) {
   if (!(el instanceof HTMLElement)) return false;
@@ -66,6 +122,7 @@ export function BibleWorkspace({
   const [historyOpen, setHistoryOpen] = useState(false);
   const [favOpen, setFavOpen] = useState(false);
   const [hint, setHint] = useState("");
+  const [filtro, setFiltro] = useState("");
   const [projected, setProjected] = useState<Set<string>>(() => new Set());
   const typeBuf = useRef("");
   const typeTimer = useRef(0);
@@ -90,7 +147,14 @@ export function BibleWorkspace({
   const verseTotal = ready ? chapterVerseCount(versionId, cursor.bookId, cursor.chapter) : 0;
   const verses = ready ? chapterVerses(versionId, cursor.bookId, cursor.chapter) : [];
   const hits = ready && query.length > 2 ? searchVerses(versionId, query) : [];
-  const section = bookSection(cursor.bookId);
+  /** Livros que sobrevivem ao filtro: casa por nome ou por sigla, sem acento. */
+  const livros = useMemo(() => {
+    const alvo = fold(filtro.trim());
+    if (!alvo) return BOOKS;
+    return BOOKS.filter(
+      (b) => fold(b.name).includes(alvo) || fold(bookShort(b)).includes(alvo),
+    );
+  }, [filtro]);
   const currentRef = meta ? `${meta.name} ${cursor.chapter}:${cursor.verse}` : "";
   const loved = favorites.includes(currentRef);
   const recentBible = useMemo(
@@ -326,13 +390,18 @@ export function BibleWorkspace({
       {err && <p className="px-4 py-10 text-body text-danger">{err}</p>}
 
       {ready && (
-        <div className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[minmax(17rem,22%)_1fr]">
+        <div className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[minmax(24rem,34%)_1fr]">
           <section className="flex min-h-0 flex-col border-b border-border md:border-b-0 md:border-r">
-            <div className="flex items-center justify-between border-b border-border px-3 py-2">
-              <p className="text-secondary font-medium text-subtle">
-                {meta?.name} {cursor.chapter}
-              </p>
-              <span className="text-secondary tnum text-muted">{verses.length} versículos</span>
+            {/* A fita de referência: o que vai ao telão, sempre à vista e sem
+                precisar procurar. É a resposta ao "onde eu estou" no meio de um
+                culto, e por isso é a única coisa desta tela em tipo grande. */}
+            <div className="flex items-baseline gap-2 border-b border-border px-4 py-2.5">
+              <h2 className="text-display-sm font-semibold tracking-tight text-fg">
+                {meta?.name} {cursor.chapter}:{cursor.verse}
+              </h2>
+              <span className="tnum ml-auto shrink-0 text-caption text-subtle">
+                {verses.length} versículos
+              </span>
             </div>
             <ul ref={verseListRef} className="min-h-0 flex-1 overflow-y-auto lumen-scroll">
               {verses.map((v) => {
@@ -346,13 +415,23 @@ export function BibleWorkspace({
                       onClick={() => go(cursor.bookId, cursor.chapter, v.n, false)}
                       onDoubleClick={() => go(cursor.bookId, cursor.chapter, v.n, true)}
                       className={cn(
-                        "flex w-full items-start gap-2 px-3 py-2 text-left hover:bg-elevated",
+                        "relative flex w-full items-baseline gap-3 px-4 py-2 text-left",
+                        "transition-colors duration-[var(--motion-fast)] ease-[var(--ease-out)]",
+                        "hover:bg-elevated/60",
+                        "focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring",
                         v.n === cursor.verse && "bg-elevated",
                       )}
                     >
-                      <span className="w-6 shrink-0 text-secondary tnum text-subtle">{v.n}</span>
-                      <span className="min-w-0 flex-1 text-body leading-snug">{v.text}</span>
-                      {done && <Check className="mt-0.5 size-3.5 shrink-0 text-ok" />}
+                      {/* Filete no versículo escolhido: a marca não depende só
+                          do fundo, que some em monitor mal calibrado. */}
+                      {v.n === cursor.verse && (
+                        <span aria-hidden className="absolute inset-y-0 left-0 w-0.5 bg-fg" />
+                      )}
+                      <span className="w-6 shrink-0 text-caption tnum text-subtle">{v.n}</span>
+                      <span className="min-w-0 flex-1 text-body leading-relaxed text-fg">
+                        {v.text}
+                      </span>
+                      {done && <Check className="size-3.5 shrink-0 text-ok" />}
                     </button>
                   </li>
                 );
@@ -380,58 +459,95 @@ export function BibleWorkspace({
             </div>
           </section>
 
-          <section className="flex min-h-0 flex-col bg-bg p-1">
-            <div className="bible-mosaic">
-              {BOOKS.map((book) => (
-                <button
-                  key={book.id}
-                  type="button"
-                  title={book.name}
-                  aria-label={book.name}
-                  aria-pressed={book.id === cursor.bookId}
-                  data-on={book.id === cursor.bookId}
-                  onClick={() => go(book.id, 1, 1)}
-                  className={cn("bible-tile", `bible-tile-${bookSection(book.id)}`)}
-                >
-                  <span className="bible-tile-abbr">{bookShort(book)}</span>
-                  <span className="bible-tile-name">{bookTinyName(book)}</span>
-                </button>
-              ))}
+          <section className="lumen-scroll flex min-h-0 flex-col gap-3 overflow-y-auto bg-bg p-3">
+            <div className="relative">
+              <Search
+                aria-hidden
+                className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-subtle"
+              />
+              <Input
+                value={filtro}
+                onChange={(e) => setFiltro(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key !== "Enter") return;
+                  const primeiro = livros[0];
+                  if (primeiro) {
+                    go(primeiro.id, 1, 1);
+                    setFiltro("");
+                  }
+                }}
+                placeholder="Buscar livro"
+                aria-label="Buscar livro"
+                className="pl-8"
+              />
             </div>
 
-            <div className="mt-1 grid min-h-0 flex-1 grid-cols-1 gap-1 md:grid-cols-2">
-              <div className="flex min-h-0 flex-col overflow-y-auto lumen-scroll">
-                <div className="bible-nums bible-nums-ch">
-                  {Array.from({ length: chapters }, (_, i) => i + 1).map((n) => (
-                    <button
-                      key={n}
-                      type="button"
-                      data-on={n === cursor.chapter}
-                      aria-label={`Capítulo ${n}`}
-                      onClick={() => go(cursor.bookId, n, 1)}
-                      className={cn("bible-tile", `bible-tile-${section}`)}
-                    >
-                      <span className="bible-tile-num">{n}</span>
-                    </button>
-                  ))}
-                </div>
+            <Testamento
+              titulo="Antigo Testamento"
+              livros={livros.filter((b) => b.id <= 39)}
+              atual={cursor.bookId}
+              aoEscolher={(id) => go(id, 1, 1)}
+            />
+            <Testamento
+              titulo="Novo Testamento"
+              livros={livros.filter((b) => b.id > 39)}
+              atual={cursor.bookId}
+              aoEscolher={(id) => go(id, 1, 1)}
+            />
+
+            {livros.length === 0 && (
+              <p className="text-secondary text-subtle">
+                Nenhum livro com “{filtro}”. Apague para ver todos.
+              </p>
+            )}
+
+            <div>
+              <Rotulo>
+                Capítulos <span className="tnum text-subtle">{chapters}</span>
+              </Rotulo>
+              <div className="bible-nums bible-nums-ch mt-1.5">
+                {Array.from({ length: chapters }, (_, i) => i + 1).map((n) => (
+                  <button
+                    key={n}
+                    type="button"
+                    data-on={n === cursor.chapter}
+                    aria-label={`Capítulo ${n}`}
+                    aria-pressed={n === cursor.chapter}
+                    onClick={() => go(cursor.bookId, n, 1)}
+                    className="bible-num bible-num-ch focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
+                  >
+                    {n}
+                  </button>
+                ))}
               </div>
-              <div className="flex min-h-0 flex-col overflow-y-auto lumen-scroll">
-                <div className="bible-nums bible-nums-vs">
-                  {Array.from({ length: verseTotal }, (_, i) => i + 1).map((n) => (
-                    <button
-                      key={n}
-                      type="button"
-                      data-on={n === cursor.verse}
-                      aria-label={`Versículo ${n}`}
-                      onClick={() => go(cursor.bookId, cursor.chapter, n, false)}
-                      onDoubleClick={() => go(cursor.bookId, cursor.chapter, n, true)}
-                      className={cn("bible-tile", `bible-tile-${section}`)}
-                    >
-                      <span className="bible-tile-num">{n}</span>
-                    </button>
-                  ))}
-                </div>
+            </div>
+
+            <div>
+              <Rotulo>
+                Versículos{" "}
+                <span className="font-normal text-subtle">
+                  {meta?.name} {cursor.chapter} · {verseTotal}
+                </span>
+              </Rotulo>
+              <div className="bible-nums bible-nums-vs mt-1.5">
+                {Array.from({ length: verseTotal }, (_, i) => i + 1).map((n) => (
+                  <button
+                    key={n}
+                    type="button"
+                    data-on={n === cursor.verse}
+                    aria-label={`Versículo ${n}`}
+                    aria-pressed={n === cursor.verse}
+                    onClick={() => go(cursor.bookId, cursor.chapter, n, false)}
+                    onDoubleClick={() => go(cursor.bookId, cursor.chapter, n, true)}
+                    className={cn(
+                      "bible-num bible-num-vs",
+                      "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring",
+                      projected.has(`${cursor.bookId}:${cursor.chapter}:${n}`) && "bible-num-feito",
+                    )}
+                  >
+                    {n}
+                  </button>
+                ))}
               </div>
             </div>
           </section>

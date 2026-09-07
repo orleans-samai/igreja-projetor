@@ -713,53 +713,69 @@
   box-shadow: inset 0 0 0 1px var(--color-live);
 }
 
+/* ── Bíblia ───────────────────────────────────────────────────────────────
+   Três níveis de navegação, três pesos visuais: livro, capítulo, versículo.
+   Antes os três usavam o mesmo ladrilho e a mesma cor, e a tela virava uma
+   tabela periódica onde o item selecionado sumia entre vizinhos mais
+   berrantes que ele.
+
+   A cor da seção fica, mas como filete na borda: a equipe já navega por essa
+   memória — os profetas são roxos, os evangelhos azuis — e tirar isso jogaria
+   fora meses de prática. O que sai é o preenchimento saturado. */
+
 .bible-mosaic {
   display: grid;
-  grid-template-columns: repeat(11, minmax(0, 1fr));
-  grid-template-rows: repeat(6, minmax(0, 1fr));
-  gap: 1px;
-  min-height: 0;
-  flex: 1.5 1 0;
-}
-
-.bible-nums {
-  display: grid;
-  gap: 1px;
-  min-height: 100%;
-  grid-auto-rows: minmax(2.25rem, 1fr);
-}
-
-.bible-nums-ch {
-  grid-template-columns: repeat(9, minmax(0, 1fr));
-}
-
-.bible-nums-vs {
-  grid-template-columns: repeat(8, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(3.4rem, 1fr));
+  gap: 2px;
 }
 
 .bible-tile {
+  position: relative;
   display: flex;
   min-width: 0;
-  min-height: 44px;
+  min-height: 2.6rem;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  border-radius: 2px;
-  padding: 2px 4px;
-  color: var(--color-bible-fg);
+  border-radius: 3px;
+  padding: 2px 4px 2px 7px;
+  background: var(--color-elevated);
+  color: var(--color-fg);
   text-align: center;
-  text-shadow: 0 1px 2px rgb(0 0 0 / 0.35);
+  box-shadow: var(--shadow-border);
   transition:
-    filter var(--motion-quick) var(--ease-smooth-out),
-    box-shadow var(--motion-quick) var(--ease-smooth-out);
+    background-color var(--motion-fast) var(--ease-out),
+    box-shadow var(--motion-fast) var(--ease-out);
+}
+
+/* O filete: memória de cor sem ruído de cor. */
+.bible-tile::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--secao, transparent);
+}
+
+.bible-tile:hover {
+  background: var(--color-raised);
+  box-shadow: var(--shadow-border-hover);
+}
+
+/* Selecionado com preenchimento osso e texto escuro: salta contra vizinhos
+   neutros sem depender de matiz, que é o que a acessibilidade pede. */
+.bible-tile[data-on="true"],
+.bible-num[data-on="true"] {
+  background: var(--color-primary);
+  color: var(--color-primary-fg);
+  box-shadow: 0 0 0 1px var(--color-primary);
 }
 
 .bible-tile-abbr {
-  font-size: clamp(0.72rem, 1.15vw, 1.12rem);
+  font-size: 0.82rem;
   font-weight: 650;
-  line-height: 1.05;
-  letter-spacing: 0.01em;
+  line-height: 1.1;
 }
 
 .bible-tile-name {
@@ -767,59 +783,68 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: clamp(0.5rem, 0.62vw, 0.68rem);
+  font-size: 0.62rem;
   line-height: 1.2;
-  opacity: 0.86;
+  opacity: 0.6;
 }
 
-.bible-tile-num {
-  font-size: clamp(0.8rem, 1.1vw, 1rem);
-  font-weight: 650;
+/* Capítulo e versículo são números, não livros: sem filete, e menores
+   conforme descem na hierarquia. */
+.bible-nums {
+  display: grid;
+  gap: 2px;
+}
+
+.bible-nums-ch {
+  grid-template-columns: repeat(auto-fill, minmax(2.5rem, 1fr));
+}
+
+.bible-nums-vs {
+  grid-template-columns: repeat(auto-fill, minmax(2.1rem, 1fr));
+}
+
+.bible-num {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  background: var(--color-elevated);
+  color: var(--color-muted);
   font-variant-numeric: tabular-nums;
+  box-shadow: var(--shadow-border);
+  transition:
+    background-color var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out);
 }
 
-@media (min-width: 768px) {
-  .bible-tile {
-    min-height: 0;
-  }
+.bible-num:hover {
+  background: var(--color-raised);
+  color: var(--color-fg);
 }
 
-@media (max-width: 767px) {
-  .bible-mosaic {
-    grid-template-columns: repeat(6, minmax(0, 1fr));
-    grid-template-rows: none;
-    min-height: 22rem;
-  }
-
-  .bible-nums-ch,
-  .bible-nums-vs {
-    grid-template-columns: repeat(6, minmax(0, 1fr));
-  }
+.bible-num-ch {
+  min-height: 2.15rem;
+  font-size: 0.8rem;
+  font-weight: 600;
 }
 
-.bible-tile:hover {
-  z-index: 1;
-  filter: brightness(1.1);
+.bible-num-vs {
+  min-height: 1.85rem;
+  font-size: 0.72rem;
 }
 
-.bible-tile[data-on="true"] {
-  box-shadow: inset 0 0 0 2px var(--color-bible-fg);
-  filter: brightness(0.62);
+/* Versículo já projetado neste culto: um ponto, não uma cor de fundo. */
+.bible-num-feito::after {
+  content: "";
+  position: absolute;
+  bottom: 3px;
+  width: 3px;
+  height: 3px;
+  border-radius: 9999px;
+  background: currentColor;
+  opacity: 0.55;
 }
-
-.bible-tile[data-on="true"]:hover {
-  filter: brightness(0.72);
-}
-
-.bible-tile-law { background: var(--color-bible-law); }
-.bible-tile-hist { background: var(--color-bible-hist); }
-.bible-tile-wisdom { background: var(--color-bible-wisdom); }
-.bible-tile-prophet { background: var(--color-bible-prophet); }
-.bible-tile-gospel { background: var(--color-bible-gospel); }
-.bible-tile-acts { background: var(--color-bible-acts); }
-.bible-tile-paul { background: var(--color-bible-paul); }
-.bible-tile-general { background: var(--color-bible-general); }
-.bible-tile-rev { background: var(--color-bible-rev); }
 
 @media (prefers-reduced-motion: reduce) {
   *,

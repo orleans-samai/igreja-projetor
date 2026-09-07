@@ -363,7 +363,10 @@ export function OperatorApp() {
         />
         <WindowsRuntime />
         <AutoSlidePanel onConfig={() => setAutoSlide(true)} />
-        <YoutubePanel />
+        {/* A Bíblia é espaço de trabalho de tela cheia. O que pertence ao fluxo
+            de músicas — vídeo e grade de letras — sai de cena enquanto ela está
+            aberta, senão ela fica com uma fresta e o rodapé vaza por cima. */}
+        {!bibleOpen && <YoutubePanel />}
         <ReorganizeBar />
         <TourBanner />
 
@@ -437,7 +440,7 @@ export function OperatorApp() {
           )}
         </div>
 
-        <SlideGrid />
+        {!bibleOpen && <SlideGrid />}
         <ControlBar outputFrame={outputFrame} />
       </div>
 
