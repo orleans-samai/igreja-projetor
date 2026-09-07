@@ -20,6 +20,7 @@ import { BibleWorkspace } from "@/components/operator/bible-workspace";
 import { OpsLayer } from "@/components/operator/ops-layer";
 import { AutoSlideDialog, AutoSlidePanel } from "@/components/operator/auto-slide";
 import { useAutoSlide } from "@/components/operator/use-auto-slide";
+import { PainelArrastavel, ReorganizeBar } from "@/components/operator/reorganize";
 import { TourBanner } from "@/components/operator/tour";
 import { WindowsRuntime } from "@/components/operator/windows-setup";
 import { toast } from "sonner";
@@ -29,6 +30,7 @@ import { Segmented } from "@/components/ui/segmented";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { loadBuiltinBible } from "@/lib/bible";
 import { importWebSong } from "@/lib/import-web-song";
+import { TAMANHO_PAINEL, type PainelId } from "@/lib/paineis";
 import type { LiveFrame } from "@/lib/types";
 import { buildLiveFrame, useLumenStore } from "@/store/lumen-store";
 import { useAutoSlideStore } from "@/store/auto-slide-store";
@@ -64,6 +66,7 @@ export function OperatorApp() {
   useAutoSlide();
 
   // O tutorial aponta para painéis que, em tela estreita, moram em abas.
+  const ordemPaineis = useOpsStore((s) => s.ordemPaineis);
   const tourTab = useOpsStore((s) => s.tourTab);
   useEffect(() => {
     if (tourTab) setMobileTab(tourTab);
@@ -127,6 +130,34 @@ export function OperatorApp() {
     deck: store.preview,
     index: store.previewIndex,
     status: "presenting",
+  };
+
+  // As colunas, por nome. A ordem em que elas aparecem é do operador, e mora
+  // no ops-store; aqui só se diz o que cada uma é.
+  const paineis: Record<PainelId, React.ReactNode> = {
+    biblioteca: (
+      <LibraryPanel
+        onNewSong={() => setSongEd(true)}
+        onWebLyrics={() => setWebOpen(true)}
+        onOpenBible={() => setBibleOpen(true)}
+        searchRef={searchRef}
+        bibleRef={bibleRef}
+      />
+    ),
+    culto: (
+      <div ref={playlistRef} className="h-full">
+        <PlaylistPanel />
+      </div>
+    ),
+    preview: (
+      <PreviewPanel
+        previewFrame={previewFrame}
+        outputFrame={outputFrame}
+        onEditSong={() => setSongEd(true)}
+        onSettings={() => setDisplay(true)}
+      />
+    ),
+    temas: <ThemeRail />,
   };
 
   useEffect(() => {
@@ -326,6 +357,7 @@ export function OperatorApp() {
         />
         <WindowsRuntime />
         <AutoSlidePanel onConfig={() => setAutoSlide(true)} />
+        <ReorganizeBar />
         <TourBanner />
 
         {!bibleOpen && (
@@ -351,34 +383,27 @@ export function OperatorApp() {
             <>
           <div className="hidden h-full xl:block">
             <Group orientation="horizontal" className="h-full">
-              <Panel defaultSize="19%" minSize="15%" className="h-full overflow-hidden">
-                <LibraryPanel
-                  onNewSong={() => setSongEd(true)}
-                  onWebLyrics={() => setWebOpen(true)}
-                  onOpenBible={() => setBibleOpen(true)}
-                  searchRef={searchRef}
-                  bibleRef={bibleRef}
-                />
-              </Panel>
-              <Separator className="w-1 bg-border hover:bg-primary" />
-              <Panel defaultSize="22%" minSize="16%" className="h-full overflow-hidden">
-                <div ref={playlistRef} className="h-full">
-                  <PlaylistPanel />
-                </div>
-              </Panel>
-              <Separator className="w-1 bg-border hover:bg-primary" />
-              <Panel defaultSize="43%" minSize="26%" className="h-full overflow-hidden">
-                <PreviewPanel
-                  previewFrame={previewFrame}
-                  outputFrame={outputFrame}
-                  onEditSong={() => setSongEd(true)}
-                  onSettings={() => setDisplay(true)}
-                />
-              </Panel>
-              <Separator className="w-1 bg-border hover:bg-primary" />
-              <Panel defaultSize="16%" minSize="12%" className="h-full overflow-hidden">
-                <ThemeRail />
-              </Panel>
+              {ordemPaineis.flatMap((id, i) => {
+                const coluna = (
+                  <Panel
+                    key={id}
+                    defaultSize={TAMANHO_PAINEL[id].padrao}
+                    minSize={TAMANHO_PAINEL[id].minimo}
+                    className="relative h-full overflow-hidden"
+                  >
+                    {paineis[id]}
+                    <PainelArrastavel id={id} />
+                  </Panel>
+                );
+                // Separadores entram entre as colunas, nunca antes da primeira,
+                // e a lista fica plana: o Group precisa deles como filhos diretos.
+                return i === 0
+                  ? [coluna]
+                  : [
+                      <Separator key={`sep-${id}`} className="w-1 bg-border hover:bg-primary" />,
+                      coluna,
+                    ];
+              })}
             </Group>
           </div>
           <div className="h-full xl:hidden">

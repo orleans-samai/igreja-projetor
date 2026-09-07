@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { durableStorage } from "@/lib/durable-storage";
 import { nid } from "@/lib/fold";
+import { ORDEM_PADRAO, ordemValida, type PainelId } from "@/lib/paineis";
 import {
   publishOps,
   readInbox,
@@ -40,6 +41,10 @@ interface OpsState {
   gridOpen: boolean;
   /** Slide que está sendo editado, venha o comando da grade ou do preview. */
   slideEditId: string | null;
+  /** Ordem das colunas da cabine, escolhida pelo operador. */
+  ordemPaineis: PainelId[];
+  /** Modo de arrastar painel para trocar de lugar. */
+  reorganizando: boolean;
   voiceOn: boolean;
   autoRun: boolean;
   timelineStart: string;
@@ -74,6 +79,8 @@ interface OpsState {
   bumpGridZoom: (delta: number) => void;
   setGridOpen: (v: boolean) => void;
   setSlideEditId: (v: string | null) => void;
+  setOrdemPaineis: (v: PainelId[]) => void;
+  setReorganizando: (v: boolean) => void;
   setVoiceOn: (v: boolean) => void;
   setAutoRun: (v: boolean) => void;
   setTimelineStart: (v: string) => void;
@@ -112,6 +119,8 @@ export const useOpsStore = create<OpsState>()(
       gridZoom: 1,
       gridOpen: true,
       slideEditId: null,
+      ordemPaineis: [...ORDEM_PADRAO],
+      reorganizando: false,
       voiceOn: false,
       autoRun: false,
       timelineStart: "19:00",
@@ -152,6 +161,10 @@ export const useOpsStore = create<OpsState>()(
       bumpGridZoom: (delta) => get().setGridZoom(get().gridZoom + delta),
       setGridOpen: (gridOpen) => set({ gridOpen }),
       setSlideEditId: (slideEditId) => set({ slideEditId }),
+      // Sempre pelo saneador: o que entra aqui vai para o disco e volta numa
+      // sessão futura, talvez de outra versão do app.
+      setOrdemPaineis: (v) => set({ ordemPaineis: ordemValida(v) }),
+      setReorganizando: (reorganizando) => set({ reorganizando }),
       setVoiceOn: (voiceOn) => set({ voiceOn }),
       setAutoRun: (autoRun) => {
         set({ autoRun });
@@ -242,6 +255,7 @@ export const useOpsStore = create<OpsState>()(
         tourSeen: s.tourSeen,
         gridZoom: s.gridZoom,
         gridOpen: s.gridOpen,
+        ordemPaineis: s.ordemPaineis,
       }),
     },
   ),

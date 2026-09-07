@@ -65,6 +65,8 @@ export function MenuBar({
   const importLibrary = useLumenStore((s) => s.importLibrary);
   const setLiveMode = useOpsStore((s) => s.setLiveMode);
   const setTourOpen = useOpsStore((s) => s.setTourOpen);
+  const reorganizando = useOpsStore((s) => s.reorganizando);
+  const setReorganizando = useOpsStore((s) => s.setReorganizando);
   const setCommandOpen = useOpsStore((s) => s.setCommandOpen);
   const setCheckupOpen = useOpsStore((s) => s.setCheckupOpen);
   const setEmergencyOpen = useOpsStore((s) => s.setEmergencyOpen);
@@ -273,6 +275,23 @@ export function MenuBar({
             </MenuContent>
           </Menu>
         ))}
+
+        {/* Não é um menu, é um modo — e por isso mostra que está ligado. */}
+        <button
+          type="button"
+          aria-pressed={reorganizando}
+          onClick={() => setReorganizando(!reorganizando)}
+          className={cn(
+            "rounded-md px-2 py-1 text-secondary",
+            "transition-colors duration-[var(--motion-fast)] ease-[var(--ease-out)]",
+            "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring",
+            reorganizando
+              ? "bg-accent/20 text-accent"
+              : "text-muted hover:bg-elevated hover:text-fg",
+          )}
+        >
+          Reorganizar
+        </button>
       </nav>
 
       {/* Celular: tudo num menu só. Antes, nada disto existia abaixo de 640px. */}
