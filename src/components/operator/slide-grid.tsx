@@ -1,5 +1,5 @@
 import { ChevronDown, Copy, Minus, Pencil, Plus } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Hint } from "@/components/ui/tooltip";
@@ -65,9 +65,24 @@ export function SlideGrid() {
   const aberta = useOpsStore((s) => s.gridOpen);
   const setAberta = useOpsStore((s) => s.setGridOpen);
   const [dragFrom, setDragFrom] = useState<number | null>(null);
+  const pista = useRef<HTMLDivElement>(null);
 
   const passo = PASSOS[Math.max(0, Math.min(PASSOS.length - 1, zoom))] ?? PASSOS[1];
   const largura = passo.largura;
+
+  /**
+   * A roda do mouse anda a fita.
+   *
+   * Numa fileira só, rolar para o lado com o mouse comum exigiria segurar
+   * Shift — que ninguém lembra no meio de um culto. A roda vertical passa a
+   * andar na horizontal, que é a única direção que esta faixa tem.
+   */
+  const rolarComARoda = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
+    const el = pista.current;
+    if (!el || e.deltaY === 0) return;
+    el.scrollLeft += e.deltaY;
+  }, []);
+
   const altura = Math.round((largura * 9) / 16);
   const slides = preview?.slides ?? [];
   const noArAqui = status !== "idle" && live?.refId === preview?.refId;
@@ -132,20 +147,22 @@ export function SlideGrid() {
 
       {aberta && (
         <div
-          className="lumen-scroll overflow-y-auto border-t border-border px-2 py-2"
-          style={{ height: altura + 28 }}
+          ref={pista}
+          onWheel={rolarComARoda}
+          className="lumen-scroll overflow-x-auto overflow-y-hidden border-t border-border px-2 py-2"
+          style={{ height: altura + 40 }}
         >
           {slides.length === 0 ? (
             <p className="text-secondary text-subtle">
               Escolha uma música ou um versículo para ver as letras aqui.
             </p>
           ) : (
-            <ul className="flex flex-wrap gap-2">
+            <ul className="flex w-max gap-2">
               {slides.map((slide, i) => {
                 const noAr = noArAqui && i === liveIndex;
                 const emPreparo = i === previewIndex;
                 return (
-                  <li key={slide.id}>
+                  <li key={slide.id} className="shrink-0">
                     <div
                       draggable
                       onDragStart={() => setDragFrom(i)}
