@@ -17,6 +17,8 @@ import type { CultoSnapshot, HistoryEntry, StageRequest } from "@/lib/types";
 import { useLumenStore } from "@/store/lumen-store";
 
 const UNDO_CAP = 40;
+/** Quatro tamanhos de cartão na grade de letras: P, M, G, GG. */
+export const GRID_ZOOM_MAX = 3;
 const HISTORY_CAP = 120;
 
 interface OpsState {
@@ -33,6 +35,11 @@ interface OpsState {
   tourSeen: boolean;
   /** Aba que o tutorial precisa ver aberta na cabine estreita. */
   tourTab: "lib" | "preview" | "culto" | null;
+  /** Grade de letras: tamanho dos cartões (0 a 3) e se a faixa está aberta. */
+  gridZoom: number;
+  gridOpen: boolean;
+  /** Slide que está sendo editado, venha o comando da grade ou do preview. */
+  slideEditId: string | null;
   voiceOn: boolean;
   autoRun: boolean;
   timelineStart: string;
@@ -63,6 +70,10 @@ interface OpsState {
   setTourOpen: (v: boolean) => void;
   markTourSeen: () => void;
   setTourTab: (v: "lib" | "preview" | "culto" | null) => void;
+  setGridZoom: (v: number) => void;
+  bumpGridZoom: (delta: number) => void;
+  setGridOpen: (v: boolean) => void;
+  setSlideEditId: (v: string | null) => void;
   setVoiceOn: (v: boolean) => void;
   setAutoRun: (v: boolean) => void;
   setTimelineStart: (v: string) => void;
@@ -98,6 +109,9 @@ export const useOpsStore = create<OpsState>()(
       tourOpen: false,
       tourSeen: false,
       tourTab: null,
+      gridZoom: 1,
+      gridOpen: true,
+      slideEditId: null,
       voiceOn: false,
       autoRun: false,
       timelineStart: "19:00",
@@ -132,6 +146,12 @@ export const useOpsStore = create<OpsState>()(
       setTourOpen: (tourOpen) => set({ tourOpen }),
       markTourSeen: () => set({ tourSeen: true }),
       setTourTab: (tourTab) => set({ tourTab }),
+      setGridZoom: (v) => set({ gridZoom: Math.max(0, Math.min(GRID_ZOOM_MAX, v)) }),
+      // Dois cliques rápidos no mesmo quadro liam o mesmo valor e valiam por
+      // um só; o passo é calculado aqui, sobre o valor vivo.
+      bumpGridZoom: (delta) => get().setGridZoom(get().gridZoom + delta),
+      setGridOpen: (gridOpen) => set({ gridOpen }),
+      setSlideEditId: (slideEditId) => set({ slideEditId }),
       setVoiceOn: (voiceOn) => set({ voiceOn }),
       setAutoRun: (autoRun) => {
         set({ autoRun });
@@ -220,6 +240,8 @@ export const useOpsStore = create<OpsState>()(
         autoRun: s.autoRun,
         windowsSetupSeen: s.windowsSetupSeen,
         tourSeen: s.tourSeen,
+        gridZoom: s.gridZoom,
+        gridOpen: s.gridOpen,
       }),
     },
   ),

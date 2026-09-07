@@ -146,6 +146,7 @@ export interface LumenState {
   setGroup: (id: string | "all") => void;
   setPreviewIndex: (i: number) => void;
   presentPreview: () => void;
+  presentSlide: (i: number) => void;
   stop: () => void;
   goBlack: () => void;
   goLogo: () => void;
@@ -321,6 +322,7 @@ const empty = (): Omit<
   | "setGroup"
   | "setPreviewIndex"
   | "presentPreview"
+  | "presentSlide"
   | "stop"
   | "goBlack"
   | "goLogo"
@@ -505,6 +507,34 @@ export const useLumenStore = create<LumenState>()(
           {
             live: s.preview,
             liveIndex: s.previewIndex,
+            status: "presenting",
+            countdown: null,
+            logs: logPlay(s, s.preview),
+          },
+          set,
+        );
+      },
+
+      /**
+       * Manda um slide específico para o telão, num toque.
+       *
+       * É o que a grade de letras faz ao clique: se a música já está no ar,
+       * apenas troca o slide; se não está, começa a apresentação por ele, sem
+       * obrigar o operador a selecionar antes e apertar Apresentar depois.
+       */
+      presentSlide: (i) => {
+        const s = get();
+        if (!s.preview) return;
+        const idx = Math.max(0, Math.min(s.preview.slides.length - 1, i));
+        if (s.status !== "idle" && s.live?.refId === s.preview.refId) {
+          get().goLiveIndex(idx);
+          return;
+        }
+        broadcast(
+          {
+            live: s.preview,
+            liveIndex: idx,
+            previewIndex: idx,
             status: "presenting",
             countdown: null,
             logs: logPlay(s, s.preview),

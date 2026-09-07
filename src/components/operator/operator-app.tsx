@@ -14,6 +14,7 @@ import { LiveMode } from "@/components/operator/live-mode";
 import { MenuBar } from "@/components/operator/menu-bar";
 import { PlaylistPanel } from "@/components/operator/playlist-panel";
 import { PreviewPanel } from "@/components/operator/preview-panel";
+import { SlideGrid } from "@/components/operator/slide-grid";
 import { ThemeRail } from "@/components/operator/theme-rail";
 import { BibleWorkspace } from "@/components/operator/bible-workspace";
 import { OpsLayer } from "@/components/operator/ops-layer";
@@ -390,6 +391,7 @@ export function OperatorApp() {
           )}
         </div>
 
+        <SlideGrid />
         <ControlBar outputFrame={outputFrame} />
       </div>
 

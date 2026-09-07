@@ -1,6 +1,6 @@
 import { toast } from "sonner";
 import * as Popover from "@radix-ui/react-popover";
-import { Copy, Monitor, Pause, Pencil, Play, SkipBack, SkipForward, Square, Volume2 } from "lucide-react";
+import { Monitor, Pause, Pencil, Play, SkipBack, SkipForward, Square, Volume2 } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { SlideStage } from "@/components/slide/slide-renderer";
 import { OptimizeBanner, OptimizeButton } from "@/components/operator/optimize-bar";
@@ -10,8 +10,9 @@ import { Tally } from "@/components/ui/panel";
 import { Hint } from "@/components/ui/tooltip";
 import { themeSwatch } from "@/lib/theme-swatch";
 import { cn } from "@/lib/cn";
-import type { LiveFrame, Slide } from "@/lib/types";
+import type { LiveFrame } from "@/lib/types";
 import { useLumenStore } from "@/store/lumen-store";
+import { useOpsStore } from "@/store/ops-store";
 
 export function PreviewPanel({
   previewFrame,
@@ -26,20 +27,15 @@ export function PreviewPanel({
 }) {
   const preview = useLumenStore((s) => s.preview);
   const previewIndex = useLumenStore((s) => s.previewIndex);
-  const setPreviewIndex = useLumenStore((s) => s.setPreviewIndex);
   const presentPreview = useLumenStore((s) => s.presentPreview);
   const live = useLumenStore((s) => s.live);
   const status = useLumenStore((s) => s.status);
-  const updatePreviewSlide = useLumenStore((s) => s.updatePreviewSlide);
-  const duplicatePreviewLabel = useLumenStore((s) => s.duplicatePreviewLabel);
-  const reorderPreview = useLumenStore((s) => s.reorderPreview);
   const applyThemeLive = useLumenStore((s) => s.applyThemeLive);
   const songThemeId = useLumenStore((s) => s.songThemeId);
   const themes = useLumenStore((s) => s.themes);
   const songs = useLumenStore((s) => s.songs);
   const pinSongTheme = useLumenStore((s) => s.pinSongTheme);
-  const [editId, setEditId] = useState<string | null>(null);
-  const [dragFrom, setDragFrom] = useState<number | null>(null);
+  const setSlideEditId = useOpsStore((s) => s.setSlideEditId);
 
   const isLive = status !== "idle" && live?.refId === preview?.refId;
   const currentSong = preview?.kind === "song" ? songs.find((s) => s.id === preview.refId) : null;
@@ -97,7 +93,7 @@ export function PreviewPanel({
           onContextMenu={(e) => {
             e.preventDefault();
             const slide = preview?.slides[previewIndex];
-            if (slide) setEditId(slide.id);
+            if (slide) setSlideEditId(slide.id);
           }}
         >
           <SlideStage
@@ -188,30 +184,6 @@ export function PreviewPanel({
         </Button>
       </div>
 
-      <div className="lumen-scroll max-h-44 min-h-0 overflow-y-auto border-t border-border">
-        {preview?.slides.map((slide, i) => (
-          <SlideRow
-            key={slide.id}
-            slide={slide}
-            index={i}
-            active={i === previewIndex}
-            editing={editId === slide.id}
-            onSelect={() => setPreviewIndex(i)}
-            onEdit={() => setEditId(slide.id)}
-            onSave={(patch) => {
-              updatePreviewSlide(slide.id, patch);
-              setEditId(null);
-            }}
-            onCancel={() => setEditId(null)}
-            onDuplicate={() => duplicatePreviewLabel(slide.label.split(" ")[0] ?? slide.label)}
-            onDragStart={() => setDragFrom(i)}
-            onDrop={() => {
-              if (dragFrom !== null && dragFrom !== i) reorderPreview(dragFrom, i);
-              setDragFrom(null);
-            }}
-          />
-        ))}
-      </div>
     </div>
   );
 }
@@ -331,121 +303,6 @@ function PlayerStrip() {
         className="h-1 w-16 accent-accent"
         aria-label="Volume"
       />
-    </div>
-  );
-}
-
-function SlideRow({
-  slide,
-  index,
-  active,
-  editing,
-  onSelect,
-  onEdit,
-  onSave,
-  onCancel,
-  onDuplicate,
-  onDragStart,
-  onDrop,
-}: {
-  slide: Slide;
-  index: number;
-  active: boolean;
-  editing: boolean;
-  onSelect: () => void;
-  onEdit: () => void;
-  onSave: (patch: Partial<Slide>) => void;
-  onCancel: () => void;
-  onDuplicate: () => void;
-  onDragStart: () => void;
-  onDrop: () => void;
-}) {
-  const [text, setText] = useState(slide.text);
-  const [comment, setComment] = useState(slide.comment ?? "");
-
-  return (
-    <div
-      draggable={!editing}
-      onDragStart={onDragStart}
-      onDragOver={(e) => e.preventDefault()}
-      onDrop={onDrop}
-      className={cn(
-        "group/slide relative border-b border-border/60 px-3 py-1.5",
-        "transition-colors duration-[var(--motion-fast)] ease-[var(--ease-out)]",
-        active ? "bg-elevated" : "hover:bg-elevated/60",
-      )}
-    >
-      {active && (
-        <span
-          aria-hidden
-          className="animate-swap-in absolute inset-y-0 left-0 w-0.5 bg-fg"
-        />
-      )}
-      <div className="flex items-start gap-2">
-        <button
-          type="button"
-          onClick={onSelect}
-          className="flex min-w-0 flex-1 items-start gap-2 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-        >
-          <span className="tnum w-4 shrink-0 pt-px text-caption text-subtle">{index + 1}</span>
-          <span className="min-w-0 flex-1">
-            <span className="text-caption font-medium text-fg">{slide.label}</span>
-            {!editing && (
-              <span className="mt-0.5 line-clamp-2 block whitespace-pre-wrap text-secondary text-muted">
-                {slide.text}
-              </span>
-            )}
-          </span>
-        </button>
-
-        {/* Ações por linha só aparecem quando o cursor ou o teclado chega nelas —
-            antes eram dois controles fixos em cada slide, o tempo todo. */}
-        {!editing && (
-          <div
-            className={cn(
-              "flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity",
-              "duration-[var(--motion-fast)] ease-[var(--ease-out)]",
-              "group-hover/slide:opacity-100 focus-within:opacity-100",
-            )}
-          >
-            <Hint label="Editar este slide">
-              <Button size="iconSm" variant="ghost" aria-label="Editar slide" onClick={onEdit}>
-                <Pencil />
-              </Button>
-            </Hint>
-            <Hint label="Repetir esta seção no fim">
-              <Button size="iconSm" variant="ghost" aria-label="Duplicar seção" onClick={onDuplicate}>
-                <Copy />
-              </Button>
-            </Hint>
-          </div>
-        )}
-      </div>
-
-      {editing && (
-        <div className="animate-swap-in mt-2 space-y-2 pl-6">
-          <textarea
-            value={text}
-            autoFocus
-            onChange={(e) => setText(e.target.value)}
-            className="field min-h-20 w-full resize-y py-2"
-          />
-          <input
-            value={comment}
-            onChange={(e) => setComment(e.target.value)}
-            placeholder="Comentário interno — só o palco vê"
-            className="field w-full"
-          />
-          <div className="flex gap-2">
-            <Button size="sm" onClick={() => onSave({ text, comment })}>
-              Aplicar no telão
-            </Button>
-            <Button size="sm" variant="ghost" onClick={onCancel}>
-              Cancelar
-            </Button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

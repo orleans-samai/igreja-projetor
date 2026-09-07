@@ -79,9 +79,19 @@ export const TOUR_STEPS: TourStep[] = [
     keys: "→ ←",
   },
   {
+    id: "grade",
+    target: "grade",
+    tab: "preview",
+    title: "6. A grade de letras",
+    body:
+      "Todos os slides da música, lado a lado, com a letra inteira à vista. Um " +
+      "clique num cartão manda aquele slide para o telão na hora — é assim que " +
+      "se pula um verso ou se repete o coro. Os botões - e + mudam o tamanho.",
+  },
+  {
     id: "preto",
     target: "preto",
-    title: "6. O botão de emergência",
+    title: "7. O botão de emergência",
     body:
       "Apaga o telão na hora. É o que se aperta quando aparece algo errado na tela. " +
       "Fica sempre neste mesmo canto, para você acertar sem olhar. Aperte de novo e volta.",
@@ -90,7 +100,7 @@ export const TOUR_STEPS: TourStep[] = [
   {
     id: "tally",
     target: "tally",
-    title: "7. Como saber o que está no ar",
+    title: "8. Como saber o que está no ar",
     body:
       "Este ponto responde isso de relance: cinza quando está parado, âmbar pulsando " +
       "quando a igreja está vendo. A cor âmbar, no app inteiro, significa no ar.",
