@@ -40,6 +40,19 @@ export function YoutubeStage({ frame }: { frame: YoutubeFrame }) {
   const [erro, setErro] = useState<string | null>(null);
   const [vivo, setVivo] = useState(false);
   const buscaFeita = useRef(frame.busca);
+  /**
+   * A cortina.
+   *
+   * Parado, o embed mostra a capa do YouTube: título, canal, logo e o botão de
+   * play no meio. Isso é informação para quem escolhe vídeo, não para uma
+   * igreja reunida. Então o telão fica preto até a reprodução começar de
+   * verdade, e a capa nunca chega ao público.
+   *
+   * Depois que começou, o vídeo continua à mostra mesmo se o operador pausar —
+   * quadro congelado é o que se espera de uma pausa; piscar preto, não.
+   */
+  const [jaTocou, setJaTocou] = useState(false);
+  useEffect(() => setJaTocou(false), [frame.videoId]);
 
   useEffect(() => {
     let ativo = true;
@@ -78,6 +91,8 @@ export function YoutubeStage({ frame }: { frame: YoutubeFrame }) {
       }
       if (d.lumen === "yt-estado") {
         setErro(null);
+        if (d.estado === "tocando") setJaTocou(true);
+        if (d.estado === "fim" || d.estado === "parado") setJaTocou(false);
         publishOps({
           type: "youtube-tempo",
           tempo: d.tempo ?? 0,
@@ -125,6 +140,11 @@ export function YoutubeStage({ frame }: { frame: YoutubeFrame }) {
             onLoad={() => setVivo(true)}
             className="absolute inset-0 size-full border-0"
           />
+        )}
+
+        {/* A cortina: preto puro por cima até o vídeo começar. */}
+        {!jaTocou && !erro && (
+          <div aria-hidden className="absolute inset-0 z-10 bg-black" />
         )}
       </div>
 
