@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
@@ -12,20 +13,48 @@ if (args.some((a) => !["--x64", "--arm64", "--signed"].includes(a))) throw new E
 const arches = args.filter((a) => ["--x64", "--arm64"].includes(a));
 if (!arches.length) arches.push("--x64", "--arm64");
 const signed = args.includes("--signed");
-const hashes = [];
-for (const archArg of new Set(arches)) {
-  const arch = archArg.slice(2);
+const destino = join(root, "dist-win", "release");
+
+function empacotar(archArg, saida) {
   const command = [builder, "--win", archArg, "--publish", "never"];
+  if (saida) command.push(`-c.directories.output=${saida}`);
   if (signed) command.push("-c.win.signAndEditExecutable=true", "-c.forceCodeSigning=true");
   const run = spawnSync(process.execPath, command, {
     cwd: root, stdio: "inherit",
     env: { ...process.env, ...(signed ? {} : { CSC_IDENTITY_AUTO_DISCOVERY: "false" }) },
   });
   if (run.error) throw run.error;
-  if (run.status !== 0) process.exit(run.status ?? 1);
+  return run.status ?? 1;
+}
+
+const hashes = [];
+for (const archArg of new Set(arches)) {
+  const arch = archArg.slice(2);
+  let saida = destino;
+  if (empacotar(archArg, null) !== 0) {
+    // O antivírus do Windows segura a pasta recém-extraída quando o projeto
+    // mora em Downloads, e o electron-builder morre no rename do
+    // win-unpacked. Fora de lá o mesmo pacote sai inteiro, então a segunda
+    // tentativa monta em AppData e traz os arquivos de volta.
+    saida = join(process.env.LOCALAPPDATA || tmpdir(), "lumen-build", "release");
+    console.warn(`\nEmpacotamento falhou em ${destino}. Repetindo em ${saida}.\n`);
+    rmSync(saida, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    const status = empacotar(archArg, saida);
+    if (status !== 0) process.exit(status);
+  }
   for (const file of [`Lúmen-Setup-${pkg.version}-${arch}.exe`, `Lúmen-${pkg.version}-${arch}.zip`]) {
-    const target = join(root, "dist-win", "release", file);
-    if (!existsSync(target)) throw new Error(`Artefato ausente: ${target}`);
+    const origem = join(saida, file);
+    if (!existsSync(origem)) throw new Error(`Artefato ausente: ${origem}`);
+    const target = join(destino, file);
+    if (origem !== target) {
+      mkdirSync(destino, { recursive: true });
+      copyFileSync(origem, target);
+      // O blockmap e o latest.yml descrevem este arquivo; deixados para trás,
+      // apontariam para a compilação anterior.
+      for (const extra of [`${file}.blockmap`, "latest.yml"]) {
+        if (existsSync(join(saida, extra))) copyFileSync(join(saida, extra), join(destino, extra));
+      }
+    }
     hashes.push(`${createHash("sha256").update(readFileSync(target)).digest("hex")}  ${file}`);
     console.log(`Gerado: ${target}`);
   }
