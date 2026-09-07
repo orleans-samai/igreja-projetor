@@ -17,6 +17,7 @@ import { PreviewPanel } from "@/components/operator/preview-panel";
 import { ThemeRail } from "@/components/operator/theme-rail";
 import { BibleWorkspace } from "@/components/operator/bible-workspace";
 import { OpsLayer } from "@/components/operator/ops-layer";
+import { TourBanner } from "@/components/operator/tour";
 import { WindowsRuntime } from "@/components/operator/windows-setup";
 import { toast } from "sonner";
 import { runOptimize } from "@/lib/run-optimize";
@@ -53,6 +54,12 @@ export function OperatorApp() {
   const [bibleOpen, setBibleOpen] = useState(false);
   const [mobileTab, setMobileTab] = useState<"lib" | "preview" | "culto">("preview");
   const liveMode = useOpsStore((s) => s.liveMode);
+
+  // O tutorial aponta para painéis que, em tela estreita, moram em abas.
+  const tourTab = useOpsStore((s) => s.tourTab);
+  useEffect(() => {
+    if (tourTab) setMobileTab(tourTab);
+  }, [tourTab]);
 
   useEffect(() => {
     const unsub = useLumenStore.persist.onFinishHydration(() => {
@@ -305,6 +312,7 @@ export function OperatorApp() {
           onOptimize={() => void runOptimize()}
         />
         <WindowsRuntime />
+        <TourBanner />
 
         {!bibleOpen && (
           <div className="border-b border-border bg-surface px-2 py-1.5 lg:hidden">

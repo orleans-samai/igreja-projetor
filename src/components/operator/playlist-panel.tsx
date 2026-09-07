@@ -82,7 +82,7 @@ export function PlaylistPanel({ showThemes = false }: { showThemes?: boolean }) 
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-surface">
+    <div className="flex h-full min-h-0 flex-col bg-surface" data-tour="culto">
       <div className="panel-head justify-between">
         <h2>
           Culto <span className="tnum text-subtle">{count}</span>

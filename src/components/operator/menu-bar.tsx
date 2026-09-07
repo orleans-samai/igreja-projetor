@@ -1,4 +1,4 @@
-import { Menu as MenuIcon, Play, Radio, Search, Square } from "lucide-react";
+import { GraduationCap, Menu as MenuIcon, Play, Radio, Search, Square } from "lucide-react";
 import { type ReactNode } from "react";
 import { toast } from "sonner";
 import { LumenMark } from "@/components/logo";
@@ -61,6 +61,7 @@ export function MenuBar({
   const exportLibrary = useLumenStore((s) => s.exportLibrary);
   const importLibrary = useLumenStore((s) => s.importLibrary);
   const setLiveMode = useOpsStore((s) => s.setLiveMode);
+  const setTourOpen = useOpsStore((s) => s.setTourOpen);
   const setCommandOpen = useOpsStore((s) => s.setCommandOpen);
   const setCheckupOpen = useOpsStore((s) => s.setCheckupOpen);
   const setEmergencyOpen = useOpsStore((s) => s.setEmergencyOpen);
@@ -205,6 +206,7 @@ export function MenuBar({
     {
       label: "Ajuda",
       items: [
+        { label: "Aprender a usar", onSelect: () => setTourOpen(true) },
         { label: "Atalhos da cabine", onSelect: onHelp, shortcut: "?" },
         { label: "Instalar no Windows", onSelect: () => setWindowsSetupOpen(true) },
       ],
@@ -297,7 +299,9 @@ export function MenuBar({
       </p>
 
       <div className="ml-auto flex items-center gap-1">
-        <Tally state={tally} label={tallyLabel} className="mr-1 hidden md:inline-flex" />
+        <span data-tour="tally" className="mr-1 hidden md:inline-flex">
+          <Tally state={tally} label={tallyLabel} />
+        </span>
 
         {pending > 0 && (
           <span
@@ -328,6 +332,13 @@ export function MenuBar({
         <Hint label="Parar de apresentar" keys="Esc">
           <Button size="iconSm" variant="ghost" aria-label="Parar" onClick={stop}>
             <Square />
+          </Button>
+        </Hint>
+
+        <Hint label="Tutorial guiado da cabine, para quem está começando">
+          <Button size="sm" variant="secondary" onClick={() => setTourOpen(true)}>
+            <GraduationCap />
+            <span className="hidden sm:inline">Aprender a usar</span>
           </Button>
         </Hint>
 

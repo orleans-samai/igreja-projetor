@@ -74,7 +74,7 @@ export function PreviewPanel({
         )}
         <OptimizeButton />
         <Hint label="Manda o preview para o telão" keys="F5">
-          <Button size="sm" onClick={presentPreview} disabled={!preview}>
+          <Button size="sm" onClick={presentPreview} disabled={!preview} data-tour="apresentar">
             <Play /> Apresentar
           </Button>
         </Hint>
@@ -83,7 +83,7 @@ export function PreviewPanel({
       <PlayerStrip />
       <OptimizeBanner />
 
-      <div className="preview-well min-h-0 flex-1 p-3">
+      <div className="preview-well min-h-0 flex-1 p-3" data-tour="preview">
         <button
           type="button"
           className={cn(

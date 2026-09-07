@@ -28,6 +28,11 @@ interface OpsState {
   statsOpen: boolean;
   templatesOpen: boolean;
   trainingOpen: boolean;
+  tourOpen: boolean;
+  /** Guardado para não oferecer o tutorial de novo a quem já o viu. */
+  tourSeen: boolean;
+  /** Aba que o tutorial precisa ver aberta na cabine estreita. */
+  tourTab: "lib" | "preview" | "culto" | null;
   voiceOn: boolean;
   autoRun: boolean;
   timelineStart: string;
@@ -55,6 +60,9 @@ interface OpsState {
   setStatsOpen: (v: boolean) => void;
   setTemplatesOpen: (v: boolean) => void;
   setTrainingOpen: (v: boolean) => void;
+  setTourOpen: (v: boolean) => void;
+  markTourSeen: () => void;
+  setTourTab: (v: "lib" | "preview" | "culto" | null) => void;
   setVoiceOn: (v: boolean) => void;
   setAutoRun: (v: boolean) => void;
   setTimelineStart: (v: string) => void;
@@ -87,6 +95,9 @@ export const useOpsStore = create<OpsState>()(
       statsOpen: false,
       templatesOpen: false,
       trainingOpen: false,
+      tourOpen: false,
+      tourSeen: false,
+      tourTab: null,
       voiceOn: false,
       autoRun: false,
       timelineStart: "19:00",
@@ -118,6 +129,9 @@ export const useOpsStore = create<OpsState>()(
       setStatsOpen: (statsOpen) => set({ statsOpen }),
       setTemplatesOpen: (templatesOpen) => set({ templatesOpen }),
       setTrainingOpen: (trainingOpen) => set({ trainingOpen }),
+      setTourOpen: (tourOpen) => set({ tourOpen }),
+      markTourSeen: () => set({ tourSeen: true }),
+      setTourTab: (tourTab) => set({ tourTab }),
       setVoiceOn: (voiceOn) => set({ voiceOn }),
       setAutoRun: (autoRun) => {
         set({ autoRun });
@@ -205,6 +219,7 @@ export const useOpsStore = create<OpsState>()(
         inbox: s.inbox.filter((r) => r.status === "pending").slice(0, 20),
         autoRun: s.autoRun,
         windowsSetupSeen: s.windowsSetupSeen,
+        tourSeen: s.tourSeen,
       }),
     },
   ),

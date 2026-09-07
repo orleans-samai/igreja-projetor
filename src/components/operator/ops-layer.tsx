@@ -2,6 +2,7 @@ import { AlertTriangle, Check } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { CommandPalette } from "@/components/operator/command-palette";
+import { Tour } from "@/components/operator/tour";
 import { runOptimize } from "@/lib/run-optimize";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
@@ -116,6 +117,7 @@ export function OpsLayer() {
   return (
     <>
       <CommandPalette />
+      <Tour />
       {crash && (
         <div
           role="alertdialog"

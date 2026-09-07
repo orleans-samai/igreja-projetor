@@ -100,7 +100,7 @@ export function LibraryPanel({
   const setSearch = useLumenStore((s) => s.setSearch);
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-surface">
+    <div className="flex h-full min-h-0 flex-col bg-surface" data-tour="biblioteca">
       <div className="panel-head justify-between">
         <h2>Repertório</h2>
         <div className="flex items-center gap-0.5">

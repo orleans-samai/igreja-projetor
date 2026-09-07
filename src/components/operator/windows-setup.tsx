@@ -74,7 +74,9 @@ function WindowsBanner() {
   const setOpen = useOpsStore((s) => s.setWindowsSetupOpen);
   const dismiss = useOpsStore((s) => s.dismissWindowsSetup);
   const liveMode = useOpsStore((s) => s.liveMode);
-  if (seen || open || isStandalone() || liveMode) return null;
+  // Uma faixa de cada vez: quem nunca operou aprende antes de instalar.
+  const tourSeen = useOpsStore((s) => s.tourSeen);
+  if (seen || open || isStandalone() || liveMode || !tourSeen) return null;
   return (
     // Faixa fina, não anúncio: uma linha, um verbo e um X. Antes ocupava uma
     // fileira inteira do console com dois botões, um deles em destaque cheio.

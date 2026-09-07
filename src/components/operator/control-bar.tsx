@@ -60,7 +60,7 @@ export function ControlBar({ outputFrame }: { outputFrame: LiveFrame }) {
       )}
     >
       {/* Transporte: onde está e para onde vai. */}
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-1" data-tour="transporte">
         <Hint label="Slide anterior" keys="←">
           <Button size="iconSm" variant="ghost" onClick={prev} aria-label="Slide anterior">
             <ChevronLeft />
@@ -120,6 +120,7 @@ export function ControlBar({ outputFrame }: { outputFrame: LiveFrame }) {
             onClick={goBlack}
             aria-pressed={status === "black"}
             className="min-w-16"
+            data-tour="preto"
           >
             <Square /> Preto
           </Button>
