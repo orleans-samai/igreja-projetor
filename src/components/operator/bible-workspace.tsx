@@ -202,7 +202,7 @@ export function BibleWorkspace({
         <Button size="sm" variant="secondary" onClick={onBack}>
           <ArrowLeft className="size-3.5" /> Cabine
         </Button>
-        <p className="font-display text-sm font-semibold tracking-tight">
+        <p className="text-title font-semibold tracking-tight">
           {meta?.name}: {cursor.chapter}
         </p>
         <select
@@ -240,14 +240,14 @@ export function BibleWorkspace({
                 <li key={h.ref + h.text.slice(0, 8)}>
                   <button
                     type="button"
-                    className="w-full px-3 py-1.5 text-left hover:bg-primary/10"
+                    className="w-full px-3 py-1.5 text-left hover:bg-raised"
                     onClick={() => {
                       go(h.bookId, h.chapter, h.verse, true);
                       setQuery("");
                     }}
                   >
-                    <p className="text-xs font-medium text-primary">{h.ref}</p>
-                    <p className="line-clamp-1 text-xs text-muted">{h.text}</p>
+                    <p className="text-secondary font-medium text-fg">{h.ref}</p>
+                    <p className="line-clamp-1 text-secondary text-muted">{h.text}</p>
                   </button>
                 </li>
               ))}
@@ -268,13 +268,13 @@ export function BibleWorkspace({
           {favOpen && (
             <ul className="absolute right-0 top-full z-30 mt-1 max-h-64 w-64 overflow-y-auto rounded-lg bg-elevated py-1 shadow-[var(--shadow-border)] lumen-scroll">
               {favorites.length === 0 && (
-                <li className="px-3 py-2 text-sm text-muted">Nenhum favorito ainda.</li>
+                <li className="px-3 py-2 text-body text-muted">Nenhum favorito ainda.</li>
               )}
               {favorites.map((f) => (
                 <li key={f}>
                   <button
                     type="button"
-                    className="block w-full px-3 py-1.5 text-left text-sm hover:bg-primary/10"
+                    className="block w-full px-3 py-1.5 text-left text-body hover:bg-raised"
                     onClick={() => {
                       jumpRef(f, true);
                       setFavOpen(false);
@@ -295,13 +295,13 @@ export function BibleWorkspace({
           {historyOpen && (
             <ul className="absolute right-0 top-full z-30 mt-1 max-h-64 w-64 overflow-y-auto rounded-lg bg-elevated py-1 shadow-[var(--shadow-border)] lumen-scroll">
               {recentBible.length === 0 && (
-                <li className="px-3 py-2 text-sm text-muted">Ainda sem projeções.</li>
+                <li className="px-3 py-2 text-body text-muted">Ainda sem projeções.</li>
               )}
               {recentBible.map((l) => (
                 <li key={l.id}>
                   <button
                     type="button"
-                    className="block w-full px-3 py-1.5 text-left text-sm hover:bg-primary/10"
+                    className="block w-full px-3 py-1.5 text-left text-body hover:bg-raised"
                     onClick={() => {
                       jumpRef(l.title, true);
                       setHistoryOpen(false);
@@ -321,18 +321,18 @@ export function BibleWorkspace({
       </div>
 
       {!ready && !err && (
-        <p className="px-4 py-10 text-sm text-muted">Carregando Almeida 1819…</p>
+        <p className="px-4 py-10 text-body text-muted">Carregando Almeida 1819…</p>
       )}
-      {err && <p className="px-4 py-10 text-sm text-danger">{err}</p>}
+      {err && <p className="px-4 py-10 text-body text-danger">{err}</p>}
 
       {ready && (
         <div className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[minmax(17rem,22%)_1fr]">
           <section className="flex min-h-0 flex-col border-b border-border md:border-b-0 md:border-r">
             <div className="flex items-center justify-between border-b border-border px-3 py-2">
-              <p className="text-xs font-medium uppercase tracking-wide text-subtle">
+              <p className="text-secondary font-medium text-subtle">
                 {meta?.name} {cursor.chapter}
               </p>
-              <span className="text-xs tabular-nums text-muted">{verses.length} versículos</span>
+              <span className="text-secondary tnum text-muted">{verses.length} versículos</span>
             </div>
             <ul ref={verseListRef} className="min-h-0 flex-1 overflow-y-auto lumen-scroll">
               {verses.map((v) => {
@@ -347,11 +347,11 @@ export function BibleWorkspace({
                       onDoubleClick={() => go(cursor.bookId, cursor.chapter, v.n, true)}
                       className={cn(
                         "flex w-full items-start gap-2 px-3 py-2 text-left hover:bg-elevated",
-                        v.n === cursor.verse && "bg-primary/10",
+                        v.n === cursor.verse && "bg-elevated",
                       )}
                     >
-                      <span className="w-6 shrink-0 text-xs tabular-nums text-subtle">{v.n}</span>
-                      <span className="min-w-0 flex-1 text-sm leading-snug">{v.text}</span>
+                      <span className="w-6 shrink-0 text-secondary tnum text-subtle">{v.n}</span>
+                      <span className="min-w-0 flex-1 text-body leading-snug">{v.text}</span>
                       {done && <Check className="mt-0.5 size-3.5 shrink-0 text-ok" />}
                     </button>
                   </li>
@@ -373,7 +373,7 @@ export function BibleWorkspace({
                     className="size-full"
                   />
                 </div>
-                <span className="absolute bottom-1.5 right-1.5 inline-flex items-center gap-1 rounded-md bg-live px-2 py-0.5 text-xs font-medium text-accent-fg">
+                <span className="absolute bottom-1.5 right-1.5 inline-flex items-center gap-1 rounded-md bg-live px-2 py-0.5 text-caption font-semibold text-live-fg">
                   <Play className="size-3" /> Projetar
                 </span>
               </button>
@@ -438,14 +438,14 @@ export function BibleWorkspace({
         </div>
       )}
 
-      <p className="flex items-center gap-2 border-t border-border px-3 py-1.5 text-xs text-subtle">
+      <p className="flex items-center gap-2 border-t border-border px-3 py-1.5 text-secondary text-subtle">
         <BookOpen className="size-3" />
         <span className="min-w-0 flex-1 truncate">
           Digite uma tecla para localizar o versículo ou o livro · duplo clique projeta · Enter
           envia ao telão · Esc volta à cabine
         </span>
         {hint && (
-          <kbd className="rounded bg-elevated px-2 py-0.5 font-mono text-xs text-primary">{hint}</kbd>
+          <kbd className="rounded bg-elevated px-2 py-0.5 font-mono text-secondary text-fg">{hint}</kbd>
         )}
       </p>
     </div>

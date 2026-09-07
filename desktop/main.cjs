@@ -1,101 +1,116 @@
-const { app, BrowserWindow, Menu, screen, ipcMain, shell, powerSaveBlocker } = require("electron");
-const http = require("node:http");
+const { app, BrowserWindow, Menu, screen, ipcMain, shell, powerSaveBlocker, protocol, dialog } = require("electron");
+const { Storage } = require("./storage.cjs");
+const { resolveAsset } = require("./assets.cjs");
+const media = require("./media.cjs");
 const fs = require("node:fs");
 const path = require("node:path");
-const { pathToFileURL } = require("node:url");
 
-const MIME = {
-  ".html": "text/html; charset=utf-8",
-  ".js": "text/javascript; charset=utf-8",
-  ".css": "text/css; charset=utf-8",
-  ".json": "application/json; charset=utf-8",
-  ".svg": "image/svg+xml",
-  ".png": "image/png",
-  ".jpg": "image/jpeg",
-  ".jpeg": "image/jpeg",
-  ".webp": "image/webp",
-  ".woff2": "font/woff2",
-  ".ico": "image/x-icon",
-};
 
+const ORIGIN = "lumen://app";
+protocol.registerSchemesAsPrivileged([{ scheme: "lumen", privileges: {
+  standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true,
+} }]);
+// Keep the historical profile name so upgrades do not discard existing profiles.
+if (process.env.LUMEN_TEST_DATA && !app.isPackaged) app.setPath("userData", process.env.LUMEN_TEST_DATA);
+const dataDir = app.getPath("userData");
+const settingsFile = path.join(dataDir, "desktop-settings.json");
+let desktopSettings = {};
+try { desktopSettings = JSON.parse(fs.readFileSync(settingsFile, "utf8")); } catch { /* first run */ }
+if (desktopSettings.softwareGraphics || process.argv.includes("--compatibility")) app.disableHardwareAcceleration();
 let cabine = null;
 let projetor = null;
 let palco = null;
 let pedido = null;
-let origin = "";
+let origin = ORIGIN;
 let blockerId = null;
-
-function wwwRoot() {
-  const bundled = path.join(__dirname, "www");
-  if (fs.existsSync(path.join(bundled, "index.html"))) return bundled;
-  const extra = path.join(process.resourcesPath, "www");
-  if (fs.existsSync(path.join(extra, "index.html"))) return extra;
-  return bundled;
+let quitting = false;
+let storage;
+let noticeShown = false;
+function log(message) {
+  try {
+    fs.mkdirSync(path.join(dataDir, "logs"), { recursive: true });
+    const file = path.join(dataDir, "logs", "desktop.log");
+    if (fs.existsSync(file) && fs.statSync(file).size > 2 * 1024 * 1024) fs.renameSync(file, file + ".old");
+    fs.appendFileSync(file, new Date().toISOString() + " " + message + "\n");
+  } catch { /* logging cannot block recovery */ }
 }
-
-function startServer() {
-  const root = wwwRoot();
-  const server = http.createServer((req, res) => {
-    const raw = decodeURIComponent((req.url || "/").split("?")[0]);
-    const safe = path.normalize(raw).replace(/^(\.\.[/\\])+/, "");
-    let file = path.join(root, safe);
-    const ext = path.extname(file);
-    const isAsset =
-      safe.startsWith("/assets") ||
-      safe.startsWith("/bible") ||
-      safe.startsWith("/themes") ||
-      safe.startsWith("/__grok") ||
-      ext === ".svg" ||
-      ext === ".json" ||
-      ext === ".png" ||
-      ext === ".jpg" ||
-      ext === ".ico";
-    if (!isAsset || !fs.existsSync(file) || fs.statSync(file).isDirectory()) {
-      if (!isAsset) file = path.join(root, "index.html");
-    }
-    fs.readFile(file, (err, data) => {
-      if (err) {
-        res.writeHead(404);
-        res.end("Não encontrado");
-        return;
-      }
-      res.writeHead(200, {
-        "content-type": MIME[path.extname(file)] || "application/octet-stream",
-        "cache-control": "no-cache",
-      });
-      res.end(data);
-    });
+function reportError(error) {
+  log(error?.stack || String(error));
+  if (!noticeShown) {
+    noticeShown = true;
+    dialog.showErrorBox("Lúmen — atenção", String(error?.message || error) + "\nConsulte Lúmen → Abrir pasta de dados e logs.");
+  }
+}
+function wwwRoot() { return path.join(__dirname, "www"); }
+async function startServer() {
+  if (!fs.existsSync(path.join(wwwRoot(), "index.html"))) throw new Error("Interface ausente. Reinstale o Lúmen.");
+  protocol.handle("lumen", async (request) => {
+    log("asset " + request.url);
+    // Mídia da igreja mora fora do www; resolveMedia prende o caminho dentro
+    // da pasta configurada para o tipo e recusa qualquer outra coisa.
+    let file = null;
+    try {
+      const pathname = decodeURIComponent(new URL(request.url).pathname);
+      if (pathname.startsWith("/__midia/")) file = await media.resolveMedia(pathname);
+    } catch { /* url malformada cai no 404 */ }
+    if (!file) file = await resolveAsset(wwwRoot(), request.url);
+    if (!file) return new Response("Arquivo não encontrado", { status: 404 });
+    const mime = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".json": "application/json", ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".woff2": "font/woff2", ".woff": "font/woff", ".ico": "image/x-icon", ".mp4": "video/mp4", ".webm": "video/webm", ".m4v": "video/mp4", ".ogv": "video/ogg", ".mp3": "audio/mpeg", ".m4a": "audio/mp4", ".aac": "audio/aac", ".wav": "audio/wav", ".ogg": "audio/ogg", ".opus": "audio/ogg", ".flac": "audio/flac", ".gif": "image/gif", ".avif": "image/avif", ".bmp": "image/bmp" };
+    return new Response(await fs.promises.readFile(file), { headers: { "content-type": mime[path.extname(file)] || "application/octet-stream", "x-content-type-options": "nosniff" } });
   });
-  return new Promise((resolve) => {
-    server.listen(0, "127.0.0.1", () => {
-      const addr = server.address();
-      resolve(`http://127.0.0.1:${addr.port}`);
-    });
+  return ORIGIN;
+}
+function authorized(event) {
+  const url = event.senderFrame?.url || "";
+  if (!url.startsWith(ORIGIN + "/") || event.senderFrame !== event.sender.mainFrame) throw new Error("Origem não autorizada.");
+}
+function handle(channel, fn) {
+  ipcMain.handle(channel, async (event, ...args) => {
+    authorized(event);
+    try { return await fn(...args); } catch (error) { reportError(error); throw error; }
   });
+}
+function fitCabine() {
+  if (!cabine || cabine.isDestroyed()) return;
+  const area = screen.getDisplayMatching(cabine.getBounds()).workArea;
+  const bounds = cabine.getBounds();
+  const width = Math.min(bounds.width, area.width), height = Math.min(bounds.height, area.height);
+  cabine.setBounds({ width, height, x: Math.max(area.x, Math.min(bounds.x, area.x + area.width - width)), y: Math.max(area.y, Math.min(bounds.y, area.y + area.height - height)) });
+}
+function displaysChanged() {
+  if (projetor && !projetor.isDestroyed()) {
+    if (externalDisplay()) { projetor.showInactive(); placeOnExternal(projetor); }
+    else { projetor.hide(); openCabine(); }
+  }
+  fitCabine();
+  buildMenu();
 }
 
 function externalDisplay() {
   const primary = screen.getPrimaryDisplay();
-  return screen.getAllDisplays().find((d) => d.id !== primary.id) || null;
+  return screen.getAllDisplays().find((d) => d.id === desktopSettings.displayId && d.id !== primary.id) || screen.getAllDisplays().find((d) => d.id !== primary.id) || null;
 }
 
 function placeOnExternal(win) {
   const ext = externalDisplay();
   if (!ext) {
-    win.setFullScreen(true);
+    win.setFullScreen(false);
     return;
   }
   const { x, y, width, height } = ext.bounds;
+  win.setFullScreen(false);
   win.setBounds({ x, y, width, height });
   win.setFullScreen(true);
 }
 
 function createWindow(route, opts = {}) {
+  const area = screen.getPrimaryDisplay().workArea;
   const win = new BrowserWindow({
-    width: opts.width || 1280,
-    height: opts.height || 800,
-    minWidth: 900,
-    minHeight: 600,
+    show: !(process.env.LUMEN_TEST_DATA && !app.isPackaged),
+    width: Math.min(opts.width || 1280, area.width),
+    height: Math.min(opts.height || 800, area.height),
+    minWidth: Math.min(opts.kiosk ? 320 : 480, area.width),
+    minHeight: Math.min(360, area.height),
     backgroundColor: "#0b0c10",
     autoHideMenuBar: !!opts.kiosk,
     frame: opts.frame !== false,
@@ -107,12 +122,33 @@ function createWindow(route, opts = {}) {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      backgroundThrottling: !opts.kiosk,
+      // Ninguém clica na janela do telão, e sem isto o Chromium recusa dar
+      // play num vídeo com som.
+      autoplayPolicy: "no-user-gesture-required",
     },
   });
-  win.loadURL(origin + route);
+  win.loadURL(origin + route).catch(reportError);
+  win.webContents.on("did-fail-load", (_event, code, description, _url, isMainFrame) => {
+    if (isMainFrame && code !== -3) reportError(new Error("Não foi possível abrir a interface: " + description));
+  });
+  win.webContents.on("render-process-gone", (_event, details) => {
+    if (quitting || details.reason === "clean-exit") return;
+    log("render-process-gone: " + details.reason);
+    dialog.showMessageBox({ type: "error", title: "Lúmen", message: "Uma janela parou de responder.", detail: "Reabra a janela. Se o problema persistir, ative Compatibilidade gráfica no menu Lúmen.", buttons: ["Reabrir janela", "Fechar"] }).then(({ response }) => {
+      if (!win.isDestroyed()) { if (response === 0) win.reload(); else win.close(); }
+    }).catch(reportError);
+  });
+  win.webContents.on("will-navigate", (event, url) => {
+    if (!url.startsWith(ORIGIN + "/")) event.preventDefault();
+  });
   win.webContents.setWindowOpenHandler(({ url }) => {
     try {
       const u = new URL(url);
+      if (u.protocol !== "lumen:" || u.hostname !== "app") {
+        if (["https:", "http:"].includes(u.protocol)) void shell.openExternal(url);
+        return { action: "deny" };
+      }
       if (u.pathname.startsWith("/projetor")) {
         openProjector();
         return { action: "deny" };
@@ -132,7 +168,7 @@ function createWindow(route, opts = {}) {
     } catch {
       /* ignore */
     }
-    return { action: "allow" };
+    return { action: "deny" };
   });
   return win;
 }
@@ -203,6 +239,12 @@ function buildMenu() {
         { label: "Abrir palco", click: () => openStage() },
         { label: "Pedido do pastor", click: () => openPedido() },
         { type: "separator" },
+        { label: "Monitor do projetor", submenu: screen.getAllDisplays().filter((d) => d.id !== screen.getPrimaryDisplay().id).map((d, index) => ({ label: (d.label || "Monitor " + (index + 1)) + " · " + d.size.width + "×" + d.size.height, type: "radio", checked: externalDisplay()?.id === d.id, click: () => { desktopSettings.displayId = d.id; saveDesktopSettings(); displaysChanged(); } })) },
+        { label: "Compatibilidade gráfica (reiniciar)", type: "checkbox", checked: !!desktopSettings.softwareGraphics, click: (item) => { desktopSettings.softwareGraphics = item.checked; saveDesktopSettings(); dialog.showMessageBox({ message: "A configuração gráfica será aplicada na próxima abertura do Lúmen." }); } },
+        { label: "Exportar backup completo…", click: () => exportBackup().catch(reportError) },
+        { label: "Restaurar backup completo…", click: () => restoreBackup().catch(reportError) },
+        { label: "Abrir pasta de dados e logs", click: () => shell.openPath(dataDir) },
+        { type: "separator" },
         { role: "quit", label: "Sair" },
       ],
     },
@@ -238,32 +280,43 @@ if (!gotLock) {
   app.quit();
 } else {
   app.on("second-instance", () => {
-    openCabine();
+    if (app.isReady() && storage) openCabine();
   });
 
   app.whenReady().then(async () => {
+    // HTTP header values must be ASCII: the accented app name otherwise breaks
+    // Electron protocol.handle when Chromium sends its User-Agent.
+    app.userAgentFallback = app.userAgentFallback.normalize("NFKD").replace(/[^\x20-\x7E]/g, "");
+    storage = new Storage(path.join(dataDir, "data"), (message) => dialog.showMessageBox({ message }));
+    await storage.init();
+    media.init(dataDir);
+    await media.ensure();
     origin = await startServer();
+    screen.on("display-added", displaysChanged);
+    screen.on("display-removed", displaysChanged);
+    screen.on("display-metrics-changed", displaysChanged);
     blockerId = powerSaveBlocker.start("prevent-display-sleep");
     buildMenu();
     openCabine();
     const ext = externalDisplay();
-    if (ext) openProjector();
-  });
+    if (ext && !process.env.LUMEN_TEST_DATA) openProjector();
+    log("Started " + app.getVersion() + " Electron " + process.versions.electron + " " + process.arch);
+  }).catch((error) => { reportError(error); app.quit(); });
 }
 
-ipcMain.handle("lumen:open-projector", () => {
+handle("lumen:open-projector", () => {
   openProjector();
   return true;
 });
-ipcMain.handle("lumen:open-stage", () => {
+handle("lumen:open-stage", () => {
   openStage();
   return true;
 });
-ipcMain.handle("lumen:open-pedido", () => {
+handle("lumen:open-pedido", () => {
   openPedido();
   return true;
 });
-ipcMain.handle("lumen:displays", () =>
+handle("lumen:displays", () =>
   screen.getAllDisplays().map((d) => ({
     id: d.id,
     bounds: d.bounds,
@@ -278,4 +331,47 @@ app.on("window-all-closed", () => {
   app.quit();
 });
 
-void pathToFileURL;
+function saveDesktopSettings() {
+  try { fs.mkdirSync(dataDir, { recursive: true }); fs.writeFileSync(settingsFile, JSON.stringify(desktopSettings)); } catch (error) { reportError(error); }
+}
+handle("lumen:storage-get", (key) => storage.get(key));
+handle("lumen:storage-set", (key, value) => storage.set(key, value));
+async function exportBackup() {
+  const { filePath } = await dialog.showSaveDialog({ title: "Exportar backup completo", defaultPath: "Lumen-backup.json", filters: [{ name: "Backup Lúmen", extensions: ["json"] }] });
+  if (filePath) await fs.promises.writeFile(filePath, await storage.export());
+}
+async function restoreBackup() {
+  const { canceled, filePaths } = await dialog.showOpenDialog({ title: "Restaurar backup completo", filters: [{ name: "Backup Lúmen", extensions: ["json"] }], properties: ["openFile"] });
+  if (canceled) return;
+  const { response } = await dialog.showMessageBox({ type: "warning", message: "Substituir o repertório, configurações e Bíblias pelo backup?", detail: "O estado atual será arquivado antes da restauração. As janelas serão reabertas.", buttons: ["Cancelar", "Restaurar"], defaultId: 0, cancelId: 0 });
+  if (response !== 1) return;
+  if ((await fs.promises.stat(filePaths[0])).size > 100 * 1024 * 1024) throw new Error("Backup acima de 100 MB.");
+  const raw = await fs.promises.readFile(filePaths[0], "utf8");
+  // Freeze renderers before replacing state, preventing stale writes during reload.
+  for (const win of BrowserWindow.getAllWindows()) win.webContents.setIgnoreMenuShortcuts(true);
+  for (const win of BrowserWindow.getAllWindows()) await win.loadURL("about:blank");
+  try { await storage.restore(raw); }
+  finally {
+    if (cabine && !cabine.isDestroyed()) await cabine.loadURL(ORIGIN + "/");
+    if (projetor && !projetor.isDestroyed()) await projetor.loadURL(ORIGIN + "/projetor?tela=1");
+    if (palco && !palco.isDestroyed()) await palco.loadURL(ORIGIN + "/palco");
+    if (pedido && !pedido.isDestroyed()) await pedido.loadURL(ORIGIN + "/pedido");
+    for (const win of BrowserWindow.getAllWindows()) win.webContents.setIgnoreMenuShortcuts(false);
+  }
+}
+app.on("before-quit", (event) => {
+  if (quitting || !storage) return;
+  event.preventDefault();
+  quitting = true;
+  storage.queue.finally(() => app.quit());
+});
+process.on("uncaughtException", reportError);
+process.on("unhandledRejection", reportError);
+
+handle("lumen:media-list", (kind) => media.list(kind));
+handle("lumen:media-folders", () => media.folders());
+handle("lumen:media-open", (kind) => media.open(kind));
+handle("lumen:media-choose", (kind) => media.choose(kind));
+handle("lumen:media-reset", (kind) => media.reset(kind));
+handle("lumen:lyrics-suggest", (input) => require("./lyrics.cjs").suggest(input));
+handle("lumen:lyrics-load", (url) => require("./lyrics.cjs").load(url));

@@ -26,17 +26,20 @@ npm run dev
 
 Abra o endereço que o terminal mostrar (em geral `http://localhost:8080`).
 
-## Instalador Windows
-
-Gera o `Lúmen-Setup.exe` (atalho na área de trabalho e no Menu Iniciar, sem senha de administrador):
+## Gerar o app Windows
 
 ```bash
 npm run win:exe
 ```
 
-O arquivo sai em `dist-win/Lúmen-Setup-1.0.0.exe`.
+Sai em duas formas, as duas já com o ícone do Lúmen:
 
-O Windows pode avisar “editor desconhecido”. Use **Mais informações → Executar assim mesmo**.
+| Arquivo | Para quê |
+|---|---|
+| `dist-win/win-unpacked/Lúmen.exe` | Abre com dois cliques, sem instalar. Cabe num pendrive. |
+| `dist-win/Lúmen-Setup-1.0.0.exe` | Instala no PC da igreja com atalho na área de trabalho e no Menu Iniciar, sem senha de administrador. |
+
+O Windows pode avisar “editor desconhecido” — o app não é assinado. Use **Mais informações → Executar assim mesmo**.
 
 ## Scripts
 
@@ -46,7 +49,7 @@ O Windows pode avisar “editor desconhecido”. Use **Mais informações → Ex
 | `npm test` | Testes |
 | `npm run typecheck` | TypeScript |
 | `npm run desktop:build` | Empacota a interface do app Windows |
-| `npm run win:exe` | Gera o instalador `.exe` |
+| `npm run win:exe` | Gera o app e o instalador Windows |
 
 ## Pastas
 

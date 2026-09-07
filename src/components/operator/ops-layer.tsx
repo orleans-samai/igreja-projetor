@@ -1,8 +1,8 @@
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Check } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { CommandPalette } from "@/components/operator/command-palette";
-import { runOptimize } from "@/components/operator/optimize-bar";
+import { runOptimize } from "@/lib/run-optimize";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { getBible } from "@/lib/bible";
@@ -117,26 +117,41 @@ export function OpsLayer() {
     <>
       <CommandPalette />
       {crash && (
-        <div className="fixed inset-x-0 top-10 z-40 mx-auto w-[min(40rem,calc(100%-1.5rem))] rounded-xl bg-elevated p-4 shadow-[var(--shadow-border)]">
-          <p className="font-display text-lg">O aplicativo foi encerrado inesperadamente.</p>
-          <p className="mt-1 text-sm text-muted">Restaurar o culto?</p>
-          <ul className="mt-2 text-sm text-fg">
-            <li>✓ {crash.label}</li>
-            <li>✓ {crash.status === "presenting" ? "Projetando" : crash.status}</li>
-            {crash.countdown && <li>✓ Cronômetro ativo</li>}
+        <div
+          role="alertdialog"
+          aria-label="Restaurar culto"
+          className="animate-pop-in fixed inset-x-0 top-12 z-40 mx-auto w-[min(34rem,calc(100%-1.5rem))] rounded-xl bg-surface p-4 shadow-[var(--shadow-pop),var(--shadow-border)]"
+        >
+          <h2 className="text-title font-semibold tracking-tight">
+            O Lúmen fechou no meio do culto
+          </h2>
+          <p className="mt-0.5 text-secondary text-muted">
+            Isto estava no ar quando parou. Dá para voltar exatamente daqui.
+          </p>
+          <ul className="mt-3 grid gap-1">
+            {[
+              crash.label,
+              crash.status === "presenting" ? "Projetando" : crash.status,
+              crash.countdown ? "Cronômetro ativo" : null,
+            ]
+              .filter(Boolean)
+              .map((line) => (
+                <li key={String(line)} className="flex items-center gap-2 text-body text-fg">
+                  <Check className="size-3.5 shrink-0 text-ok" aria-hidden />
+                  {line}
+                </li>
+              ))}
           </ul>
-          <div className="mt-3 flex gap-2">
-            <Button variant="live" onClick={() => restoreCrash()}>
-              Restaurar
-            </Button>
+          <div className="mt-4 flex justify-end gap-2">
             <Button variant="ghost" onClick={() => dismissCrash()}>
-              Descartar
+              Começar do zero
             </Button>
+            <Button onClick={() => restoreCrash()}>Voltar para este ponto</Button>
           </div>
         </div>
       )}
       {!isPrimary && (
-        <div className="fixed bottom-16 right-3 z-30 rounded-lg bg-elevated px-3 py-2 text-xs text-muted shadow-[var(--shadow-border)]">
+        <div className="animate-pop-in fixed bottom-16 right-3 z-30 rounded-lg bg-surface px-3 py-2 text-secondary text-muted shadow-[var(--shadow-pop),var(--shadow-border)]">
           Cabine em espera
           <Button
             size="sm"
@@ -205,8 +220,8 @@ function CheckupDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent title="Check-up pré-culto">
         <div className="mb-3 flex items-end justify-between">
-          <p className="font-display text-3xl tabular-nums">{report.score}</p>
-          <p className={cn("text-sm", report.ready ? "text-ok" : "text-danger")}>
+          <p className="text-display tnum font-semibold tracking-tight">{report.score}</p>
+          <p className={cn("text-body", report.ready ? "text-ok" : "text-danger")}>
             {report.ready ? "Pode começar" : "Corrija os itens em vermelho"}
           </p>
         </div>
@@ -222,9 +237,9 @@ function CheckupDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v
                 )}
               />
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium">{item.label}</p>
-                <p className="text-xs text-muted">{item.detail}</p>
-                {item.fix && <p className="text-xs text-live">{item.fix}</p>}
+                <p className="text-body font-medium">{item.label}</p>
+                <p className="text-secondary text-muted">{item.detail}</p>
+                {item.fix && <p className="text-secondary text-live">{item.fix}</p>}
               </div>
               {item.action === "optimize" && (
                 <Button size="sm" variant="ghost" onClick={() => void runOptimize()}>
@@ -295,7 +310,7 @@ function EmergencySheet({ open, onOpenChange }: { open: boolean; onOpenChange: (
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent title="Emergência">
-        <p className="mb-3 text-sm text-muted">Um toque. O telão muda agora.</p>
+        <p className="mb-3 text-body text-muted">Um toque. O telão muda agora.</p>
         <div className="grid gap-2 sm:grid-cols-2">
           <Button size="lg" variant="danger" onClick={() => fire("Tela preta", goBlack)}>
             <AlertTriangle /> Tela preta
@@ -410,7 +425,7 @@ function HistoryDrawer({ open, onOpenChange }: { open: boolean; onOpenChange: (v
             Restaurar backup
           </Button>
         </div>
-        <ul className="max-h-80 overflow-auto text-sm">
+        <ul className="max-h-80 overflow-auto text-body">
           {history.length === 0 && <li className="text-muted">O culto ainda não registrou ações.</li>}
           {history.map((h) => (
             <li key={h.id} className="flex justify-between gap-3 border-b border-border/60 py-2">
@@ -427,7 +442,7 @@ function HistoryDrawer({ open, onOpenChange }: { open: boolean; onOpenChange: (v
         {undoStack.length > 2 && (
           <button
             type="button"
-            className="mt-3 text-xs text-muted"
+            className="mt-3 text-secondary text-muted"
             onClick={() => {
               const snap = undoStack[Math.max(0, undoStack.length - 4)];
               restoreSession(snap);
@@ -451,15 +466,15 @@ function StatsDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent title="Estatísticas">
-        <p className="text-sm text-muted">Últimos {stats.windowDays} dias · {stats.totalPlays} projeções de música</p>
+        <p className="text-body text-muted">Últimos {stats.windowDays} dias · {stats.totalPlays} projeções de música</p>
         {duration.startedAt && (
-          <p className="mt-2 text-sm">
+          <p className="mt-2 text-body">
             Culto de agora: {duration.minutes} min
             {duration.byKind.song ? ` · louvor ${duration.byKind.song} min` : ""}
             {duration.byKind.bible ? ` · palavra ${duration.byKind.bible} min` : ""}
           </p>
         )}
-        <ul className="mt-3 grid gap-1 text-sm">
+        <ul className="mt-3 grid gap-1 text-body">
           {stats.top.map((t) => (
             <li key={t.refId} className="flex justify-between">
               <span>{t.title}</span>
@@ -468,12 +483,12 @@ function StatsDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: 
           ))}
         </ul>
         {stats.consecutiveWarnings.map((w) => (
-          <p key={w} className="mt-2 text-xs text-live">
+          <p key={w} className="mt-2 text-secondary text-live">
             {w}
           </p>
         ))}
         {stats.unused.length > 0 && (
-          <p className="mt-3 text-xs text-muted">
+          <p className="mt-3 text-secondary text-muted">
             {stats.unused.length} músicas sem uso recente, entre elas {stats.unused[0]?.title}.
           </p>
         )}
@@ -497,7 +512,7 @@ function TemplatesDialog({ open, onOpenChange }: { open: boolean; onOpenChange: 
             <li key={tpl.id}>
               <button
                 type="button"
-                className="w-full rounded-lg bg-elevated p-3 text-left hover:bg-elevated/80"
+                className="w-full rounded-lg bg-elevated p-3 text-left transition-colors duration-[var(--motion-fast)] ease-[var(--ease-out)] hover:bg-raised focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
                 onClick={() => {
                   const pl = applyTemplate(tpl, songs, texts);
                   importPlaylist(pl);
@@ -508,8 +523,8 @@ function TemplatesDialog({ open, onOpenChange }: { open: boolean; onOpenChange: 
                 }}
               >
                 <p className="font-medium">{tpl.name}</p>
-                <p className="text-xs text-muted">{tpl.blurb}</p>
-                <p className="mt-1 font-mono text-xs text-subtle">{tpl.start}</p>
+                <p className="text-secondary text-muted">{tpl.blurb}</p>
+                <p className="mt-1 font-mono text-secondary text-subtle">{tpl.start}</p>
               </button>
             </li>
           ))}
@@ -557,18 +572,18 @@ function TrainingOverlay({ open, onOpenChange }: { open: boolean; onOpenChange: 
   if (!open) return null;
 
   return (
-    <div className="fixed bottom-16 left-3 z-30 w-[min(24rem,calc(100%-1.5rem))] rounded-xl bg-elevated p-3 shadow-[var(--shadow-border)]">
+    <div className="animate-pop-in fixed bottom-16 left-3 z-30 w-[min(24rem,calc(100%-1.5rem))] rounded-xl bg-surface p-3 shadow-[var(--shadow-pop),var(--shadow-border)]">
       <div className="mb-2 flex items-center justify-between">
-        <p className="text-sm font-medium">Simulador</p>
-        <button type="button" className="text-xs text-muted" onClick={() => onOpenChange(false)}>
+        <p className="text-body font-medium">Simulador</p>
+        <button type="button" className="text-secondary text-muted" onClick={() => onOpenChange(false)}>
           Fechar
         </button>
       </div>
-      <p className="text-sm">{drill.prompt}</p>
+      <p className="text-body">{drill.prompt}</p>
       {result ? (
-        <p className="mt-2 text-sm text-ok">{result}</p>
+        <p className="mt-2 text-body text-ok">{result}</p>
       ) : (
-        <p className="mt-2 text-xs text-subtle">{drill.hint}</p>
+        <p className="mt-2 text-secondary text-subtle">{drill.hint}</p>
       )}
       <div className="mt-2 flex flex-wrap gap-1">
         {DRILLS.map((d) => (

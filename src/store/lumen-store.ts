@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { durableStorage } from "@/lib/durable-storage";
 import {
   chapterCount,
   chapterSlides,
@@ -18,7 +19,7 @@ import {
   SEED_SERVICES,
   SEED_SONGS,
   SEED_TEXTS,
-  SEED_THEMES,
+  SEED_THEMES_ALL,
 } from "@/lib/seed";
 import { captureSession, type SessionSlice } from "@/lib/session-snap";
 import { formatRef } from "@/lib/bible-ref";
@@ -108,6 +109,9 @@ export interface LumenState {
   texts: FreeText[];
   logs: ProjectionLog[];
   favorites: string[];
+  /** Mídias marcadas com estrela, por id de arquivo. Separado dos favoritos
+   *  da Bíblia: um guarda referência, o outro guarda arquivo. */
+  favoriteMedia: string[];
   settings: Settings;
   extraVersionIds: { id: string; name: string }[];
 
@@ -174,6 +178,7 @@ export interface LumenState {
   jumpRef: (input: string, present: boolean) => boolean;
   changeVersion: (versionId: string) => void;
   toggleFavorite: (ref: string) => void;
+  toggleFavoriteMedia: (id: string) => void;
   saveText: (text: FreeText) => void;
   deleteText: (id: string) => void;
   selectText: (id: string) => void;
@@ -196,10 +201,25 @@ export interface LumenState {
   bumpOverlay: (delta: number) => void;
   restoreSession: (snap: CultoSnapshot) => void;
   captureNow: (dirty?: boolean) => CultoSnapshot;
-  liveFrame: () => LiveFrame;
 }
 
-function buildLiveFrame(s: LumenState): LiveFrame {
+/** O que o telão precisa saber — o resto do estado da cabine não vai ao ar. */
+export type LiveFrameInput = Pick<
+  LumenState,
+  | "status"
+  | "live"
+  | "preview"
+  | "liveIndex"
+  | "alert"
+  | "countdown"
+  | "songThemeId"
+  | "bibleThemeId"
+  | "stageThemeId"
+  | "themes"
+  | "settings"
+>;
+
+export function buildLiveFrame(s: LiveFrameInput): LiveFrame {
   const kind = s.live?.kind ?? s.preview?.kind ?? "song";
   const themeId = kind === "bible" ? s.bibleThemeId : s.songThemeId;
   return {
@@ -216,6 +236,7 @@ function buildLiveFrame(s: LumenState): LiveFrame {
     settings: {
       transition: s.settings.transition,
       fadeMs: s.settings.fadeMs,
+      lowPerformance: s.settings.lowPerformance,
       chordsOnStage: s.settings.chordsOnStage,
       chordsOnAudience: s.settings.chordsOnAudience,
       fitMode: s.settings.fitMode,
@@ -332,6 +353,7 @@ const empty = (): Omit<
   | "jumpRef"
   | "changeVersion"
   | "toggleFavorite"
+  | "toggleFavoriteMedia"
   | "saveText"
   | "deleteText"
   | "selectText"
@@ -354,17 +376,17 @@ const empty = (): Omit<
   | "bumpOverlay"
   | "restoreSession"
   | "captureNow"
-  | "liveFrame"
 > => ({
   songs: SEED_SONGS,
   groups: SEED_GROUPS,
-  themes: SEED_THEMES,
+  themes: SEED_THEMES_ALL,
   playlists: SEED_PLAYLISTS,
   services: SEED_SERVICES,
   media: SEED_MEDIA,
   texts: SEED_TEXTS,
   logs: [],
   favorites: ["João 3:16", "Salmos 23:1"],
+  favoriteMedia: [],
   settings: DEFAULT_SETTINGS,
   extraVersionIds: [],
   libraryTab: "songs",
@@ -395,11 +417,12 @@ export const useLumenStore = create<LumenState>()(
     (set, get) => ({
       ...empty(),
 
-      liveFrame: () => buildLiveFrame(get()),
-
       ensureSeed: () => {
         const s = get();
         const settings = { ...DEFAULT_SETTINGS, ...s.settings };
+        // Perfis gravados antes dos favoritos de mídia não trazem o campo, e
+        // sem isto a primeira estrela clicada estouraria em undefined.
+        if (!Array.isArray(s.favoriteMedia)) set({ favoriteMedia: [] });
         if (
           s.settings.showWallpaper === undefined ||
           s.settings.showClock === undefined ||
@@ -414,7 +437,7 @@ export const useLumenStore = create<LumenState>()(
           set({
             songs: SEED_SONGS,
             groups: SEED_GROUPS,
-            themes: s.themes.length ? s.themes : SEED_THEMES,
+            themes: s.themes.length ? s.themes : SEED_THEMES_ALL,
             playlists: SEED_PLAYLISTS,
             services: SEED_SERVICES,
             texts: SEED_TEXTS,
@@ -426,6 +449,14 @@ export const useLumenStore = create<LumenState>()(
         }
         if (!s.preview && s.songs[0]) {
           set({ preview: songToDeck(s.songs[0]), selectedSongId: s.songs[0].id });
+        }
+        // Tema novo de versão nova precisa chegar em quem já usa o app. Só
+        // acrescenta o que falta: tema editado pela igreja fica como está.
+        const missingThemes = SEED_THEMES_ALL.filter(
+          (t) => !get().themes.some((x) => x.id === t.id),
+        );
+        if (missingThemes.length) {
+          set({ themes: [...get().themes, ...missingThemes] });
         }
         const missingTexts = SEED_TEXTS.filter((t) => !get().texts.some((x) => x.id === t.id));
         if (missingTexts.length) {
@@ -822,6 +853,13 @@ export const useLumenStore = create<LumenState>()(
             : [...s.favorites, ref],
         })),
 
+      toggleFavoriteMedia: (id) =>
+        set((s) => ({
+          favoriteMedia: s.favoriteMedia.includes(id)
+            ? s.favoriteMedia.filter((x) => x !== id)
+            : [...s.favoriteMedia, id],
+        })),
+
       saveText: (text) =>
         set((s) => {
           const exists = s.texts.some((t) => t.id === text.id);
@@ -870,6 +908,8 @@ export const useLumenStore = create<LumenState>()(
             title: item.title,
             subtitle: item.type,
             slides,
+            mediaSrc: item.path,
+            mediaType: item.type === "announcement" ? undefined : item.type,
           },
           previewIndex: 0,
         });
@@ -1087,6 +1127,7 @@ export const useLumenStore = create<LumenState>()(
     {
       name: "lumen-v2",
       skipHydration: true,
+      storage: durableStorage,
       partialize: (s) => ({
         songs: s.songs,
         groups: s.groups,
@@ -1097,6 +1138,7 @@ export const useLumenStore = create<LumenState>()(
         texts: s.texts,
         logs: s.logs,
         favorites: s.favorites,
+        favoriteMedia: s.favoriteMedia,
         settings: s.settings,
         extraVersionIds: s.extraVersionIds,
         songThemeId: s.songThemeId,
@@ -1105,7 +1147,8 @@ export const useLumenStore = create<LumenState>()(
         activePlaylistId: s.activePlaylistId,
         selectedSongId: s.selectedSongId,
       }),
-      onRehydrateStorage: () => (state) => {
+      onRehydrateStorage: () => (state, error) => {
+        if (error) return;
         state?.ensureSeed();
         state?.setHydrated();
         if (state?.selectedSongId) {

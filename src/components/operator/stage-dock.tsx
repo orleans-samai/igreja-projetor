@@ -42,17 +42,24 @@ export function StageDock() {
   return (
     <div
       className={cn(
-        "pointer-events-none fixed inset-x-0 bottom-0 z-20 flex justify-center p-3 transition-opacity duration-[var(--motion-fast)]",
-        visible ? "opacity-100" : "opacity-0",
+        // Some do palco quando ninguém mexe: o telão de retorno é para ler a
+        // letra, não para olhar botão. Volta ao primeiro toque.
+        "pointer-events-none fixed inset-x-0 bottom-0 z-20 flex justify-center p-3",
+        "transition-[opacity,transform] duration-[var(--motion-slow)] ease-[var(--ease-out)]",
+        visible ? "translate-y-0 opacity-100" : "translate-y-2 opacity-0",
       )}
     >
-      <div className="pointer-events-auto flex max-w-3xl flex-wrap justify-center gap-1.5 rounded-xl bg-surface/95 p-2 shadow-[var(--shadow-border)]">
+      <div className="pointer-events-auto flex max-w-3xl flex-wrap justify-center gap-1.5 rounded-xl bg-surface/95 p-2 shadow-[var(--shadow-pop),var(--shadow-border)]">
         {ACTIONS.map((a) => (
-          <Button key={a.kind} size="sm" variant="secondary" onClick={() => send(a.kind, a.label)}>
+          <Button key={a.kind} size="lg" variant="secondary" onClick={() => send(a.kind, a.label)}>
             {a.label}
           </Button>
         ))}
-        {sent && <span className="self-center px-2 text-xs text-ok">Enviado: {sent}</span>}
+        {sent && (
+          <span className="animate-swap-in self-center px-2 text-secondary text-ok">
+            Enviado: {sent}
+          </span>
+        )}
       </div>
     </div>
   );

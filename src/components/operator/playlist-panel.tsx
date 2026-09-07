@@ -1,10 +1,12 @@
-import { Copy, Download, GripVertical, Pencil, Play, Plus, SkipForward, Trash2, Upload } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { Check, ChevronDown, GripVertical, Plus, SkipForward, Trash2 } from "lucide-react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from "@/components/ui/menu";
+import { Empty, Tally } from "@/components/ui/panel";
+import { Hint } from "@/components/ui/tooltip";
 import { ThemeThumb } from "@/components/operator/theme-rail";
 import { cn } from "@/lib/cn";
-import type { Playlist } from "@/lib/types";
 import { useLumenStore } from "@/store/lumen-store";
 
 export function PlaylistPanel({ showThemes = false }: { showThemes?: boolean }) {
@@ -27,11 +29,15 @@ export function PlaylistPanel({ showThemes = false }: { showThemes?: boolean }) 
   const applyThemeLive = useLumenStore((s) => s.applyThemeLive);
   const preview = useLumenStore((s) => s.preview);
   const addToPlaylist = useLumenStore((s) => s.addToPlaylist);
-  const presentPreview = useLumenStore((s) => s.presentPreview);
   const nextPlaylistItem = useLumenStore((s) => s.nextPlaylistItem);
+  const [dragFrom, setDragFrom] = useState<number | null>(null);
+  const [dragOver, setDragOver] = useState<number | null>(null);
 
   const pl = playlists.find((p) => p.id === activeId) ?? playlists[0];
   const count = pl?.items.length ?? 0;
+  const now = new Date();
+  const prevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
 
   const exportPl = () => {
     if (!pl) return;
@@ -40,21 +46,31 @@ export function PlaylistPanel({ showThemes = false }: { showThemes?: boolean }) 
     a.href = URL.createObjectURL(blob);
     a.download = `${pl.name.replace(/\s+/g, "-")}.json`;
     a.click();
+    toast("Culto exportado");
   };
 
-  const onImport = async (file: File | undefined) => {
-    if (!file) return;
-    try {
-      const data = JSON.parse(await file.text());
-      importPlaylist(data);
-      toast("Playlist importada");
-    } catch {
-      toast.error("JSON inválido");
-    }
+  const importPl = () => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "application/json";
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      try {
+        importPlaylist(JSON.parse(await file.text()));
+        toast("Culto importado");
+      } catch {
+        toast.error("Arquivo não é um culto do Lúmen");
+      }
+    };
+    input.click();
   };
 
   const addCurrent = () => {
-    if (!preview) return;
+    if (!preview) {
+      toast("Selecione algo na biblioteca primeiro");
+      return;
+    }
     addToPlaylist({
       type: preview.kind,
       refId: preview.refId,
@@ -62,117 +78,178 @@ export function PlaylistPanel({ showThemes = false }: { showThemes?: boolean }) 
       title: preview.title,
       subtitle: preview.subtitle,
     });
+    toast(`“${preview.title}” entrou no culto`);
   };
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-surface">
-      <div className="flex items-center gap-1 border-b border-border px-2 py-1.5">
-        <Button size="iconSm" variant="ghost" aria-label="Apresentar" onClick={presentPreview}>
-          <Play className="size-3.5" />
-        </Button>
-        <Button size="iconSm" variant="ghost" aria-label="Próximo item" onClick={nextPlaylistItem}>
-          <SkipForward className="size-3.5" />
-        </Button>
-        <Button size="iconSm" variant="ghost" aria-label="Adicionar atual" onClick={addCurrent}>
-          <Plus className="size-3.5" />
-        </Button>
-        <Button size="iconSm" variant="ghost" aria-label="Duplicar playlist" onClick={duplicate}>
-          <Copy className="size-3.5" />
-        </Button>
-        <Button size="iconSm" variant="ghost" aria-label="Exportar" onClick={exportPl}>
-          <Download className="size-3.5" />
-        </Button>
-        <label className="inline-flex size-8 cursor-pointer items-center justify-center rounded-md text-muted hover:bg-elevated hover:text-fg">
-          <Upload className="size-3.5" />
-          <input
-            type="file"
-            accept="application/json"
-            className="hidden"
-            onChange={(e) => onImport(e.target.files?.[0])}
-          />
-        </label>
-        <Button
-          size="iconSm"
-          variant="ghost"
-          aria-label="Nova playlist"
-          onClick={() => {
-            const name = window.prompt("Nome da playlist", "Novo culto");
-            if (name) savePlaylist(name);
-          }}
-        >
-          <Pencil className="size-3.5" />
-        </Button>
+      <div className="panel-head justify-between">
+        <h2>
+          Culto <span className="tnum text-subtle">{count}</span>
+        </h2>
+        <div className="flex items-center gap-0.5">
+          <Hint label="Somar o que está no preview ao culto">
+            <Button size="iconSm" variant="ghost" aria-label="Adicionar ao culto" onClick={addCurrent}>
+              <Plus />
+            </Button>
+          </Hint>
+          <Hint label="Próximo item do culto" keys="Ctrl+N">
+            <Button size="iconSm" variant="ghost" aria-label="Próximo item" onClick={nextPlaylistItem}>
+              <SkipForward />
+            </Button>
+          </Hint>
+        </div>
       </div>
-      <PlaylistMenu
-        playlists={playlists}
-        activeId={activeId}
-        onPick={setActive}
-        onMonth={ensureMonthPlaylist}
-      />
-      <p className="border-b border-border px-3 py-1 text-xs text-subtle">
-        Histórico <span className="tabular-nums">({count})</span>
-      </p>
-      <ul className="min-h-0 flex-1 overflow-y-auto lumen-scroll">
+
+      {/* O nome do culto e tudo que se faz com o culto ficam no mesmo lugar. */}
+      <Menu>
+        <MenuTrigger asChild>
+          <button
+            type="button"
+            data-playlist-trigger
+            className={cn(
+              "group flex h-9 w-full items-center justify-between gap-2 border-b border-border bg-elevated px-3",
+              "text-left text-body font-medium text-fg",
+              "transition-colors duration-[var(--motion-fast)] ease-[var(--ease-out)]",
+              "hover:bg-raised data-[state=open]:bg-raised",
+              "focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring",
+            )}
+          >
+            <span className="truncate">{pl?.name ?? "Temporário"}</span>
+            <ChevronDown
+              className="size-3.5 shrink-0 text-subtle transition-transform duration-[var(--motion-base)] ease-[var(--ease-out)] group-data-[state=open]:rotate-180"
+              aria-hidden
+            />
+          </button>
+        </MenuTrigger>
+        <MenuContent className="w-(--radix-dropdown-menu-trigger-width)">
+          {playlists.map((p) => (
+            <MenuItem key={p.id} onSelect={() => setActive(p.id)}>
+              <span className="flex items-center gap-2">
+                {p.id === activeId ? (
+                  <Check className="size-3.5 shrink-0" aria-hidden />
+                ) : (
+                  <span className="size-3.5 shrink-0" aria-hidden />
+                )}
+                {p.name}
+              </span>
+            </MenuItem>
+          ))}
+          <MenuSeparator />
+          <MenuItem
+            onSelect={() => ensureMonthPlaylist(prevMonth.getFullYear(), prevMonth.getMonth())}
+          >
+            {monthLabel(prevMonth.getFullYear(), prevMonth.getMonth())}
+          </MenuItem>
+          <MenuItem
+            onSelect={() => ensureMonthPlaylist(nextMonth.getFullYear(), nextMonth.getMonth())}
+          >
+            {monthLabel(nextMonth.getFullYear(), nextMonth.getMonth())}
+          </MenuItem>
+          <MenuSeparator />
+          <MenuItem
+            onSelect={() => {
+              const name = window.prompt("Nome do culto", "Novo culto");
+              if (name) savePlaylist(name);
+            }}
+          >
+            Novo culto
+          </MenuItem>
+          <MenuItem onSelect={duplicate}>Duplicar este culto</MenuItem>
+          <MenuItem onSelect={exportPl}>Exportar culto</MenuItem>
+          <MenuItem onSelect={importPl}>Importar culto</MenuItem>
+        </MenuContent>
+      </Menu>
+
+      <ul className="lumen-scroll min-h-0 flex-1 overflow-y-auto">
         {pl?.items.map((item, i) => {
           const onAir = status !== "idle" && live?.refId === item.refId;
           const selected = preview?.refId === item.refId;
           return (
             <li
               key={item.id}
+              draggable
+              onDragStart={() => setDragFrom(i)}
+              onDragOver={(e) => {
+                e.preventDefault();
+                setDragOver(i);
+              }}
+              onDragLeave={() => setDragOver((v) => (v === i ? null : v))}
+              onDragEnd={() => {
+                setDragFrom(null);
+                setDragOver(null);
+              }}
+              onDrop={() => {
+                if (dragFrom !== null && dragFrom !== i) move(dragFrom, i);
+                setDragFrom(null);
+                setDragOver(null);
+              }}
               className={cn(
-                "group flex items-center gap-1 border-b border-border/50 px-2 py-2",
-                selected && "bg-primary/10",
-                onAir && "bg-live/15",
+                "group/item relative flex items-center gap-1 border-b border-border/50 px-2 py-1.5",
+                "transition-colors duration-[var(--motion-fast)] ease-[var(--ease-out)]",
+                selected && "bg-elevated",
+                onAir && "bg-live/10",
+                dragFrom === i && "opacity-40",
+                dragOver === i && dragFrom !== i && "shadow-[inset_0_2px_0_0_var(--color-accent)]",
               )}
             >
-              <GripVertical className="size-3.5 text-subtle" />
+              {(selected || onAir) && (
+                <span
+                  aria-hidden
+                  className={cn(
+                    "animate-swap-in absolute inset-y-0 left-0 w-0.5",
+                    onAir ? "bg-live" : "bg-fg",
+                  )}
+                />
+              )}
+              <GripVertical
+                className="size-3.5 shrink-0 cursor-grab text-subtle opacity-0 transition-opacity duration-[var(--motion-fast)] group-hover/item:opacity-100 active:cursor-grabbing"
+                aria-hidden
+              />
               <button
                 type="button"
-                className="min-w-0 flex-1 text-left"
+                className="min-w-0 flex-1 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
                 onClick={() => previewItem(i)}
                 onDoubleClick={() => presentItem(i)}
+                title="Um clique põe no preview; dois cliques mandam para o telão"
               >
-                <span className="block truncate text-sm">
-                  <span className="mr-1 tabular-nums text-subtle">{i + 1}.</span>
-                  {item.title}
+                <span className="flex min-w-0 items-baseline gap-1.5">
+                  <span className="tnum shrink-0 text-caption text-subtle">{i + 1}</span>
+                  <span className="truncate text-body text-fg">{item.title}</span>
                 </span>
-                <span className="block text-xs uppercase tracking-wide text-subtle">
-                  {onAir ? "No ar · " : ""}
-                  {labelType(item.type)}
+                <span className="mt-0.5 flex items-center gap-1.5">
+                  {onAir && <Tally state="live" label="No ar" />}
+                  <span className="text-caption text-subtle">{labelType(item.type)}</span>
                 </span>
               </button>
-              <button
-                type="button"
-                className="rounded-md p-1 text-subtle opacity-0 hover:text-danger group-hover:opacity-100"
-                onClick={() => remove(item.id)}
-                aria-label="Remover"
-              >
-                <Trash2 className="size-3.5" />
-              </button>
-              {i > 0 && (
-                <button
-                  type="button"
-                  className="text-xs text-subtle hover:text-fg"
-                  onClick={() => move(i, i - 1)}
-                >
-                  ↑
-                </button>
-              )}
+              <div className="flex shrink-0 items-center opacity-0 transition-opacity duration-[var(--motion-fast)] group-hover/item:opacity-100 focus-within:opacity-100">
+                <Hint label="Tirar do culto">
+                  <Button
+                    size="iconSm"
+                    variant="ghost"
+                    aria-label={`Tirar ${item.title} do culto`}
+                    className="hover:text-danger"
+                    onClick={() => remove(item.id)}
+                  >
+                    <Trash2 />
+                  </Button>
+                </Hint>
+              </div>
             </li>
           );
         })}
+
         {(!pl || pl.items.length === 0) && (
-          <p className="p-4 text-center text-sm text-muted">
-            Duplo clique na biblioteca para montar o culto.
-          </p>
+          <Empty
+            title="O culto ainda está vazio."
+            hint="Dê dois cliques num item da biblioteca para trazê-lo para cá, ou use o + acima."
+          />
         )}
       </ul>
 
       {showThemes && (
         <div className="border-t border-border p-2">
-          <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-subtle">
-            Tema ao vivo
-          </p>
+          <p className="mb-1.5 text-caption font-medium text-subtle">Tema ao vivo</p>
           <div className="grid grid-cols-2 gap-1.5">
             {themes.map((theme) => (
               <ThemeThumb
@@ -204,86 +281,4 @@ function monthLabel(year: number, month: number) {
   });
   const pretty = raw.replace(" de ", "/");
   return pretty.charAt(0).toUpperCase() + pretty.slice(1);
-}
-
-function PlaylistMenu({
-  playlists,
-  activeId,
-  onPick,
-  onMonth,
-}: {
-  playlists: Playlist[];
-  activeId: string;
-  onPick: (id: string) => void;
-  onMonth: (year: number, month: number) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  const current = playlists.find((p) => p.id === activeId);
-  const now = new Date();
-  const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-  const next = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-
-  useEffect(() => {
-    if (!open) return;
-    const onDoc = (e: MouseEvent) => {
-      if (!ref.current?.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
-  }, [open]);
-
-  return (
-    <div ref={ref} className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="flex h-10 w-full items-center justify-between bg-elevated px-3 text-left text-sm font-medium"
-      >
-        <span className="truncate">{current?.name ?? "Temporário"}</span>
-        <span className="text-subtle">{open ? "▴" : "▾"}</span>
-      </button>
-      {open && (
-        <div className="absolute left-0 right-0 top-full z-30 rounded-b-lg bg-elevated py-1 shadow-[var(--shadow-border)]">
-          {playlists.map((p) => (
-            <button
-              key={p.id}
-              type="button"
-              className={cn(
-                "block w-full px-3 py-2 text-left text-sm hover:bg-primary/10",
-                p.id === activeId && "bg-primary/15 font-medium",
-              )}
-              onClick={() => {
-                onPick(p.id);
-                setOpen(false);
-              }}
-            >
-              {p.name}
-            </button>
-          ))}
-          <div className="my-1 border-t border-border" />
-          <button
-            type="button"
-            className="block w-full px-3 py-2 text-left text-sm text-muted hover:bg-primary/10 hover:text-fg"
-            onClick={() => {
-              onMonth(prev.getFullYear(), prev.getMonth());
-              setOpen(false);
-            }}
-          >
-            Ir para: {monthLabel(prev.getFullYear(), prev.getMonth())}
-          </button>
-          <button
-            type="button"
-            className="block w-full px-3 py-2 text-left text-sm text-muted hover:bg-primary/10 hover:text-fg"
-            onClick={() => {
-              onMonth(next.getFullYear(), next.getMonth());
-              setOpen(false);
-            }}
-          >
-            Ir para: {monthLabel(next.getFullYear(), next.getMonth())}
-          </button>
-        </div>
-      )}
-    </div>
-  );
 }

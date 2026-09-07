@@ -3,28 +3,31 @@ productName: Lúmen
 copyright: Igreja local
 asar: true
 directories:
-  output: dist-win
+  output: dist-win/release
   buildResources: desktop/build
 files:
-  - desktop/main.cjs
-  - desktop/preload.cjs
+  - desktop/*.cjs
   - desktop/www/**/*
   - desktop/build/icon.png
   - package.json
   - "!**/node_modules/**"
   - "!**/*.{md,map,ts,tsx}"
+afterPack: scripts/after-pack.cjs
 extraMetadata:
   main: desktop/main.cjs
 win:
   icon: desktop/build/icon.ico
   target:
+    - nsis
+    - zip
     - dir
-  artifactName: ${productName}-Setup-${version}.${ext}
+  artifactName: ${productName}-${version}-${arch}.${ext}
   signAndEditExecutable: false
 electronLanguages:
   - pt-BR
   - en-US
 nsis:
+  artifactName: ${productName}-Setup-${version}-${arch}.${ext}
   oneClick: false
   perMachine: false
   allowToChangeInstallationDirectory: true

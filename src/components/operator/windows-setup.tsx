@@ -1,4 +1,4 @@
-import { Check, Download, Monitor, Power, Tv } from "lucide-react";
+import { Check, Download, Monitor, Power, Tv, X } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -76,16 +76,19 @@ function WindowsBanner() {
   const liveMode = useOpsStore((s) => s.liveMode);
   if (seen || open || isStandalone() || liveMode) return null;
   return (
-    <div className="flex flex-wrap items-center gap-2 border-b border-border bg-elevated px-3 py-2 text-sm">
-      <Download className="size-4 text-primary" />
-      <p className="min-w-0 flex-1 text-fg">
-        Instale o Lúmen no PC Windows da cabine — Menu Iniciar, segundo monitor, o computador não hiberna.
+    // Faixa fina, não anúncio: uma linha, um verbo e um X. Antes ocupava uma
+    // fileira inteira do console com dois botões, um deles em destaque cheio.
+    <div className="flex items-center gap-2 border-b border-border bg-elevated px-3 py-1">
+      <Download className="size-3.5 shrink-0 text-subtle" aria-hidden />
+      <p className="min-w-0 flex-1 truncate text-secondary text-muted">
+        No PC da cabine o Lúmen abre pelo Menu Iniciar, acha o segundo monitor e impede a
+        hibernação.
       </p>
-      <Button size="sm" onClick={() => setOpen(true)}>
-        Instalar
+      <Button size="sm" variant="ghost" onClick={() => setOpen(true)}>
+        Instalar no Windows
       </Button>
-      <Button size="sm" variant="ghost" onClick={dismiss}>
-        Depois
+      <Button size="iconSm" variant="ghost" aria-label="Dispensar" onClick={dismiss}>
+        <X />
       </Button>
     </div>
   );
@@ -141,7 +144,7 @@ export function WindowsSetupDialog() {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent title="Instalar no Windows" className="max-h-[min(40rem,90dvh)] overflow-y-auto">
-        <p className="mb-4 text-sm text-muted">
+        <p className="mb-4 text-body text-muted">
           {win
             ? "Este PC é Windows. Rode o Lúmen-Setup.exe — atalho na área de trabalho e no Menu Iniciar, telão no segundo monitor."
             : "No PC da igreja, rode o instalador Lúmen-Setup.exe. Ele cria o atalho, abre a cabine e manda o telão para o segundo monitor."}
@@ -150,19 +153,19 @@ export function WindowsSetupDialog() {
         <ol className="grid gap-3">
           {steps.map((step, i) => (
             <li key={step.title} className="flex gap-3">
-              <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-elevated font-mono text-xs text-primary">
+              <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-elevated font-mono text-secondary text-fg">
                 {i + 1}
               </span>
               <div>
-                <p className="text-sm font-medium text-fg">{step.title}</p>
-                <p className="text-xs text-muted">{step.detail}</p>
+                <p className="text-body font-medium text-fg">{step.title}</p>
+                <p className="text-secondary text-muted">{step.detail}</p>
               </div>
             </li>
           ))}
         </ol>
 
         <div className="mt-5 grid gap-2 rounded-lg bg-elevated p-3">
-          <p className="text-xs font-medium uppercase tracking-widest text-subtle">Este computador</p>
+          <p className="text-secondary font-medium text-subtle">Este computador</p>
           <Row ok={standalone} label={standalone ? "Já está instalado como aplicativo" : "Ainda no navegador"}>
             <Download className="size-4" />
           </Row>
@@ -175,7 +178,7 @@ export function WindowsSetupDialog() {
         </div>
 
         <div className="mt-4 grid gap-2">
-          <label className="flex items-center gap-2 text-sm">
+          <label className="flex items-center gap-2 text-body">
             <input
               type="checkbox"
               checked={settings.secondMonitor !== false}
@@ -183,7 +186,7 @@ export function WindowsSetupDialog() {
             />
             Abrir o projetor no segundo monitor
           </label>
-          <label className="flex items-center gap-2 text-sm">
+          <label className="flex items-center gap-2 text-body">
             <input
               type="checkbox"
               checked={settings.startFullscreen !== false}
@@ -191,7 +194,7 @@ export function WindowsSetupDialog() {
             />
             Telão em tela cheia (duplo clique também ativa)
           </label>
-          <label className="flex items-center gap-2 text-sm">
+          <label className="flex items-center gap-2 text-body">
             <input
               type="checkbox"
               checked={settings.wakeLock !== false}
@@ -230,7 +233,7 @@ function Row({
   children: ReactNode;
 }) {
   return (
-    <div className="flex items-start gap-2 text-sm">
+    <div className="flex items-start gap-2 text-body">
       <span className={cn("mt-0.5", ok ? "text-ok" : "text-muted")}>{ok ? <Check className="size-4" /> : children}</span>
       <span className={ok ? "text-fg" : "text-muted"}>{label}</span>
     </div>

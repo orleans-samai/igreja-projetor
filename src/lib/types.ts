@@ -2,7 +2,13 @@ export type SlideKind = "song" | "bible" | "media" | "text" | "countdown";
 
 export type OutputStatus = "idle" | "presenting" | "black" | "logo" | "clear";
 
-export type BackgroundType = "color" | "image" | "video";
+/**
+ * "animated" desenha o fundo em CSS:  guarda o nome da
+ * classe (ver styles.css). Escolhido em vez de arquivo de vídeo porque o app
+ * roda offline num PC modesto — o vídeo somaria centenas de MB ao instalador
+ * e comeria CPU no culto inteiro.
+ */
+export type BackgroundType = "color" | "image" | "video" | "animated";
 
 export type AlignH = "left" | "center" | "right";
 export type AlignV = "top" | "center" | "bottom";
@@ -113,6 +119,7 @@ export interface ProjectionLog {
 }
 
 export interface Settings {
+  lowPerformance?: boolean;
   churchName: string;
   logoUrl: string;
   maxLines: number;
@@ -161,6 +168,10 @@ export interface Deck {
   key?: string;
   copyright?: string;
   slides: Slide[];
+  /** Endereço do arquivo quando o baralho é mídia — é isto que faz a imagem
+   *  ou o vídeo chegarem ao telão, em vez de só o nome do arquivo. */
+  mediaSrc?: string;
+  mediaType?: "image" | "video" | "audio";
 }
 
 /** Snapshot sent from the operator to projection/stage windows. */
@@ -177,6 +188,7 @@ export interface LiveFrame {
   logoUrl: string;
   settings: Pick<
     Settings,
+    | "lowPerformance"
     | "transition"
     | "fadeMs"
     | "chordsOnStage"

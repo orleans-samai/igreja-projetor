@@ -1,4 +1,4 @@
-import { BookOpen, Loader2, Mic, Music, Search, Sparkles, Type } from "lucide-react";
+import { BookOpen, Mic, Music, Search, Sparkles, Type } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -6,7 +6,7 @@ import { interpretCopilot } from "@/lib/copilot-ai";
 import { describeIntent, intentIsImmediate, parseCommand, type CopilotIntent } from "@/lib/copilot";
 import { executeIntent } from "@/lib/copilot-exec";
 import { universalSearch } from "@/lib/universal-search";
-import { runOptimize } from "@/components/operator/optimize-bar";
+import { runOptimize } from "@/lib/run-optimize";
 import { cn } from "@/lib/cn";
 import type { SearchHit } from "@/lib/types";
 import { useLumenStore } from "@/store/lumen-store";
@@ -158,17 +158,26 @@ export function CommandPalette() {
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center bg-stage/70 px-3 pt-[12vh]">
-      <button type="button" className="absolute inset-0" aria-label="Fechar busca" onClick={() => setOpen(false)} />
-      <div className="relative z-10 w-full max-w-xl overflow-hidden rounded-xl bg-surface shadow-[var(--shadow-border)]">
+    <div className="fixed inset-0 z-50 flex items-start justify-center px-3 pt-[12vh]">
+      <button
+        type="button"
+        className="absolute inset-0 animate-[veil-in_var(--motion-base)_var(--ease-out)] bg-stage/70"
+        aria-label="Fechar busca"
+        onClick={() => setOpen(false)}
+      />
+      <div
+        role="dialog"
+        aria-label="Busca universal"
+        className="animate-pop-in relative z-10 w-full max-w-xl overflow-hidden rounded-xl bg-surface shadow-[var(--shadow-pop),var(--shadow-border)]"
+      >
         <div className="flex items-center gap-2 border-b border-border px-3">
-          <Search className="size-4 text-muted" />
+          <Search className="size-4 shrink-0 text-subtle" aria-hidden />
           <input
             ref={inputRef}
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="João 3:16 · refrão · tela preta · música que fala graça"
-            className="h-12 flex-1 bg-transparent text-sm text-fg outline-none placeholder:text-subtle"
+            className="h-12 flex-1 bg-transparent text-body text-fg outline-none placeholder:text-subtle"
             onKeyDown={(e) => {
               if (e.key === "Escape") {
                 e.preventDefault();
@@ -190,14 +199,20 @@ export function CommandPalette() {
               }
             }}
           />
-          <Button size="sm" variant="ghost" onClick={() => void askAi()} disabled={aiBusy || !q.trim()}>
-            {aiBusy ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
-            IA
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => void askAi()}
+            disabled={!q.trim()}
+            loading={aiBusy}
+          >
+            {!aiBusy && <Sparkles />}
+            Copiloto
           </Button>
         </div>
-        <ul className="max-h-80 overflow-auto py-1">
+        <ul role="listbox" aria-label="Resultados" className="lumen-scroll max-h-80 overflow-auto py-1">
           {rows.length === 0 && (
-            <li className="px-4 py-6 text-sm text-muted">
+            <li className="px-4 py-6 text-body text-muted">
               {q.trim()
                 ? "Nada encontrado. Peça ao copiloto (Ctrl+Enter) ou tente um versículo."
                 : "Comandos, Bíblia, músicas, avisos e o histórico do culto."}
@@ -209,31 +224,48 @@ export function CommandPalette() {
             );
             const Glyph = row.key === "intent" || row.key === "song-intent" ? Sparkles : HitIcon;
             return (
-              <li key={row.key}>
+              <li key={row.key} role="option" aria-selected={i === cursor}>
                 <button
                   type="button"
+                  tabIndex={-1}
                   onMouseEnter={() => setCursor(i)}
                   onClick={row.run}
                   className={cn(
-                    "flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm",
-                    i === cursor ? "bg-elevated text-fg" : "text-fg/90",
+                    "relative flex w-full items-center gap-3 px-4 py-2 text-left text-body",
+                    "transition-colors duration-[var(--motion-fast)] ease-[var(--ease-out)]",
+                    i === cursor ? "bg-elevated text-fg" : "text-muted",
                   )}
                 >
-                  <Glyph className="size-4 text-muted" />
+                  {i === cursor && (
+                    <span aria-hidden className="absolute inset-y-1 left-0 w-0.5 rounded-r bg-fg" />
+                  )}
+                  <Glyph className="size-3.5 shrink-0 text-subtle" aria-hidden />
                   <span className="min-w-0 flex-1 truncate">{row.label}</span>
-                  <span className="text-xs text-subtle">{row.hint}</span>
+                  <span className="shrink-0 text-caption text-subtle">{row.hint}</span>
                 </button>
               </li>
             );
           })}
         </ul>
-        <p className="flex items-center justify-between border-t border-border px-3 py-2 text-xs text-subtle">
-          <span>Enter executa · Ctrl+Enter copiloto</span>
+        <p className="flex items-center justify-between gap-3 border-t border-border px-3 py-1.5 text-caption text-subtle">
+          <span className="inline-flex items-center gap-1.5">
+            <Key>Enter</Key> executa
+            <Key>Ctrl+Enter</Key> pergunta ao copiloto
+          </span>
           <span className="inline-flex items-center gap-1">
-            <Mic className="size-3" /> voz no modo operador
+            <Mic className="size-3" aria-hidden /> voz no modo operador
           </span>
         </p>
       </div>
     </div>
+  );
+}
+
+/** Tecla do teclado, para o rodapé ensinar o atalho em vez de descrevê-lo. */
+function Key({ children }: { children: string }) {
+  return (
+    <kbd className="rounded-sm bg-elevated px-1 py-px font-sans text-caption text-muted">
+      {children}
+    </kbd>
   );
 }

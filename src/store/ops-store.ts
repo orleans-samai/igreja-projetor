@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { durableStorage } from "@/lib/durable-storage";
 import { nid } from "@/lib/fold";
 import {
   publishOps,
@@ -196,6 +197,7 @@ export const useOpsStore = create<OpsState>()(
     {
       name: "lumen-ops-v1",
       skipHydration: true,
+      storage: durableStorage,
       partialize: (s) => ({
         timelineStart: s.timelineStart,
         actorName: s.actorName,

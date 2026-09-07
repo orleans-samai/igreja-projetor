@@ -10,6 +10,9 @@ export default tseslint.config(
   {
     ignores: [
       "dist/**",
+      "dist-win/**",
+      "desktop/www/**",
+      "artifacts/**",
       ".output/**",
       ".vercel/**",
       ".nitro/**",
@@ -20,7 +23,7 @@ export default tseslint.config(
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
-    files: ["**/*.{ts,tsx,js,jsx,mjs,cjs}"],
+    files: ["**/*.{ts,tsx,js,jsx,mjs}"],
     languageOptions: {
       ecmaVersion: 2022,
       globals: { ...globals.browser, ...globals.node },
@@ -41,6 +44,12 @@ export default tseslint.config(
       ],
       "@typescript-eslint/no-explicit-any": "off",
     },
+  },
+  {
+    // O processo principal do Electron é CommonJS por exigência do runtime.
+    files: ["**/*.cjs"],
+    languageOptions: { sourceType: "commonjs", globals: { ...globals.node } },
+    rules: { "@typescript-eslint/no-require-imports": "off" },
   },
   // Disable rules that conflict with Prettier formatting.
   prettier,

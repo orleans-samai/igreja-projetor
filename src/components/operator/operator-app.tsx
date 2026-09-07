@@ -19,15 +19,15 @@ import { BibleWorkspace } from "@/components/operator/bible-workspace";
 import { OpsLayer } from "@/components/operator/ops-layer";
 import { WindowsRuntime } from "@/components/operator/windows-setup";
 import { toast } from "sonner";
-import { runOptimize } from "@/components/operator/optimize-bar";
+import { runOptimize } from "@/lib/run-optimize";
 import { SlideStage } from "@/components/slide/slide-renderer";
+import { Segmented } from "@/components/ui/segmented";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { loadBuiltinBible } from "@/lib/bible";
 import { nid, fold } from "@/lib/fold";
 import { formatImportedLyrics } from "@/lib/lyrics";
-import { cn } from "@/lib/cn";
 import type { LiveFrame } from "@/lib/types";
-import { useLumenStore } from "@/store/lumen-store";
+import { buildLiveFrame, useLumenStore } from "@/store/lumen-store";
 import { useOpsStore } from "@/store/ops-store";
 
 function isTypingTarget(el: EventTarget | null) {
@@ -38,6 +38,9 @@ function isTypingTarget(el: EventTarget | null) {
 
 export function OperatorApp() {
   const store = useLumenStore();
+  useEffect(() => {
+    document.documentElement.dataset.lowPerformance = String(!!store.settings.lowPerformance);
+  }, [store.settings.lowPerformance]);
   const bibleRef = useRef<HTMLInputElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const playlistRef = useRef<HTMLDivElement>(null);
@@ -49,9 +52,7 @@ export function OperatorApp() {
   const [display, setDisplay] = useState(false);
   const [bibleOpen, setBibleOpen] = useState(false);
   const [mobileTab, setMobileTab] = useState<"lib" | "preview" | "culto">("preview");
-  const editingSlide = useLumenStore((s) => s.editingSlide);
   const liveMode = useOpsStore((s) => s.liveMode);
-  const commandOpen = useOpsStore((s) => s.commandOpen);
 
   useEffect(() => {
     const unsub = useLumenStore.persist.onFinishHydration(() => {
@@ -62,18 +63,48 @@ export function OperatorApp() {
     return unsub;
   }, []);
 
-  const outputFrame = useMemo(() => store.liveFrame(), [
-    store.status,
-    store.live,
-    store.liveIndex,
-    store.alert,
-    store.countdown,
-    store.songThemeId,
-    store.bibleThemeId,
-    store.stageThemeId,
-    store.themes,
-    store.settings,
-  ]);
+  const {
+    status,
+    live,
+    preview,
+    liveIndex,
+    alert,
+    countdown: outputCountdown,
+    songThemeId,
+    bibleThemeId,
+    stageThemeId,
+    themes,
+    settings: outputSettings,
+  } = store;
+  const outputFrame = useMemo(
+    () =>
+      buildLiveFrame({
+        status,
+        live,
+        preview,
+        liveIndex,
+        alert,
+        countdown: outputCountdown,
+        songThemeId,
+        bibleThemeId,
+        stageThemeId,
+        themes,
+        settings: outputSettings,
+      }),
+    [
+      status,
+      live,
+      preview,
+      liveIndex,
+      alert,
+      outputCountdown,
+      songThemeId,
+      bibleThemeId,
+      stageThemeId,
+      themes,
+      outputSettings,
+    ],
+  );
 
   const previewFrame: LiveFrame = {
     ...outputFrame,
@@ -90,6 +121,7 @@ export function OperatorApp() {
     const onKey = (e: KeyboardEvent) => {
       const typing = isTypingTarget(e.target);
       const ops = useOpsStore.getState();
+      const st = useLumenStore.getState();
 
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
@@ -111,7 +143,7 @@ export function OperatorApp() {
 
       if (e.key === "F5") {
         e.preventDefault();
-        store.presentPreview();
+        st.presentPreview();
         return;
       }
       if (e.key === "Escape") {
@@ -128,11 +160,11 @@ export function OperatorApp() {
           setBibleOpen(false);
           return;
         }
-        if (store.fillMode !== "console") {
-          store.setFillMode("console");
+        if (st.fillMode !== "console") {
+          st.setFillMode("console");
           return;
         }
-        store.stop();
+        st.stop();
         return;
       }
       if (e.key === "?" && !typing) {
@@ -142,7 +174,7 @@ export function OperatorApp() {
       }
       if (e.ctrlKey || e.metaKey) {
         if (e.key.toLowerCase() === "r") {
-          if (store.status !== "idle") {
+          if (st.status !== "idle") {
             e.preventDefault();
             toast("O culto está no ar. Esc para parar, depois recarregue se precisar.");
           }
@@ -151,7 +183,7 @@ export function OperatorApp() {
         if (e.key.toLowerCase() === "z" && !e.shiftKey && !typing) {
           e.preventDefault();
           const ok = ops.undoCulto();
-          if (!ok) store.undoOptimize();
+          if (!ok) st.undoOptimize();
           return;
         }
         if (e.key.toLowerCase() === "f" && e.shiftKey) {
@@ -162,7 +194,7 @@ export function OperatorApp() {
         if (e.key.toLowerCase() === "f") {
           e.preventDefault();
           searchRef.current?.focus();
-          store.setTab("songs");
+          st.setTab("songs");
           return;
         }
         if (e.key.toLowerCase() === "o" && e.shiftKey) {
@@ -182,50 +214,52 @@ export function OperatorApp() {
         }
         if (e.key.toLowerCase() === "p") {
           e.preventDefault();
-          playlistRef.current?.querySelector("select")?.focus();
+          playlistRef.current
+            ?.querySelector<HTMLButtonElement>("[data-playlist-trigger]")
+            ?.focus();
           return;
         }
         if (e.key.toLowerCase() === "t") {
           e.preventDefault();
-          const ids = store.themes.map((t) => t.id);
-          const cur = store.songThemeId;
+          const ids = st.themes.map((t) => t.id);
+          const cur = st.songThemeId;
           const next = ids[(ids.indexOf(cur) + 1) % ids.length];
-          if (next) store.applyThemeLive(next);
+          if (next) st.applyThemeLive(next);
           return;
         }
         if (e.key.toLowerCase() === "n") {
           e.preventDefault();
-          store.nextPlaylistItem();
+          st.nextPlaylistItem();
           return;
         }
         if (/^[1-9]$/.test(e.key)) {
           e.preventDefault();
-          store.presentPlaylistItem(Number(e.key) - 1);
+          st.presentPlaylistItem(Number(e.key) - 1);
           return;
         }
       }
-      if (typing || editingSlide) return;
+      if (typing || st.editingSlide) return;
       if (bibleOpen) return;
       if (["ArrowRight", "PageDown", " ", "Enter"].includes(e.key)) {
         e.preventDefault();
-        store.next();
+        st.next();
       } else if (["ArrowLeft", "PageUp"].includes(e.key)) {
         e.preventDefault();
-        store.prev();
+        st.prev();
       } else if (e.key.toLowerCase() === "b") {
         e.preventDefault();
-        store.goBlack();
+        st.goBlack();
       } else if (e.key.toLowerCase() === "l") {
         e.preventDefault();
-        store.goLogo();
+        st.goLogo();
       } else if (e.key.toLowerCase() === "c") {
         e.preventDefault();
-        store.goClear();
+        st.goClear();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [store, editingSlide, bibleOpen, commandOpen]);
+  }, [bibleOpen]);
 
   if (store.fillMode === "audience" || store.fillMode === "stage") {
     return (
@@ -237,7 +271,7 @@ export function OperatorApp() {
         />
         <button
           type="button"
-          className="absolute right-3 top-3 rounded-md bg-elevated/90 px-3 py-1 text-xs text-fg"
+          className="absolute right-3 top-3 rounded-md bg-elevated/90 px-3 py-1 text-secondary text-fg"
           onClick={() => store.setFillMode("console")}
         >
           Voltar à cabine · Esc
@@ -273,27 +307,19 @@ export function OperatorApp() {
         <WindowsRuntime />
 
         {!bibleOpen && (
-        <div className="flex gap-1 border-b border-border bg-surface px-2 py-1 md:hidden">
-          {(
-            [
-              ["lib", "Biblioteca"],
-              ["preview", "Preview"],
-              ["culto", "Culto"],
-            ] as const
-          ).map(([id, label]) => (
-            <button
-              key={id}
-              type="button"
-              onClick={() => setMobileTab(id)}
-              className={cn(
-                "min-h-11 flex-1 rounded-md py-2 text-xs font-medium",
-                mobileTab === id ? "bg-elevated text-fg" : "text-muted",
-              )}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+          <div className="border-b border-border bg-surface px-2 py-1.5 lg:hidden">
+            <Segmented
+              label="Área da cabine"
+              full
+              value={mobileTab}
+              onChange={setMobileTab}
+              items={[
+                { value: "lib", label: "Biblioteca" },
+                { value: "preview", label: "Preview" },
+                { value: "culto", label: "Culto" },
+              ]}
+            />
+          </div>
         )}
 
         <div className="min-h-0 flex-1">
@@ -301,9 +327,9 @@ export function OperatorApp() {
             <BibleWorkspace previewFrame={previewFrame} onBack={() => setBibleOpen(false)} />
           ) : (
             <>
-          <div className="hidden h-full md:block">
+          <div className="hidden h-full lg:block">
             <Group orientation="horizontal" className="h-full">
-              <Panel defaultSize="16%" minSize="12%" className="h-full overflow-hidden">
+              <Panel defaultSize="19%" minSize="15%" className="h-full overflow-hidden">
                 <LibraryPanel
                   onNewSong={() => setSongEd(true)}
                   onWebLyrics={() => setWebOpen(true)}
@@ -319,7 +345,7 @@ export function OperatorApp() {
                 </div>
               </Panel>
               <Separator className="w-1 bg-border hover:bg-primary" />
-              <Panel defaultSize="46%" minSize="28%" className="h-full overflow-hidden">
+              <Panel defaultSize="43%" minSize="26%" className="h-full overflow-hidden">
                 <PreviewPanel
                   previewFrame={previewFrame}
                   outputFrame={outputFrame}
@@ -333,7 +359,7 @@ export function OperatorApp() {
               </Panel>
             </Group>
           </div>
-          <div className="h-full md:hidden">
+          <div className="h-full lg:hidden">
             {mobileTab === "lib" && (
               <LibraryPanel
                 onNewSong={() => setSongEd(true)}

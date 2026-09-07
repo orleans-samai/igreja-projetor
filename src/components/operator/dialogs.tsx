@@ -3,6 +3,7 @@ import { Monitor, Settings2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Segmented } from "@/components/ui/segmented";
 import { Input, Label, Textarea } from "@/components/ui/input";
 import { importBibleVersion } from "@/lib/bible";
 import { nid } from "@/lib/fold";
@@ -57,7 +58,11 @@ export function SongEditorDialog({
         onOpenChange(v);
       }}
     >
-      <DialogContent title={existing ? "Editar música" : "Nova música"} className="max-h-[86vh] overflow-y-auto">
+      <DialogContent
+        title={existing ? "Editar música" : "Nova música"}
+        className="h-[min(44rem,calc(100dvh-3rem))] w-[min(60rem,calc(100%-1.5rem))]"
+        scrollBody={!webMode}
+      >
         {webMode ? (
           <LyricsSearchPanel
             prefillQuery={title}
@@ -107,7 +112,7 @@ export function SongEditorDialog({
               <div>
                 <Label>Grupo</Label>
                 <select
-                  className="mt-1 h-9 w-full rounded-md bg-elevated px-2 text-sm"
+                  className="field mt-1 w-full"
                   value={groupId}
                   onChange={(e) => setGroupId(e.target.value)}
                 >
@@ -147,10 +152,10 @@ export function SongEditorDialog({
                 setLyrics(optimizeRawText(pasted, "song").raw);
                 toast("Otimizei o bloco para o telão");
               }}
-              className="min-h-56 font-mono text-xs"
+              className="min-h-56 font-mono text-secondary"
             />
             <OptimizeHint text={lyrics} onApply={setLyrics} />
-            <p className="text-xs text-muted">{previewSlides.length} slides gerados</p>
+            <p className="text-secondary text-muted">{previewSlides.length} slides gerados</p>
           </div>
           <div className="md:col-span-2 flex justify-end gap-2">
             <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
@@ -192,16 +197,26 @@ export function HelpDialog({ open, onOpenChange }: { open: boolean; onOpenChange
   ];
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent title="Atalhos da cabine">
-        <ul className="grid gap-2 text-sm">
+      <DialogContent
+        title="Atalhos da cabine"
+        description="No escuro, teclado é mais rápido que mouse."
+      >
+        {/* A ação vem primeiro e a tecla à direita: procura-se pelo que se
+            quer fazer, não pela tecla. */}
+        <ul className="grid gap-px">
           {rows.map(([k, v]) => (
-            <li key={k} className="flex justify-between gap-4 border-b border-border/60 py-1.5">
-              <kbd className="rounded bg-elevated px-2 py-0.5 font-mono text-xs text-primary">{k}</kbd>
-              <span className="text-muted">{v}</span>
+            <li
+              key={k}
+              className="flex items-center justify-between gap-4 rounded-md px-1.5 py-1 hover:bg-elevated"
+            >
+              <span className="text-body text-fg">{v}</span>
+              <kbd className="tnum shrink-0 rounded-sm bg-elevated px-1.5 py-0.5 text-caption text-muted shadow-[var(--shadow-border)]">
+                {k}
+              </kbd>
             </li>
           ))}
         </ul>
-        <p className="mt-4 text-xs text-subtle">
+        <p className="mt-4 text-secondary text-subtle">
           Atalhos não disparam enquanto você digita em um campo, exceto F5, Esc e os de Ctrl.
           No Windows, instale o Lúmen pelo Edge ou Chrome (Ajuda → Instalar no Windows) para abrir pelo Menu Iniciar.
         </p>
@@ -276,9 +291,16 @@ export function SettingsDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent title="Configuração da cabine" className="max-h-[86vh] overflow-y-auto">
+        <label className="flex items-center gap-2 py-2">
+          <input type="checkbox" checked={!!settings.lowPerformance} onChange={(e) => update({ lowPerformance: e.target.checked })} />
+          Modo leve — sem transições ou fundos de imagem e vídeo
+        </label>
+        {typeof window !== "undefined" && window.lumenDesktop?.isDesktop && (
+          <p className="text-secondary text-muted">Bíblia, repertório e projeção funcionam sem internet. A busca de letras no Letras e Vagalume precisa de internet. IA não está disponível neste aplicativo. Backups completos e compatibilidade gráfica estão no menu Lúmen.</p>
+        )}
         <div className="grid gap-4 md:grid-cols-2">
           <section className="space-y-2">
-            <p className="text-xs font-medium uppercase tracking-wide text-subtle">Igreja</p>
+            <p className="text-secondary font-medium text-subtle">Igreja</p>
             <Label>Nome no logo</Label>
             <Input
               value={settings.churchName}
@@ -306,14 +328,27 @@ export function SettingsDialog({
             />
             <Label>Transição</Label>
             <select
-              className="h-9 w-full rounded-md bg-elevated px-2 text-sm"
+              className="field w-full"
               value={settings.transition}
               onChange={(e) => update({ transition: e.target.value as "cut" | "fade" })}
             >
               <option value="fade">Fade curto</option>
               <option value="cut">Corte seco</option>
             </select>
-            <label className="flex items-center gap-2 text-sm">
+            {settings.transition === "fade" && (
+              <>
+                <Label>Tempo do fade (ms)</Label>
+                <Input
+                  type="number"
+                  min={60}
+                  max={1200}
+                  step={20}
+                  value={settings.fadeMs}
+                  onChange={(e) => update({ fadeMs: Number(e.target.value) })}
+                />
+              </>
+            )}
+            <label className="flex items-center gap-2 text-body">
               <input
                 type="checkbox"
                 checked={settings.chordsOnStage}
@@ -321,7 +356,7 @@ export function SettingsDialog({
               />
               Cifra no retorno de palco
             </label>
-            <label className="flex items-center gap-2 text-sm">
+            <label className="flex items-center gap-2 text-body">
               <input
                 type="checkbox"
                 checked={settings.chordsOnAudience}
@@ -331,24 +366,23 @@ export function SettingsDialog({
             </label>
           </section>
           <section className="space-y-2">
-            <p className="text-xs font-medium uppercase tracking-wide text-subtle">Tema ativo</p>
-            <Label>Opacidade do overlay</Label>
-            <input
-              type="range"
+            <p className="text-secondary font-medium text-subtle">Tema ativo</p>
+            {/* O valor fica visível: antes se arrastava às cegas. */}
+            <Slider
+              label="Véu sobre o fundo"
+              value={Math.round(theme.overlayOpacity * 100)}
               min={0}
               max={80}
-              value={Math.round(theme.overlayOpacity * 100)}
-              onChange={(e) => patchTheme({ overlayOpacity: Number(e.target.value) / 100 })}
-              className="w-full"
+              suffix="%"
+              onChange={(v) => patchTheme({ overlayOpacity: v / 100 })}
             />
-            <Label>Tamanho da fonte</Label>
-            <input
-              type="range"
+            <Slider
+              label="Tamanho da letra no telão"
+              value={theme.fontSize}
               min={40}
               max={96}
-              value={theme.fontSize}
-              onChange={(e) => patchTheme({ fontSize: Number(e.target.value) })}
-              className="w-full"
+              suffix="px"
+              onChange={(v) => patchTheme({ fontSize: v })}
             />
             <Label>Cor do texto</Label>
             <input
@@ -356,7 +390,7 @@ export function SettingsDialog({
               value={theme.textColor}
               onChange={(e) => patchTheme({ textColor: e.target.value })}
             />
-            <label className="flex items-center gap-2 text-sm">
+            <label className="flex items-center gap-2 text-body">
               <input
                 type="checkbox"
                 checked={theme.uppercase}
@@ -364,7 +398,7 @@ export function SettingsDialog({
               />
               Caixa-alta
             </label>
-            <label className="flex items-center gap-2 text-sm">
+            <label className="flex items-center gap-2 text-body">
               <input
                 type="checkbox"
                 checked={theme.shadow}
@@ -372,20 +406,17 @@ export function SettingsDialog({
               />
               Sombra
             </label>
-            <Label>Alinhamento</Label>
-            <div className="flex gap-2">
-              {(["left", "center", "right"] as const).map((a) => (
-                <Button
-                  key={a}
-                  type="button"
-                  size="sm"
-                  variant={theme.alignH === a ? "default" : "secondary"}
-                  onClick={() => patchTheme({ alignH: a })}
-                >
-                  {a === "left" ? "Esq." : a === "right" ? "Dir." : "Centro"}
-                </Button>
-              ))}
-            </div>
+            <Label>Alinhamento da letra</Label>
+            <Segmented
+              label="Alinhamento da letra"
+              value={theme.alignH}
+              onChange={(alignH) => patchTheme({ alignH })}
+              items={[
+                { value: "left", label: "Esquerda" },
+                { value: "center", label: "Centro" },
+                { value: "right", label: "Direita" },
+              ]}
+            />
             <Button
               size="sm"
               variant="ghost"
@@ -396,7 +427,7 @@ export function SettingsDialog({
           </section>
         </div>
         <div className="mt-4 space-y-2 border-t border-border pt-4">
-          <p className="text-xs font-medium uppercase tracking-wide text-subtle">Dados</p>
+          <p className="text-secondary font-medium text-subtle">Dados</p>
           <div className="flex flex-wrap gap-2">
             <Button
               size="sm"
@@ -411,7 +442,7 @@ export function SettingsDialog({
             >
               Exportar repertório
             </Button>
-            <label className="inline-flex h-8 cursor-pointer items-center rounded-md bg-elevated px-3 text-xs">
+            <label className="inline-flex h-8 cursor-pointer items-center rounded-md bg-elevated px-3 text-secondary">
               Importar repertório
               <input
                 type="file"
@@ -425,7 +456,7 @@ export function SettingsDialog({
                 }}
               />
             </label>
-            <label className="inline-flex h-8 cursor-pointer items-center rounded-md bg-elevated px-3 text-xs">
+            <label className="inline-flex h-8 cursor-pointer items-center rounded-md bg-elevated px-3 text-secondary">
               Importar Bíblia JSON
               <input
                 type="file"
@@ -444,11 +475,23 @@ export function SettingsDialog({
                 }}
               />
             </label>
-            <Button size="sm" variant="ghost" onClick={resetDemo}>
-              Restaurar demo
+            {/* Apaga o repertório da igreja, então pergunta antes e usa a cor
+                que o resto do app reserva para o que é destrutivo. */}
+            <Button
+              size="sm"
+              variant="ghost"
+              className="ml-auto hover:bg-danger/15 hover:text-danger"
+              onClick={() => {
+                const ok = window.confirm(
+                  "Isto apaga o repertório desta cabine e volta ao conteúdo de exemplo. Exporte um backup antes. Continuar?",
+                );
+                if (ok) resetDemo();
+              }}
+            >
+              Restaurar conteúdo de exemplo
             </Button>
           </div>
-          <p className="text-xs text-subtle">
+          <p className="text-secondary text-subtle">
             A Bíblia embutida é Almeida 1819, domínio público. Não embutimos NVI, NAA nem outras
             versões com copyright — importe só o que a igreja tem direito de usar.
           </p>
@@ -496,7 +539,7 @@ export function DisplayDialog({
       <DialogContent title="Configurações de exibição" className="max-w-md">
         <div className="space-y-4">
           <div className="flex items-center gap-2">
-            <label className="flex min-w-0 flex-1 items-center gap-2 text-sm">
+            <label className="flex min-w-0 flex-1 items-center gap-2 text-body">
               <input
                 type="checkbox"
                 checked={settings.showWallpaper}
@@ -523,14 +566,14 @@ export function DisplayDialog({
               {settings.showClock && (
                 <span
                   className={cn(
-                    "absolute font-display text-lg tabular-nums opacity-90",
+                    "absolute font-display text-lg tnum opacity-90",
                     clockCorner[settings.clockPosition],
                   )}
                 >
                   {new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
                 </span>
               )}
-              <p className="absolute inset-x-0 bottom-0 bg-stage/60 py-1.5 text-center text-xs">
+              <p className="absolute inset-x-0 bottom-0 bg-stage/60 py-1.5 text-center text-secondary">
                 Clique para alterar
               </p>
             </div>
@@ -569,7 +612,7 @@ export function DisplayDialog({
           </div>
 
           <div className="flex items-center gap-2">
-            <label className="flex min-w-0 flex-1 items-center gap-2 text-sm">
+            <label className="flex min-w-0 flex-1 items-center gap-2 text-body">
               <input
                 type="checkbox"
                 checked={settings.showClock}
@@ -614,7 +657,7 @@ export function DisplayDialog({
                   />
                 ))}
               </div>
-              <p className="text-xs text-muted">Canto do relógio no telão</p>
+              <p className="text-secondary text-muted">Canto do relógio no telão</p>
             </div>
           )}
 
@@ -638,7 +681,7 @@ export function DisplayDialog({
                   settings.baseFill === "light" && !settings.showWallpaper && "ring-2 ring-primary",
                 )}
               />
-              <span className="text-sm">Cor base (preencher)</span>
+              <span className="text-body">Cor base (preencher)</span>
             </div>
           </div>
 
@@ -653,8 +696,8 @@ export function DisplayDialog({
           </Button>
 
           <div className="border-t border-border pt-4">
-            <p className="mb-2 text-xs font-medium uppercase tracking-widest text-subtle">PC Windows</p>
-            <label className="flex items-center gap-2 text-sm">
+            <p className="mb-2 text-secondary font-medium text-subtle">PC Windows</p>
+            <label className="flex items-center gap-2 text-body">
               <input
                 type="checkbox"
                 checked={settings.secondMonitor !== false}
@@ -662,7 +705,7 @@ export function DisplayDialog({
               />
               Projetor no segundo monitor
             </label>
-            <label className="mt-2 flex items-center gap-2 text-sm">
+            <label className="mt-2 flex items-center gap-2 text-body">
               <input
                 type="checkbox"
                 checked={settings.startFullscreen !== false}
@@ -670,7 +713,7 @@ export function DisplayDialog({
               />
               Telão em tela cheia
             </label>
-            <label className="mt-2 flex items-center gap-2 text-sm">
+            <label className="mt-2 flex items-center gap-2 text-body">
               <input
                 type="checkbox"
                 checked={settings.wakeLock !== false}
@@ -682,5 +725,49 @@ export function DisplayDialog({
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * Cursor deslizante com o valor à vista.
+ *
+ * Ajustar véu e corpo de letra às cegas obrigava a olhar o telão a cada
+ * arrasto; o número ao lado resolve sem ocupar linha extra.
+ */
+function Slider({
+  label,
+  value,
+  min,
+  max,
+  suffix,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  suffix?: string;
+  onChange: (value: number) => void;
+}) {
+  const id = `slider-${label.replace(/\s+/g, "-").toLowerCase()}`;
+  return (
+    <div className="grid gap-1">
+      <div className="flex items-baseline justify-between gap-2">
+        <Label htmlFor={id}>{label}</Label>
+        <span className="tnum text-caption text-muted">
+          {value}
+          {suffix}
+        </span>
+      </div>
+      <input
+        id={id}
+        type="range"
+        min={min}
+        max={max}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="w-full"
+      />
+    </div>
   );
 }

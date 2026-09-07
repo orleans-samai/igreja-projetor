@@ -1,18 +1,22 @@
 import {
   BookOpen,
+  FolderCog,
+  FolderOpen,
   Globe,
-  Heart,
-  Image as ImageIcon,
   Plus,
+  RefreshCw,
   Search,
   Star,
-  Type,
+  Upload,
 } from "lucide-react";
-import { useEffect, useMemo, useState, type Ref } from "react";
+import { useCallback, useEffect, useMemo, useState, type Ref } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Empty } from "@/components/ui/panel";
+import { Segmented } from "@/components/ui/segmented";
+import { Hint } from "@/components/ui/tooltip";
 import { BOOKS } from "@/lib/bible-books";
 import {
   chapterCount,
@@ -23,14 +27,59 @@ import {
 import { cn } from "@/lib/cn";
 import { nid } from "@/lib/fold";
 import { isWall, optimizeRawText } from "@/lib/slide-optimize";
+import {
+  MEDIA_KINDS,
+  chooseMediaFolder,
+  hasMediaFolders,
+  humanSize,
+  listMedia,
+  mediaKindLabel,
+  openMediaFolder,
+  type MediaKind,
+  type MediaListing,
+} from "@/lib/media-library";
 import { searchSongs, useLumenStore } from "@/store/lumen-store";
+import type { LibraryTab } from "@/lib/types";
 
 const TABS = [
-  { id: "songs", label: "Letras" },
-  { id: "texts", label: "Texto" },
-  { id: "media", label: "Mídia" },
-  { id: "bible", label: "Bíblia" },
-] as const;
+  { value: "songs", label: "Letras" },
+  { value: "texts", label: "Avisos" },
+  { value: "media", label: "Mídia" },
+  { value: "bible", label: "Bíblia" },
+] as const satisfies readonly { value: LibraryTab; label: string }[];
+
+/** Item de lista da biblioteca: mesma altura, mesma marca de seleção, em toda aba. */
+function LibraryRow({
+  selected,
+  onClick,
+  onDoubleClick,
+  children,
+}: {
+  selected: boolean;
+  onClick: () => void;
+  onDoubleClick?: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      onDoubleClick={onDoubleClick}
+      data-on={selected}
+      className={cn(
+        "relative flex w-full items-start gap-2 px-3 py-1.5 text-left",
+        "transition-colors duration-[var(--motion-fast)] ease-[var(--ease-out)]",
+        "hover:bg-elevated/70 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring",
+        selected && "bg-elevated",
+      )}
+    >
+      {selected && (
+        <span aria-hidden className="animate-swap-in absolute inset-y-0 left-0 w-0.5 bg-fg" />
+      )}
+      {children}
+    </button>
+  );
+}
 
 export function LibraryPanel({
   onNewSong,
@@ -52,48 +101,51 @@ export function LibraryPanel({
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-surface">
-      <div className="flex items-center gap-1 border-b border-border px-2 py-1.5">
-        <Button
-          size="sm"
-          variant={tab === "bible" ? "default" : "secondary"}
-          onClick={onOpenBible}
-        >
-          <BookOpen className="size-3.5" /> Ir para Bíblia
-        </Button>
+      <div className="panel-head justify-between">
+        <h2>Repertório</h2>
+        <div className="flex items-center gap-0.5">
+          <Hint label="Buscar letra na internet" keys="Ctrl+Shift+F">
+            <Button size="iconSm" variant="ghost" aria-label="Buscar letra na internet" onClick={onWebLyrics}>
+              <Globe />
+            </Button>
+          </Hint>
+          <Hint label="Nova letra">
+            <Button size="iconSm" variant="ghost" aria-label="Nova letra" onClick={onNewSong}>
+              <Plus />
+            </Button>
+          </Hint>
+        </div>
       </div>
-      <div className="flex gap-0.5 overflow-x-auto border-b border-border px-2 pt-1">
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            onClick={() => setTab(t.id)}
-            className={cn(
-              "shrink-0 rounded-t-md px-2.5 py-2 text-xs font-medium transition-colors duration-[var(--motion-quick)]",
-              tab === t.id ? "bg-elevated text-fg" : "text-muted hover:text-fg",
-            )}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
-      {tab !== "bible" && (
-        <div className="border-b border-border p-2">
+
+      <div className="space-y-2 border-b border-border p-2">
+        <Segmented
+          label="Tipo de conteúdo"
+          full
+          items={TABS}
+          value={tab}
+          onChange={(v) => setTab(v)}
+        />
+        {tab !== "bible" && (
           <div className="relative">
-            <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-subtle" />
+            <Search
+              aria-hidden
+              className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-subtle"
+            />
             <Input
               ref={searchRef}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Pesquisar... (Ctrl+F)"
+              placeholder="Pesquisar no repertório"
               className="pl-8"
               aria-label="Buscar no repertório"
             />
           </div>
-        </div>
-      )}
-      <div className="min-h-0 flex-1 overflow-y-auto lumen-scroll">
+        )}
+      </div>
+
+      <div className="lumen-scroll min-h-0 flex-1 overflow-y-auto">
         {tab === "songs" && <SongsList onNewSong={onNewSong} onWebLyrics={onWebLyrics} />}
-        {tab === "bible" && <BibleList bibleRef={bibleRef} />}
+        {tab === "bible" && <BibleList bibleRef={bibleRef} onOpenBible={onOpenBible} />}
         {tab === "media" && <MediaList />}
         {tab === "texts" && <TextsList />}
       </div>
@@ -118,16 +170,12 @@ function SongsList({
   const selectSong = useLumenStore((s) => s.selectSong);
   const addToPlaylist = useLumenStore((s) => s.addToPlaylist);
 
-  const list = useMemo(
-    () => searchSongs(songs, search, groupId),
-    [songs, search, groupId],
-  );
-
+  const list = useMemo(() => searchSongs(songs, search, groupId), [songs, search, groupId]);
   const lastPlayed = (id: string) => logs.find((l) => l.refId === id)?.playedAt;
 
   return (
-    <div>
-      <div className="flex flex-wrap gap-1 p-2">
+    <div className="animate-swap-in">
+      <div className="flex flex-wrap gap-1 px-2 py-2">
         <FilterChip active={groupId === "all"} onClick={() => setGroup("all")}>
           Todas
         </FilterChip>
@@ -136,58 +184,64 @@ function SongsList({
             {g.name}
           </FilterChip>
         ))}
-        <Button size="sm" variant="secondary" className="ml-auto" onClick={onWebLyrics}>
-          <Globe className="size-3.5" /> Internet
-        </Button>
-        <Button size="sm" variant="ghost" onClick={onNewSong}>
-          <Plus className="size-3.5" /> Nova
-        </Button>
       </div>
-      <ul>
-        {list.map((song) => {
-          const last = lastPlayed(song.id);
-          return (
-            <li key={song.id}>
-              <button
-                type="button"
-                onClick={() => selectSong(song.id)}
-                onDoubleClick={() => {
-                  addToPlaylist({
-                    type: "song",
-                    refId: song.id,
-                    notes: "",
-                    title: song.title,
-                    subtitle: song.artist,
-                  });
-                  toast("Adicionada à playlist");
-                }}
-                className={cn(
-                  "flex w-full items-start gap-2 px-3 py-2 text-left transition-colors duration-[var(--motion-quick)] hover:bg-elevated",
-                  selected === song.id && "bg-primary/10",
-                )}
-              >
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium">{song.title}</p>
-                  <p className="truncate text-xs text-muted">
-                    {song.artist}
-                    {song.key ? ` · ${song.key}` : ""}
-                    {last ? ` · ${new Date(last).toLocaleDateString("pt-BR")}` : ""}
-                  </p>
-                </div>
-                <Badge>{groups.find((g) => g.id === song.groupId)?.name}</Badge>
-              </button>
-            </li>
-          );
-        })}
-        {list.length === 0 && (
-          <div className="px-3 py-8 text-center">
-            <p className="text-sm text-muted">Nenhuma música encontrada no repertório.</p>
-            <Button size="sm" className="mt-3" onClick={onWebLyrics}>
-              <Globe className="size-3.5" /> Buscar na internet
-            </Button>
-          </div>
-        )}
-      </ul>
+
+      {list.length === 0 ? (
+        <Empty
+          title={search ? `Nada encontrado para “${search}”.` : "O repertório está vazio."}
+          hint="Busque a letra na internet ou escreva uma nova."
+          action={
+            <div className="flex gap-2">
+              <Button size="sm" onClick={onWebLyrics}>
+                <Globe /> Buscar na internet
+              </Button>
+              <Button size="sm" variant="ghost" onClick={onNewSong}>
+                <Plus /> Nova letra
+              </Button>
+            </div>
+          }
+        />
+      ) : (
+        <ul>
+          {list.map((song) => {
+            const last = lastPlayed(song.id);
+            const meta = [
+              song.artist,
+              song.key || null,
+              last ? new Date(last).toLocaleDateString("pt-BR") : null,
+            ]
+              .filter(Boolean)
+              .join(" · ");
+            return (
+              <li key={song.id}>
+                <LibraryRow
+                  selected={selected === song.id}
+                  onClick={() => selectSong(song.id)}
+                  onDoubleClick={() => {
+                    addToPlaylist({
+                      type: "song",
+                      refId: song.id,
+                      notes: "",
+                      title: song.title,
+                      subtitle: song.artist,
+                    });
+                    toast("Adicionada ao culto");
+                  }}
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-body font-medium text-fg">{song.title}</p>
+                    {meta && <p className="truncate text-secondary text-muted">{meta}</p>}
+                  </div>
+                  {/* O grupo só informa quando a lista não está filtrada por ele. */}
+                  {groupId === "all" && (
+                    <Badge>{groups.find((g) => g.id === song.groupId)?.name}</Badge>
+                  )}
+                </LibraryRow>
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </div>
   );
 }
@@ -205,9 +259,12 @@ function FilterChip({
     <button
       type="button"
       onClick={onClick}
+      aria-pressed={active}
       className={cn(
-        "rounded-full px-2.5 py-1 text-xs",
-        active ? "bg-primary text-primary-fg" : "bg-elevated text-muted hover:text-fg",
+        "rounded-md px-2 py-1 text-caption font-medium",
+        "transition-[background-color,color] duration-[var(--motion-fast)] ease-[var(--ease-out)]",
+        "active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring",
+        active ? "bg-raised text-fg" : "text-muted hover:bg-elevated hover:text-fg",
       )}
     >
       {children}
@@ -215,7 +272,13 @@ function FilterChip({
   );
 }
 
-function BibleList({ bibleRef }: { bibleRef?: Ref<HTMLInputElement> }) {
+function BibleList({
+  bibleRef,
+  onOpenBible,
+}: {
+  bibleRef?: Ref<HTMLInputElement>;
+  onOpenBible: () => void;
+}) {
   const [ready, setReady] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const cursor = useLumenStore((s) => s.bibleCursor);
@@ -229,6 +292,7 @@ function BibleList({ bibleRef }: { bibleRef?: Ref<HTMLInputElement> }) {
   const present = useLumenStore((s) => s.presentPreview);
   const favorites = useLumenStore((s) => s.favorites);
   const toggleFavorite = useLumenStore((s) => s.toggleFavorite);
+  const [badRef, setBadRef] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -254,48 +318,70 @@ function BibleList({ bibleRef }: { bibleRef?: Ref<HTMLInputElement> }) {
   };
 
   return (
-    <div className="flex flex-col gap-2 p-2">
+    <div className="animate-swap-in flex flex-col gap-2 p-2">
       <Input
         ref={bibleRef}
-        placeholder='Referência: "jo 3 16"  ou trecho'
+        placeholder="jo 3 16 — ou um trecho"
         value={query}
-        onChange={(e) => setQuery(e.target.value)}
+        invalid={badRef}
+        onChange={(e) => {
+          setQuery(e.target.value);
+          if (badRef) setBadRef(false);
+        }}
         onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            const ok = jumpRef(query, true);
-            if (!ok && query.length > 2) {
-              const hit = hits[0];
-              if (hit) go(hit.bookId, hit.chapter, hit.verse, true);
-              else toast.error("Referência não reconhecida");
-            }
+          if (e.key !== "Enter") return;
+          e.preventDefault();
+          const ok = jumpRef(query, true);
+          if (ok) return;
+          const hit = hits[0];
+          if (hit) {
+            go(hit.bookId, hit.chapter, hit.verse, true);
+            return;
           }
+          setBadRef(true);
         }}
         aria-label="Referência bíblica"
       />
-      <div className="flex gap-2">
-        <select
-          className="field flex-1"
-          value={versionId}
-          onChange={(e) => changeVersion(e.target.value)}
-        >
-          <option value="almeida-1819">Almeida 1819</option>
-          {extra.map((v) => (
-            <option key={v.id} value={v.id}>
-              {v.name}
-            </option>
-          ))}
-        </select>
-      </div>
-      {!ready && !err && <p className="px-1 py-6 text-sm text-muted">Carregando Almeida 1819…</p>}
-      {err && <p className="px-1 py-6 text-sm text-danger">{err}</p>}
+      {badRef && (
+        <p className="animate-swap-in text-caption text-danger">
+          Não achei essa referência. Tente “jo 3 16” ou um trecho do versículo.
+        </p>
+      )}
+
+      <Button size="sm" variant="secondary" onClick={onOpenBible}>
+        <BookOpen /> Abrir mosaico da Bíblia
+      </Button>
+
+      {!ready && !err && (
+        <div className="space-y-2 py-2" aria-live="polite">
+          <div className="sweep-bar h-0.5 w-full rounded-sm" />
+          <p className="text-secondary text-muted">Carregando Almeida 1819…</p>
+        </div>
+      )}
+      {err && <p className="py-2 text-secondary text-danger">{err}</p>}
+
       {ready && (
         <>
+          <select
+            className="field w-full"
+            value={versionId}
+            onChange={(e) => changeVersion(e.target.value)}
+            aria-label="Versão da Bíblia"
+          >
+            <option value="almeida-1819">Almeida 1819</option>
+            {extra.map((v) => (
+              <option key={v.id} value={v.id}>
+                {v.name}
+              </option>
+            ))}
+          </select>
+
           <div className="flex gap-2">
             <select
               className="field min-w-0 flex-1"
               value={cursor.bookId}
               onChange={(e) => go(Number(e.target.value), 1, 1)}
+              aria-label="Livro"
             >
               {BOOKS.map((b) => (
                 <option key={b.id} value={b.id}>
@@ -304,9 +390,10 @@ function BibleList({ bibleRef }: { bibleRef?: Ref<HTMLInputElement> }) {
               ))}
             </select>
             <select
-              className="field w-20"
+              className="field tnum w-20"
               value={cursor.chapter}
               onChange={(e) => go(cursor.bookId, Number(e.target.value), 1)}
+              aria-label="Capítulo"
             >
               {Array.from({ length: chapters }, (_, i) => (
                 <option key={i + 1} value={i + 1}>
@@ -315,140 +402,313 @@ function BibleList({ bibleRef }: { bibleRef?: Ref<HTMLInputElement> }) {
               ))}
             </select>
           </div>
+
+          <div className="flex gap-2">
+            <Button size="sm" className="flex-1" onClick={present}>
+              Projetar capítulo
+            </Button>
+            <Hint label="Guardar este versículo nos favoritos">
+              <Button
+                size="iconSm"
+                variant="ghost"
+                aria-label="Favoritar versículo"
+                onClick={() => {
+                  const meta = BOOKS.find((b) => b.id === cursor.bookId);
+                  if (meta) toggleFavorite(`${meta.name} ${cursor.chapter}:${cursor.verse}`);
+                }}
+              >
+                <Star />
+              </Button>
+            </Hint>
+          </div>
+
           {favorites.length > 0 && (
-            <div className="flex flex-wrap gap-1">
+            <div className="flex flex-wrap gap-1 pt-1">
               {favorites.map((f) => (
-                <button
-                  key={f}
-                  type="button"
-                  onClick={() => jumpRef(f, true)}
-                  className="rounded-full bg-elevated px-2 py-1 text-xs text-muted hover:text-fg"
-                >
-                  <Star className="mr-1 inline size-3" />
+                <FilterChip key={f} active={false} onClick={() => jumpRef(f, true)}>
                   {f}
-                </button>
+                </FilterChip>
               ))}
             </div>
           )}
+
           {hits.length > 0 && (
-            <ul className="rounded-md bg-elevated/60">
+            <ul className="animate-swap-in overflow-hidden rounded-md shadow-[var(--shadow-border)]">
               {hits.map((h) => (
-                <li key={h.ref + h.text.slice(0, 12)}>
+                <li key={h.ref + h.text.slice(0, 12)} className="border-b border-border last:border-0">
                   <button
                     type="button"
-                    className="w-full px-2 py-1.5 text-left hover:bg-elevated"
+                    className={cn(
+                      "w-full px-2 py-1.5 text-left",
+                      "transition-colors duration-[var(--motion-fast)] ease-[var(--ease-out)]",
+                      "hover:bg-elevated focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring",
+                    )}
                     onClick={() => go(h.bookId, h.chapter, h.verse, true)}
                   >
-                    <p className="text-xs font-medium text-primary">{h.ref}</p>
-                    <p className="line-clamp-2 text-xs text-muted">{h.text}</p>
+                    <p className="text-caption font-medium text-fg">{h.ref}</p>
+                    <p className="line-clamp-2 text-secondary text-muted">{h.text}</p>
                   </button>
                 </li>
               ))}
             </ul>
           )}
-          <Button
-            size="sm"
-            onClick={() => {
-              present();
-            }}
-          >
-            <BookOpen className="size-3.5" /> Projetar capítulo
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => {
-              const meta = BOOKS.find((b) => b.id === cursor.bookId);
-              if (meta) toggleFavorite(`${meta.name} ${cursor.chapter}:${cursor.verse}`);
-            }}
-          >
-            <Heart className="size-3.5" /> Favoritar versículo
-          </Button>
         </>
       )}
     </div>
   );
 }
 
+/**
+ * Mídia da igreja.
+ *
+ * Cada tipo tem a sua pasta no disco: o operador larga os arquivos ali pelo
+ * Explorer e atualiza. Antes só dava para importar por sessão — fechou o app,
+ * perdeu tudo. A estrela guarda o que se usa todo domingo no topo da lista.
+ */
 function MediaList() {
-  const media = useLumenStore((s) => s.media);
   const selectMedia = useLumenStore((s) => s.selectMedia);
   const addMedia = useLumenStore((s) => s.addMedia);
   const addToPlaylist = useLumenStore((s) => s.addToPlaylist);
   const preview = useLumenStore((s) => s.preview);
-  const [kind, setKind] = useState<"all" | "image" | "video" | "audio">("all");
+  const sessionMedia = useLumenStore((s) => s.media);
+  const favoriteMedia = useLumenStore((s) => s.favoriteMedia);
+  const toggleFavoriteMedia = useLumenStore((s) => s.toggleFavoriteMedia);
+  const search = useLumenStore((s) => s.search);
 
-  const onFiles = (files: FileList | null) => {
+  const [kind, setKind] = useState<MediaKind>("video");
+  const [listing, setListing] = useState<MediaListing>({ ok: true, items: [] });
+  const [busy, setBusy] = useState(false);
+  const naPasta = hasMediaFolders();
+
+  const atualizar = useCallback(
+    async (alvo: MediaKind) => {
+      if (!naPasta) return;
+      setBusy(true);
+      setListing(await listMedia(alvo));
+      setBusy(false);
+    },
+    [naPasta],
+  );
+
+  useEffect(() => {
+    void atualizar(kind);
+  }, [kind, atualizar]);
+
+  const doDisco = listing.items ?? [];
+  const idsDoDisco = new Set(doDisco.map((f) => f.id));
+  // Tudo que está na store e não veio da pasta: material que já vinha no app,
+  // importado por sessão ou herdado de versões anteriores.
+  const daStore = sessionMedia.filter((m) => m.type === kind && !idsDoDisco.has(m.id));
+  const q = search.trim().toLowerCase();
+
+  // Favoritas primeiro: é o material que volta toda semana.
+  const lista = [
+    ...doDisco.map((f) => ({
+      id: f.id,
+      title: f.title,
+      path: f.url,
+      detalhe: humanSize(f.size),
+      sessao: false,
+    })),
+    ...daStore.map((m) => ({
+      id: m.id,
+      title: m.title,
+      path: m.path,
+      detalhe: m.sessionOnly ? "só nesta sessão" : "",
+      sessao: Boolean(m.sessionOnly),
+    })),
+  ]
+    .filter((m) => !q || m.title.toLowerCase().includes(q))
+    .sort((a, b) => {
+      const fa = favoriteMedia.includes(a.id) ? 0 : 1;
+      const fb = favoriteMedia.includes(b.id) ? 0 : 1;
+      return fa - fb || a.title.localeCompare(b.title, "pt-BR");
+    });
+
+  const importar = (files: FileList | null) => {
     if (!files) return;
     Array.from(files).forEach((file) => {
-      const url = URL.createObjectURL(file);
-      const type = file.type.startsWith("video")
-        ? "video"
-        : file.type.startsWith("audio")
-          ? "audio"
-          : "image";
-      const item = {
+      addMedia({
         id: nid(),
-        type: type as "image" | "video" | "audio",
+        type: kind,
         title: file.name.replace(/\.[^.]+$/, ""),
-        path: url,
+        path: URL.createObjectURL(file),
         sessionOnly: true,
-      };
-      addMedia(item);
+      });
     });
     toast("Mídia disponível nesta sessão");
   };
 
-  const list = media.filter((m) => kind === "all" || m.type === kind);
-
   return (
-    <div>
-      <div className="flex flex-wrap gap-1 p-2">
-        {(["all", "image", "video", "audio"] as const).map((k) => (
-          <FilterChip key={k} active={kind === k} onClick={() => setKind(k)}>
-            {k === "all" ? "Todas" : k === "image" ? "Imagem" : k === "video" ? "Vídeo" : "Áudio"}
-          </FilterChip>
-        ))}
-      </div>
-      <div className="px-2 pb-2">
-        <label className="flex h-9 cursor-pointer items-center justify-center gap-2 rounded-md bg-elevated text-xs text-muted hover:text-fg">
-          <ImageIcon className="size-3.5" />
-          Importar imagem ou vídeo
-          <input
-            type="file"
-            accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,audio/*"
-            className="hidden"
-            multiple
-            onChange={(e) => onFiles(e.target.files)}
-          />
-        </label>
-      </div>
-      <ul>
-        {list.map((m) => (
-          <li key={m.id}>
-            <button
-              type="button"
-              onClick={() => selectMedia(m.id)}
-              onDoubleClick={() =>
-                addToPlaylist({
-                  type: "media",
-                  refId: m.id,
-                  notes: "",
-                  title: m.title,
-                  subtitle: m.type,
-                })
-              }
-              className={cn(
-                "flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-elevated",
-                preview?.refId === m.id && "bg-primary/10",
-              )}
+    <div className="animate-swap-in">
+      <div className="space-y-2 px-2 py-2">
+        <Segmented
+          label="Tipo de mídia"
+          full
+          value={kind}
+          onChange={(v) => setKind(v)}
+          items={MEDIA_KINDS.map((k) => ({ value: k.value, label: k.label }))}
+        />
+
+        <div className="flex items-center gap-0.5">
+          <Hint label={`Abrir a pasta de ${mediaKindLabel(kind).toLowerCase()} no Explorer`}>
+            <Button
+              size="iconSm"
+              variant="ghost"
+              aria-label="Abrir pasta no Explorer"
+              disabled={!naPasta}
+              onClick={async () => {
+                const dir = await openMediaFolder(kind);
+                if (!dir) toast.error("Não consegui abrir a pasta.");
+              }}
             >
-              <span className="min-w-0 flex-1 truncate text-sm">{m.title}</span>
-              <Badge>{m.type}</Badge>
-            </button>
-          </li>
-        ))}
-      </ul>
+              <FolderOpen />
+            </Button>
+          </Hint>
+          <Hint label="Reler a pasta">
+            <Button
+              size="iconSm"
+              variant="ghost"
+              aria-label="Atualizar lista"
+              disabled={!naPasta}
+              loading={busy}
+              onClick={() => void atualizar(kind)}
+            >
+              {!busy && <RefreshCw />}
+            </Button>
+          </Hint>
+          <Hint label="Usar outra pasta para este tipo">
+            <Button
+              size="iconSm"
+              variant="ghost"
+              aria-label="Escolher outra pasta"
+              disabled={!naPasta}
+              onClick={async () => {
+                const dir = await chooseMediaFolder(kind);
+                if (dir) {
+                  toast(`Pasta de ${mediaKindLabel(kind).toLowerCase()}: ${dir}`);
+                  void atualizar(kind);
+                }
+              }}
+            >
+              <FolderCog />
+            </Button>
+          </Hint>
+
+          <label
+            className={cn(
+              "ml-auto inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-md px-2.5",
+              "text-caption font-medium text-muted",
+              "transition-colors duration-[var(--motion-fast)] ease-[var(--ease-out)]",
+              "hover:bg-elevated hover:text-fg focus-within:outline-2 focus-within:outline-offset-1 focus-within:outline-ring",
+            )}
+          >
+            <Upload className="size-3.5" aria-hidden />
+            Importar
+            <input
+              type="file"
+              accept={
+                kind === "video"
+                  ? "video/mp4,video/webm"
+                  : kind === "audio"
+                    ? "audio/*"
+                    : "image/jpeg,image/png,image/webp"
+              }
+              className="sr-only"
+              multiple
+              onChange={(e) => importar(e.target.files)}
+            />
+          </label>
+        </div>
+
+        {listing.dir && (
+          <p className="truncate text-caption text-subtle" title={listing.dir}>
+            {listing.dir}
+          </p>
+        )}
+      </div>
+
+      {listing.error && (
+        <p className="px-3 pb-2 text-secondary text-danger" role="alert">
+          {listing.error}
+        </p>
+      )}
+
+      {lista.length === 0 ? (
+        <Empty
+          title={
+            q
+              ? `Nenhuma mídia com “${search}”.`
+              : `Nenhum arquivo de ${mediaKindLabel(kind).toLowerCase()} na pasta.`
+          }
+          hint={
+            naPasta
+              ? "Copie os arquivos para a pasta pelo Explorer e toque em atualizar."
+              : "No navegador a mídia vale só até fechar o Lúmen."
+          }
+          action={
+            naPasta ? (
+              <Button size="sm" variant="secondary" onClick={() => void openMediaFolder(kind)}>
+                <FolderOpen /> Abrir a pasta
+              </Button>
+            ) : undefined
+          }
+        />
+      ) : (
+        <ul>
+          {lista.map((m) => {
+            const favorita = favoriteMedia.includes(m.id);
+            return (
+              <li key={m.id} className="group/midia relative">
+                <LibraryRow
+                  selected={preview?.refId === m.id}
+                  onClick={() => {
+                    // O item de disco precisa existir na store para o preview
+                    // encontrá-lo pelo id.
+                    if (!sessionMedia.some((x) => x.id === m.id)) {
+                      addMedia({ id: m.id, type: kind, title: m.title, path: m.path });
+                    }
+                    selectMedia(m.id);
+                  }}
+                  onDoubleClick={() =>
+                    addToPlaylist({
+                      type: "media",
+                      refId: m.id,
+                      notes: "",
+                      title: m.title,
+                      subtitle: mediaKindLabel(kind),
+                    })
+                  }
+                >
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-body text-fg">{m.title}</span>
+                    {m.detalhe && (
+                      <span className="block truncate text-caption text-subtle">{m.detalhe}</span>
+                    )}
+                  </span>
+                  <span className="w-7 shrink-0" aria-hidden />
+                </LibraryRow>
+                <button
+                  type="button"
+                  aria-label={favorita ? `Tirar ${m.title} dos favoritos` : `Favoritar ${m.title}`}
+                  aria-pressed={favorita}
+                  onClick={() => toggleFavoriteMedia(m.id)}
+                  className={cn(
+                    "absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1",
+                    "transition-[color,opacity,transform] duration-[var(--motion-fast)] ease-[var(--ease-out)]",
+                    "active:scale-90 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring",
+                    favorita
+                      ? "text-live opacity-100"
+                      : "text-subtle opacity-0 hover:text-fg group-hover/midia:opacity-100 focus-visible:opacity-100",
+                  )}
+                >
+                  <Star className={cn("size-3.5", favorita && "fill-current")} />
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </div>
   );
 }
@@ -472,8 +732,8 @@ function TextsList() {
   );
 
   return (
-    <div>
-      <div className="p-2">
+    <div className="animate-swap-in">
+      <div className="px-2 py-2">
         <Button
           size="sm"
           variant="ghost"
@@ -483,12 +743,13 @@ function TextsList() {
             setOpen(true);
           }}
         >
-          <Plus className="size-3.5" /> Novo aviso
+          <Plus /> Novo aviso
         </Button>
       </div>
+
       {open && (
         <form
-          className="space-y-2 border-b border-border p-2"
+          className="animate-swap-in space-y-2 border-y border-border p-2"
           onSubmit={(e) => {
             e.preventDefault();
             const id = nid();
@@ -497,7 +758,13 @@ function TextsList() {
             selectText(id);
           }}
         >
-          <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Título" />
+          <Input
+            value={title}
+            autoFocus
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="Título do aviso"
+            aria-label="Título do aviso"
+          />
           <textarea
             value={body}
             onChange={(e) => setBody(e.target.value)}
@@ -510,12 +777,13 @@ function TextsList() {
               setBody(next.raw);
               toast("Otimizei o bloco para o telão");
             }}
-            placeholder="Texto do aviso (linha em branco = novo slide)"
-            className="min-h-24 w-full rounded-md bg-elevated p-2 text-sm"
+            placeholder="Linha em branco começa um slide novo"
+            aria-label="Texto do aviso"
+            className="field min-h-24 w-full resize-y py-2"
           />
           <div className="flex gap-2">
             <Button size="sm" type="submit">
-              Salvar
+              Salvar aviso
             </Button>
             <Button size="sm" variant="ghost" type="button" onClick={() => setOpen(false)}>
               Cancelar
@@ -523,29 +791,32 @@ function TextsList() {
           </div>
         </form>
       )}
-      <ul>
-        {list.map((t) => (
-          <li key={t.id}>
-            <button
-              type="button"
-              onClick={() => selectText(t.id)}
-              onDoubleClick={() =>
-                addToPlaylist({ type: "text", refId: t.id, notes: "", title: t.title })
-              }
-              className={cn(
-                "flex w-full items-start gap-2 px-3 py-2 text-left hover:bg-elevated",
-                preview?.refId === t.id && "bg-primary/10",
-              )}
-            >
-              <Type className="mt-0.5 size-3.5 text-muted" />
-              <span className="min-w-0">
-                <span className="block truncate text-sm font-medium">{t.title}</span>
-                <span className="block line-clamp-2 text-xs text-muted">{t.body}</span>
-              </span>
-            </button>
-          </li>
-        ))}
-      </ul>
+
+      {list.length === 0 && !open ? (
+        <Empty
+          title={search ? "Nenhum aviso com esse texto." : "Ainda não há avisos."}
+          hint="Avisos são textos curtos para projetar entre um louvor e outro."
+        />
+      ) : (
+        <ul>
+          {list.map((t) => (
+            <li key={t.id}>
+              <LibraryRow
+                selected={preview?.refId === t.id}
+                onClick={() => selectText(t.id)}
+                onDoubleClick={() =>
+                  addToPlaylist({ type: "text", refId: t.id, notes: "", title: t.title })
+                }
+              >
+                <span className="min-w-0">
+                  <span className="block truncate text-body font-medium text-fg">{t.title}</span>
+                  <span className="line-clamp-2 block text-secondary text-muted">{t.body}</span>
+                </span>
+              </LibraryRow>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

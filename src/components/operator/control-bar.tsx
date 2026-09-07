@@ -1,22 +1,21 @@
-import {
-  ChevronLeft,
-  ChevronRight,
-  Circle,
-  MonitorPlay,
-  Square,
-  Image as ImageIcon,
-  EyeOff,
-} from "lucide-react";
+import { ChevronLeft, ChevronRight, EyeOff, Image as ImageIcon, Send, Square } from "lucide-react";
 import { useState } from "react";
 import { SlideStage } from "@/components/slide/slide-renderer";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Tally } from "@/components/ui/panel";
 import { Hint } from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
 import type { LiveFrame } from "@/lib/types";
 import { cn } from "@/lib/cn";
 import { useLumenStore } from "@/store/lumen-store";
 
+/**
+ * Barra mestra da cabine.
+ *
+ * A ordem nunca muda, porque no escuro o operador acerta por memória, não
+ * por leitura. "Preto" fica sempre no mesmo canto e é o que se aperta quando
+ * há algo errado no telão — por isso está primeiro e separado do resto.
+ */
 export function ControlBar({ outputFrame }: { outputFrame: LiveFrame }) {
   const status = useLumenStore((s) => s.status);
   const live = useLumenStore((s) => s.live);
@@ -31,43 +30,69 @@ export function ControlBar({ outputFrame }: { outputFrame: LiveFrame }) {
   const goLiveIndex = useLumenStore((s) => s.goLiveIndex);
   const nextPlaylistItem = useLumenStore((s) => s.nextPlaylistItem);
   const [alertText, setAlertText] = useState("");
+  const [sent, setSent] = useState(false);
 
   const slides = live?.slides ?? [];
   const neighbors = [-1, 0, 1].map((d) => liveIndex + d);
 
-  const statusLabel =
+  const tally =
     status === "presenting"
-      ? "Apresentando"
+      ? ("live" as const)
+      : status === "idle"
+        ? ("off" as const)
+        : ("blank" as const);
+  const tallyLabel =
+    status === "presenting"
+      ? `No ar · ${liveIndex + 1}/${slides.length || 1}`
       : status === "black"
-        ? "Tela preta"
+        ? "Telão preto"
         : status === "logo"
           ? "Logo"
           : status === "clear"
-            ? "Fundo sem texto"
+            ? "Sem letra"
             : "Parado";
 
   return (
-    <footer className="flex min-h-12 shrink-0 flex-col gap-2 border-t border-border bg-surface px-2 py-1.5 md:flex-row md:items-center">
+    <footer
+      className={cn(
+        "flex min-h-11 shrink-0 flex-col gap-2 border-t border-border bg-surface px-2 py-1.5",
+        "lg:flex-row lg:items-center lg:gap-3",
+      )}
+    >
+      {/* Transporte: onde está e para onde vai. */}
       <div className="flex items-center gap-1">
-        <Hint label="Anterior">
-          <Button size="iconSm" variant="secondary" onClick={prev} aria-label="Anterior">
+        <Hint label="Slide anterior" keys="←">
+          <Button size="iconSm" variant="ghost" onClick={prev} aria-label="Slide anterior">
             <ChevronLeft />
           </Button>
         </Hint>
         {neighbors.map((i) => {
           const slide = slides[i];
           if (!slide) {
-            return <div key={i} className="hidden h-12 w-20 rounded-md bg-elevated/40 md:block" />;
+            return (
+              <div
+                key={i}
+                aria-hidden
+                className="hidden h-10 w-16 rounded-sm bg-elevated/40 lg:block"
+              />
+            );
           }
           const mini: LiveFrame = { ...outputFrame, index: i, status: "presenting", deck: live };
+          const current = i === liveIndex;
           return (
             <button
               key={slide.id}
               type="button"
               onClick={() => goLiveIndex(i)}
+              aria-label={`Ir para ${slide.label}`}
+              aria-current={current}
               className={cn(
-                "hidden h-12 w-20 overflow-hidden rounded-md md:block",
-                i === liveIndex ? "ring-2 ring-primary" : "opacity-70 hover:opacity-100",
+                "hidden h-10 w-16 overflow-hidden rounded-sm lg:block",
+                "transition-[box-shadow,opacity,transform] duration-[var(--motion-fast)] ease-[var(--ease-out)]",
+                "active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+                current
+                  ? "shadow-[0_0_0_1px_var(--color-live)]"
+                  : "opacity-45 hover:opacity-90 shadow-[var(--shadow-border)]",
               )}
             >
               <SlideStage
@@ -79,41 +104,60 @@ export function ControlBar({ outputFrame }: { outputFrame: LiveFrame }) {
             </button>
           );
         })}
-        <Hint label="Próximo">
-          <Button size="iconSm" variant="secondary" onClick={next} aria-label="Próximo">
+        <Hint label="Próximo slide" keys="→">
+          <Button size="iconSm" variant="ghost" onClick={next} aria-label="Próximo slide">
             <ChevronRight />
           </Button>
         </Hint>
       </div>
 
-      <div className="flex flex-1 flex-wrap items-center gap-1">
-        <Hint label="Tela preta (B)">
-          <Button size="sm" variant={status === "black" ? "live" : "secondary"} onClick={goBlack}>
-            <Square className="size-3.5" /> Preto
+      {/* Estado do telão. Preto primeiro, sempre. Quebra em vez de cortar. */}
+      <div className="flex flex-wrap items-center gap-1">
+        <Hint label="Apaga o telão na hora" keys="B">
+          <Button
+            size="sm"
+            variant={status === "black" ? "live" : "outline"}
+            onClick={goBlack}
+            aria-pressed={status === "black"}
+            className="min-w-16"
+          >
+            <Square /> Preto
           </Button>
         </Hint>
-        <Hint label="Logo (L)">
-          <Button size="sm" variant={status === "logo" ? "live" : "secondary"} onClick={goLogo}>
-            <ImageIcon className="size-3.5" /> Logo
+        <Hint label="Mostra a logo da igreja" keys="L">
+          <Button
+            size="sm"
+            variant={status === "logo" ? "live" : "ghost"}
+            onClick={goLogo}
+            aria-pressed={status === "logo"}
+          >
+            <ImageIcon /> Logo
           </Button>
         </Hint>
-        <Hint label="Ocultar texto, manter fundo">
-          <Button size="sm" variant={status === "clear" ? "live" : "ghost"} onClick={goClear}>
-            <EyeOff className="size-3.5" /> Fundo
+        <Hint label="Mantém o fundo e tira a letra" keys="C">
+          <Button
+            size="sm"
+            variant={status === "clear" ? "live" : "ghost"}
+            onClick={goClear}
+            aria-pressed={status === "clear"}
+          >
+            <EyeOff /> Ocultar letra
           </Button>
         </Hint>
-        <Hint label="Parar (Esc)">
-          <Button size="sm" variant="ghost" onClick={stop}>
+        <span className="mx-1 hidden h-5 w-px bg-border lg:block" aria-hidden />
+        <Hint label="Encerra a apresentação" keys="Esc">
+          <Button size="sm" variant="ghost" onClick={stop} disabled={status === "idle"}>
             Parar
           </Button>
         </Hint>
-        <Hint label="Próxima da playlist">
+        <Hint label="Vai para o próximo item do culto" keys="Ctrl+N">
           <Button size="sm" variant="ghost" onClick={nextPlaylistItem}>
-            Próx. item
+            Próximo item
           </Button>
         </Hint>
       </div>
 
+      {/* Aviso de rodapé — o único lugar do app onde ele se escreve. */}
       <form
         className="flex min-w-0 flex-1 items-center gap-1"
         onSubmit={(e) => {
@@ -121,28 +165,34 @@ export function ControlBar({ outputFrame }: { outputFrame: LiveFrame }) {
           if (!alertText.trim()) return;
           setAlert(alertText.trim(), 10, "bottom");
           setAlertText("");
+          setSent(true);
+          window.setTimeout(() => setSent(false), 700);
         }}
       >
         <Input
           value={alertText}
           onChange={(e) => setAlertText(e.target.value)}
-          placeholder="Alerta de rodapé — Enter"
-          className="h-8"
+          placeholder="Aviso no rodapé do telão"
+          aria-label="Aviso no rodapé do telão"
+          className="min-w-0"
         />
-        <Button size="sm" variant="secondary" type="submit">
-          10s
-        </Button>
+        <Hint label="Mostra o aviso por 10 segundos">
+          <Button
+            size="iconSm"
+            variant="secondary"
+            type="submit"
+            aria-label="Mostrar aviso por 10 segundos"
+            disabled={!alertText.trim()}
+            feedback={sent ? "ok" : null}
+          >
+            <Send />
+          </Button>
+        </Hint>
       </form>
 
-      <div className="flex items-center gap-2">
-        <Badge tone={status === "presenting" ? "live" : status === "idle" ? "muted" : "primary"}>
-          <Circle className="mr-1 size-2 fill-current" />
-          {statusLabel}
-        </Badge>
-        <span className="hidden items-center gap-1 text-[11px] text-muted md:inline-flex">
-          <MonitorPlay className="size-3.5" />
-          cabine · projetor · palco
-        </span>
+      <div className="flex shrink-0 items-center gap-3">
+        <Tally state={tally} label={tallyLabel} />
+        <span className="hidden text-caption text-subtle lg:inline">cabine · projetor · palco</span>
       </div>
     </footer>
   );

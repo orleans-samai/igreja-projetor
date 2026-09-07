@@ -153,13 +153,45 @@ export async function openProjectorWindow(opts: {
   return openOnScreen("/projetor", screen, opts.fullscreen);
 }
 
+/** Os três tipos de mídia, cada um com a sua pasta no disco. */
+export type MediaKind = "video" | "audio" | "image";
+
+export interface MediaFile {
+  id: string;
+  kind: MediaKind;
+  name: string;
+  title: string;
+  /** Endereço servido pelo protocolo do app, preso à pasta do tipo. */
+  url: string;
+  size: number;
+  at: number;
+}
+
+export interface MediaListing {
+  ok: boolean;
+  dir?: string;
+  items?: MediaFile[];
+  error?: string;
+}
+
 declare global {
   interface Window {
     lumenDesktop?: {
       isDesktop: boolean;
+      suggestLyrics: (input: { query: string; artist?: string }) => Promise<import("./lyrics-web").LyricsSearchResult>;
+      loadLyrics: (url: string) => Promise<{ ok: boolean; lyrics?: string; error?: string }>;
+      storageGet: (key: string) => Promise<string | null>;
+      storageSet: (key: string, value: string | null) => Promise<void>;
       openProjector: () => Promise<boolean>;
       openStage: () => Promise<boolean>;
       openPedido: () => Promise<boolean>;
+      mediaList: (kind: MediaKind) => Promise<MediaListing>;
+      mediaFolders: () => Promise<Record<MediaKind, string>>;
+      mediaOpenFolder: (kind: MediaKind) => Promise<{ ok: boolean; dir?: string; error?: string }>;
+      mediaChooseFolder: (
+        kind: MediaKind,
+      ) => Promise<{ ok: boolean; dir?: string; canceled?: boolean }>;
+      mediaResetFolder: (kind: MediaKind) => Promise<{ ok: boolean; dir: string }>;
     };
   }
 }

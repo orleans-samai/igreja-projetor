@@ -26,8 +26,8 @@ export function Instalar() {
         <header className="flex items-center gap-3">
           <LumenMark className="size-10" />
           <div>
-            <p className="text-xs uppercase tracking-widest text-subtle">Cabine Windows</p>
-            <h1 className="font-display text-4xl tracking-tight">Instalar o Lúmen</h1>
+            <p className="text-secondary text-subtle">Cabine Windows</p>
+            <h1 className="text-display font-semibold tracking-tight">Instalar o Lúmen</h1>
           </div>
         </header>
 
@@ -42,12 +42,12 @@ export function Instalar() {
         <ul className="grid gap-4">
           {steps.map((step, i) => (
             <li key={step.title} className="flex gap-3 rounded-xl bg-surface p-4 shadow-[var(--shadow-border)]">
-              <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-elevated font-mono text-sm text-primary">
+              <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-elevated font-mono text-body text-fg">
                 {i + 1}
               </span>
               <div>
                 <p className="font-medium">{step.title}</p>
-                <p className="mt-1 text-sm text-muted">{step.detail}</p>
+                <p className="mt-1 text-body text-muted">{step.detail}</p>
               </div>
             </li>
           ))}
@@ -82,11 +82,11 @@ export function Instalar() {
 function Hint({ icon, title, text }: { icon: ReactNode; title: string; text: string }) {
   return (
     <div className="rounded-xl bg-elevated p-4">
-      <p className="flex items-center gap-2 text-sm font-medium">
+      <p className="flex items-center gap-2 text-body font-medium">
         {icon}
         {title}
       </p>
-      <p className="mt-1 text-xs text-muted">{text}</p>
+      <p className="mt-1 text-secondary text-muted">{text}</p>
     </div>
   );
 }

@@ -1,9 +1,19 @@
-import { Clapperboard, StickyNote, Type } from "lucide-react";
 import { useState } from "react";
+import { Empty } from "@/components/ui/panel";
+import { Segmented } from "@/components/ui/segmented";
+import { themeSwatch } from "@/lib/theme-swatch";
 import { cn } from "@/lib/cn";
 import type { Theme } from "@/lib/types";
 import { useLumenStore } from "@/store/lumen-store";
 
+/**
+ * Coluna da direita: a letra inteira em cima, os temas embaixo.
+ *
+ * Antes chamava-se "Anotações" e guardava quatro coisas sem relação — uma
+ * lista de slides, um compositor de aviso rotulado "Mídia", um filtro solto
+ * e uma tira de temas. O aviso de rodapé já existe na barra inferior, então
+ * ficou só lá; aqui sobrou o que a coluna realmente faz.
+ */
 export function ThemeRail() {
   const themes = useLumenStore((s) => s.themes);
   const songThemeId = useLumenStore((s) => s.songThemeId);
@@ -12,123 +22,86 @@ export function ThemeRail() {
   const preview = useLumenStore((s) => s.preview);
   const previewIndex = useLumenStore((s) => s.previewIndex);
   const setPreviewIndex = useLumenStore((s) => s.setPreviewIndex);
-  const [tab, setTab] = useState<"letras" | "midia">("letras");
-  const [kindOnly, setKindOnly] = useState(false);
-  const alert = useLumenStore((s) => s.alert);
-  const setAlert = useLumenStore((s) => s.setAlert);
-  const [note, setNote] = useState("");
+  const [scope, setScope] = useState<"todos" | "tipo">("todos");
 
-  const film = kindOnly
-    ? themes.filter(
-        (t) =>
-          t.applyTo === "both" || t.applyTo === (preview?.kind === "bible" ? "bible" : "songs"),
-      )
-    : themes;
+  const kind = preview?.kind === "bible" ? "bible" : "songs";
+  const shown =
+    scope === "tipo"
+      ? themes.filter((t) => t.applyTo === "both" || t.applyTo === kind)
+      : themes;
 
   return (
-    <aside className="flex h-full min-h-0 bg-surface">
-      <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex items-center gap-1.5 border-b border-border px-2.5 py-2">
-          <StickyNote className="size-3.5 text-muted" />
-          <p className="text-xs font-medium uppercase tracking-wide">Anotações</p>
-        </div>
-        <div className="grid grid-cols-2 border-b border-border">
-          <button
-            type="button"
-            onClick={() => setTab("letras")}
-            className={cn(
-              "inline-flex items-center justify-center gap-1 px-1 py-2 text-xs font-medium",
-              tab === "letras" ? "bg-elevated text-fg" : "text-muted hover:text-fg",
-            )}
-          >
-            <Type className="size-3" /> Letras
-          </button>
-          <button
-            type="button"
-            onClick={() => setTab("midia")}
-            className={cn(
-              "inline-flex items-center justify-center gap-1 px-1 py-2 text-xs font-medium",
-              tab === "midia" ? "bg-elevated text-fg" : "text-muted hover:text-fg",
-            )}
-          >
-            <Clapperboard className="size-3" /> Mídia
-          </button>
-        </div>
-        {tab === "letras" && (
-          <ul className="min-h-0 flex-1 overflow-y-auto lumen-scroll">
-            {!preview && <li className="p-3 text-sm text-muted">Nada selecionado.</li>}
-            {preview?.slides.map((slide, i) => (
-              <li key={slide.id}>
-                <button
-                  type="button"
-                  onClick={() => setPreviewIndex(i)}
-                  className={cn(
-                    "w-full px-3 py-2 text-left hover:bg-elevated",
-                    i === previewIndex && "bg-primary/10",
-                  )}
-                >
-                  <p className="text-xs font-medium text-primary">{slide.label}</p>
-                  <p className="mt-0.5 whitespace-pre-wrap text-xs text-muted">{slide.text}</p>
-                </button>
-              </li>
-            ))}
+    <aside className="flex h-full min-h-0 flex-col bg-surface">
+      <div className="panel-head">
+        <h2 className="truncate">{preview ? "Letra" : "Letra"}</h2>
+        {preview && (
+          <span className="tnum ml-auto shrink-0 text-caption text-subtle">
+            {previewIndex + 1}/{preview.slides.length}
+          </span>
+        )}
+      </div>
+
+      <div className="lumen-scroll min-h-0 flex-1 overflow-y-auto">
+        {!preview ? (
+          <Empty title="Nada selecionado." hint="Escolha um item na biblioteca ou no culto." />
+        ) : (
+          <ul>
+            {preview.slides.map((slide, i) => {
+              const on = i === previewIndex;
+              return (
+                <li key={slide.id}>
+                  <button
+                    type="button"
+                    onClick={() => setPreviewIndex(i)}
+                    className={cn(
+                      "relative w-full px-3 py-1.5 text-left",
+                      "transition-colors duration-[var(--motion-fast)] ease-[var(--ease-out)]",
+                      "hover:bg-elevated/70 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring",
+                      on && "bg-elevated",
+                    )}
+                  >
+                    {on && (
+                      <span
+                        aria-hidden
+                        className="animate-swap-in absolute inset-y-0 left-0 w-0.5 bg-fg"
+                      />
+                    )}
+                    <p className="text-caption font-medium text-fg">{slide.label}</p>
+                    <p className="mt-0.5 whitespace-pre-wrap text-secondary text-muted">
+                      {slide.text}
+                    </p>
+                  </button>
+                </li>
+              );
+            })}
           </ul>
         )}
-        {tab === "midia" && (
-          <form
-            className="flex min-h-0 flex-1 flex-col gap-2 p-2"
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (!note.trim()) return;
-              setAlert(note.trim(), 10, "bottom");
-              setNote("");
-            }}
-          >
-            <p className="text-xs text-muted">Aviso rápido no rodapé do telão.</p>
-            <textarea
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              className="min-h-28 w-full flex-1 rounded-md bg-elevated p-2 text-sm shadow-[var(--shadow-border)]"
-              placeholder="Aviso, ofertas, wi-fi…"
-            />
-            <button
-              type="submit"
-              className="h-9 rounded-md bg-primary text-sm font-medium text-primary-fg"
-            >
-              Mostrar 10s
-            </button>
-            {alert && <p className="text-xs text-accent">No ar: {alert.text}</p>}
-          </form>
-        )}
-        <div className="grid grid-cols-2 border-t border-border">
-          <button
-            type="button"
-            onClick={() => setKindOnly(false)}
-            className={cn("py-2 text-xs", !kindOnly ? "bg-elevated text-fg" : "text-muted")}
-          >
-            Todos
-          </button>
-          <button
-            type="button"
-            onClick={() => setKindOnly(true)}
-            className={cn("py-2 text-xs", kindOnly ? "bg-elevated text-fg" : "text-muted")}
-          >
-            Selecionadas
-          </button>
-        </div>
       </div>
-      <ul className="w-20 shrink-0 space-y-1 overflow-y-auto border-l border-border p-1 lumen-scroll">
-        {film.map((theme) => (
-          <li key={theme.id}>
+
+      <div className="shrink-0 border-t border-border">
+        <div className="panel-head justify-between border-b-0">
+          <h2>Temas</h2>
+          <Segmented
+            label="Filtrar temas"
+            value={scope}
+            onChange={setScope}
+            items={[
+              { value: "todos", label: "Todos" },
+              { value: "tipo", label: kind === "bible" ? "Bíblia" : "Louvor" },
+            ]}
+          />
+        </div>
+        <div className="lumen-scroll grid max-h-52 grid-cols-2 gap-1.5 overflow-y-auto p-2">
+          {shown.map((theme) => (
             <ThemeThumb
+              key={theme.id}
               theme={theme}
-              compact
               active={theme.id === songThemeId || theme.id === bibleThemeId}
               onClick={() => applyThemeLive(theme.id)}
             />
-          </li>
-        ))}
-      </ul>
+          ))}
+        </div>
+      </div>
     </aside>
   );
 }
@@ -144,22 +117,34 @@ export function ThemeThumb({
   onClick: () => void;
   compact?: boolean;
 }) {
-  const bg =
-    theme.backgroundType === "color"
-      ? { background: theme.backgroundValue }
-      : { backgroundImage: `url(${theme.backgroundValue})`, backgroundSize: "cover" as const };
+  const swatch = themeSwatch(theme);
   return (
     <button
       type="button"
       onClick={onClick}
+      aria-pressed={active}
       title={theme.name}
       className={cn(
-        "w-full overflow-hidden rounded-md text-left shadow-[var(--shadow-border)]",
-        active && "ring-2 ring-primary",
+        "group/thumb w-full overflow-hidden rounded-md text-left",
+        "transition-[box-shadow,transform] duration-[var(--motion-fast)] ease-[var(--ease-out)]",
+        "active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+        active
+          ? "shadow-[0_0_0_1px_var(--color-fg)]"
+          : "shadow-[var(--shadow-border)] hover:shadow-[var(--shadow-border-hover)]",
       )}
     >
-      <div className="aspect-video w-full" style={bg} />
-      {!compact && <p className="truncate bg-elevated px-1.5 py-1 text-xs text-muted">{theme.name}</p>}
+      <div className={cn("aspect-video w-full", swatch.className)} style={swatch.style} />
+      {!compact && (
+        <p
+          className={cn(
+            "truncate px-1.5 py-1 text-caption",
+            "transition-colors duration-[var(--motion-fast)] ease-[var(--ease-out)]",
+            active ? "bg-raised text-fg" : "bg-elevated text-muted group-hover/thumb:text-fg",
+          )}
+        >
+          {theme.name}
+        </p>
+      )}
     </button>
   );
 }

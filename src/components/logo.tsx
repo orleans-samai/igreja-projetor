@@ -30,7 +30,7 @@ export function ChurchLogo({
       <LumenMark className="size-16" />
       <div>
         <p className="font-display text-4xl font-semibold tracking-tight text-stage-fg">{name}</p>
-        <p className="mt-1 text-sm uppercase tracking-[0.22em] text-stage-fg/55">Lúmen</p>
+        <p className="mt-1 text-body uppercase tracking-[0.22em] text-stage-fg/55">Lúmen</p>
       </div>
     </div>
   );

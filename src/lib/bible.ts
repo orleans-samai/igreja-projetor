@@ -5,7 +5,7 @@
  * or the midvash/bible-data shape ({ books: [{ bookId, book, chapters }] }).
  */
 
-import { BOOKS, bookById, bookByOsis } from "./bible-books";
+import { bookById, bookByOsis } from "./bible-books";
 import { fold, nid } from "./fold";
 import { parseBibleRef, formatRef, type ParsedRef } from "./bible-ref";
 import type { CompactBible, CompactBook, Slide } from "./types";
@@ -124,6 +124,13 @@ export async function loadBuiltinBible(): Promise<CompactBible> {
 }
 
 export async function hydrateExtraVersions(): Promise<CompactBible[]> {
+  const desktop = typeof window !== "undefined" ? window.lumenDesktop : undefined;
+  if (desktop?.isDesktop) {
+    const raw = await desktop.storageGet("lumen-bibles-v1");
+    const versions: CompactBible[] = raw ? JSON.parse(raw) : [];
+    for (const bible of versions) extras.set(bible.id, bible);
+    return versions;
+  }
   const keys = await idbKeys();
   const list: CompactBible[] = [];
   for (const key of keys) {
@@ -138,8 +145,15 @@ export async function hydrateExtraVersions(): Promise<CompactBible[]> {
 
 export async function importBibleVersion(raw: unknown): Promise<CompactBible> {
   const bible = normalizeImported(raw);
+  const desktop = typeof window !== "undefined" ? window.lumenDesktop : undefined;
+  if (desktop?.isDesktop) {
+    const raw = await desktop.storageGet("lumen-bibles-v1");
+    const versions: CompactBible[] = raw ? JSON.parse(raw) : [];
+    await desktop.storageSet("lumen-bibles-v1", JSON.stringify([...versions.filter((v) => v.id !== bible.id), bible]));
+  } else {
+    await idbSet(bible);
+  }
   extras.set(bible.id, bible);
-  await idbSet(bible);
   return bible;
 }
 

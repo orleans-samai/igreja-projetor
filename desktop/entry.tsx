@@ -15,6 +15,9 @@ import { AppErrorComponent } from "@/lib/error-component";
 import { AuthProvider } from "@/lib/auth/provider";
 import { Instalar } from "@/routes/instalar";
 import { Pedido } from "@/routes/pedido";
+import "@fontsource-variable/fraunces";
+import "@fontsource-variable/instrument-sans";
+import "@fontsource/ibm-plex-mono/500.css";
 import "@/styles.css";
 
 const root = createRootRoute({

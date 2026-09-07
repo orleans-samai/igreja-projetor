@@ -1,7 +1,7 @@
 {
   "name": "app-builder-workspace",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": "Lúmen",
   "description": "Lúmen — projeção para o culto",
   "main": "desktop/main.cjs",
@@ -19,15 +19,24 @@
     "preview:restart": "node scripts/preview.mjs restart",
     "preview:stop": "node scripts/preview.mjs stop",
     "desktop:build": "node scripts/make-win-icon.mjs && node scripts/with-app-env.mjs vite build --config vite.desktop.config.ts",
-    "win:exe": "npm run desktop:build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --win dir --x64 --publish never && node scripts/make-nsis-installer.mjs",
+    "win:exe": "npm run desktop:build && node scripts/build-win.mjs",
     "typecheck": "tsc --noEmit",
     "check:auth": "node scripts/check-auth-invariant.mjs",
-    "test": "node --test 'scripts/**/*.test.mjs' && node --experimental-strip-types --test src/lib/app-data/app-data.test.ts src/lib/auth/gate-identity.test.ts src/lib/auth/sign-in-gate.test.ts src/lib/slide-optimize.test.ts src/lib/copilot.test.ts src/lib/health.test.ts src/lib/windows-desktop.test.ts",
+    "test": "node --test \"scripts/**/*.test.mjs\" && node --experimental-strip-types --test src/lib/app-data/app-data.test.ts src/lib/auth/gate-identity.test.ts src/lib/auth/sign-in-gate.test.ts src/lib/slide-optimize.test.ts src/lib/transition.test.ts src/lib/copilot.test.ts src/lib/health.test.ts src/lib/windows-desktop.test.ts",
     "lint": "eslint .",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "win:exe:x64": "npm run desktop:build && node scripts/build-win.mjs --x64",
+    "win:exe:arm64": "npm run desktop:build && node scripts/build-win.mjs --arm64",
+    "win:release": "npm run desktop:build && node scripts/build-win.mjs --signed",
+    "test:desktop": "node --test scripts/desktop-*.test.mjs",
+    "test:desktop:smoke": "node scripts/desktop-smoke.mjs",
+    "test:core": "node --experimental-strip-types --test src/lib/app-data/app-data.test.ts src/lib/auth/gate-identity.test.ts src/lib/auth/sign-in-gate.test.ts src/lib/slide-optimize.test.ts src/lib/transition.test.ts src/lib/copilot.test.ts src/lib/health.test.ts src/lib/windows-desktop.test.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.4",
+    "@fontsource-variable/fraunces": "5.3.0",
+    "@fontsource-variable/instrument-sans": "5.3.0",
+    "@fontsource/ibm-plex-mono": "5.3.0",
     "@hookform/resolvers": "^5.7.0",
     "@radix-ui/react-accordion": "^1.2.12",
     "@radix-ui/react-alert-dialog": "^1.1.15",
@@ -86,8 +95,8 @@
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "@vitejs/plugin-react": "^5.2.0",
-    "electron": "^33.4.5",
-    "electron-builder": "^25.1.8",
+    "electron": "44.2.0",
+    "electron-builder": "26.15.3",
     "eslint": "^9.20.0",
     "eslint-config-prettier": "^10.1.1",
     "eslint-plugin-prettier": "^5.2.6",
@@ -102,5 +111,8 @@
     "typescript": "^5.7.0",
     "typescript-eslint": "^8.56.1",
     "vite": "^8.2.0"
+  },
+  "engines": {
+    "node": ">=22.16.0"
   }
 }

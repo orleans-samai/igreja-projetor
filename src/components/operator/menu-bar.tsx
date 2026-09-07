@@ -1,23 +1,28 @@
-import {
-  Download,
-  HelpCircle,
-  Monitor,
-  Play,
-  Radio,
-  Search,
-  Settings2,
-  Square,
-  Timer,
-} from "lucide-react";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Menu as MenuIcon, Play, Radio, Search, Square } from "lucide-react";
+import { type ReactNode } from "react";
 import { toast } from "sonner";
 import { LumenMark } from "@/components/logo";
 import { Button } from "@/components/ui/button";
+import { Menu, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrigger } from "@/components/ui/menu";
+import { Tally } from "@/components/ui/panel";
+import { Hint } from "@/components/ui/tooltip";
 import { cn } from "@/lib/cn";
 import { openOutputWindow } from "@/lib/live-channel";
 import { openProjectorWindow } from "@/lib/windows-desktop";
 import { useLumenStore } from "@/store/lumen-store";
 import { useOpsStore } from "@/store/ops-store";
+
+interface Action {
+  label: string;
+  onSelect: () => void;
+  shortcut?: string;
+  tone?: "default" | "danger";
+}
+
+interface Section {
+  label: string;
+  items: Action[];
+}
 
 export function MenuBar({
   onNewSong,
@@ -55,7 +60,6 @@ export function MenuBar({
   const savePlaylist = useLumenStore((s) => s.savePlaylist);
   const exportLibrary = useLumenStore((s) => s.exportLibrary);
   const importLibrary = useLumenStore((s) => s.importLibrary);
-  const live = status !== "idle";
   const setLiveMode = useOpsStore((s) => s.setLiveMode);
   const setCommandOpen = useOpsStore((s) => s.setCommandOpen);
   const setCheckupOpen = useOpsStore((s) => s.setCheckupOpen);
@@ -92,46 +96,50 @@ export function MenuBar({
     if (next) applyThemeLive(next);
   };
 
-  return (
-    <header className="flex h-10 shrink-0 items-center gap-0.5 border-b border-border bg-surface px-2">
-      <LumenMark className="size-5" />
-      <span className="ml-1.5 mr-2 font-display text-sm font-semibold tracking-tight">Lúmen</span>
+  const exportRepertoire = () => {
+    const blob = new Blob([exportLibrary()], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "lumen-biblioteca.json";
+    a.click();
+    toast("Repertório exportado");
+  };
 
-      <Menu label="Arquivo">
-        <MenuItem
-          onSelect={() => {
-            const blob = new Blob([exportLibrary()], { type: "application/json" });
-            const a = document.createElement("a");
-            a.href = URL.createObjectURL(blob);
-            a.download = "lumen-biblioteca.json";
-            a.click();
-          }}
-        >
-          Exportar repertório
-        </MenuItem>
-        <MenuItem
-          onSelect={() => {
-            const input = document.createElement("input");
-            input.type = "file";
-            input.accept = "application/json";
-            input.onchange = async () => {
-              const file = input.files?.[0];
-              if (!file) return;
-              importLibrary(await file.text());
-              toast("Repertório importado");
-            };
-            input.click();
-          }}
-        >
-          Importar repertório
-        </MenuItem>
-        <MenuItem onSelect={() => setWindowsSetupOpen(true)}>Instalar no Windows</MenuItem>
-        <MenuItem onSelect={onSettings}>Configurações</MenuItem>
-      </Menu>
-      <Menu label="Novo">
-        <MenuItem onSelect={onNewSong}>Nova letra</MenuItem>
-        <MenuItem
-          onSelect={() => {
+  const importRepertoire = () => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "application/json";
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      importLibrary(await file.text());
+      toast("Repertório importado");
+    };
+    input.click();
+  };
+
+  /**
+   * Eram dez menus, vários com um item só e muita repetição — "Configurações"
+   * aparecia em três lugares. Agora são cinco, agrupados pelo que o operador
+   * está tentando fazer. Nenhuma ação foi retirada.
+   */
+  const sections: Section[] = [
+    {
+      label: "Arquivo",
+      items: [
+        { label: "Exportar repertório", onSelect: exportRepertoire },
+        { label: "Importar repertório", onSelect: importRepertoire },
+        { label: "Instalar no Windows", onSelect: () => setWindowsSetupOpen(true) },
+        { label: "Configurações", onSelect: onSettings },
+      ],
+    },
+    {
+      label: "Repertório",
+      items: [
+        { label: "Nova letra", onSelect: onNewSong },
+        {
+          label: "Novo aviso",
+          onSelect: () => {
             saveText({
               id: `txt-${Date.now()}`,
               title: "Novo aviso",
@@ -139,168 +147,213 @@ export function MenuBar({
               updatedAt: Date.now(),
             });
             toast("Aviso criado na aba Texto");
-          }}
-        >
-          Novo aviso
-        </MenuItem>
-        <MenuItem
-          onSelect={() => {
+          },
+        },
+        {
+          label: "Nova playlist",
+          onSelect: () => {
             const name = window.prompt("Nome da playlist", "Novo culto");
             if (name) savePlaylist(name);
-          }}
-        >
-          Nova playlist
-        </MenuItem>
-      </Menu>
-      <Menu label="Editar">
-        <MenuItem onSelect={onEditSong}>Editar música selecionada</MenuItem>
-        <MenuItem onSelect={onOptimize}>Otimizar apresentação</MenuItem>
-        <MenuItem onSelect={onSettings}>Tema e tipografia</MenuItem>
-      </Menu>
-      <Menu label="Música">
-        <MenuItem onSelect={onNewSong}>Nova letra</MenuItem>
-        <MenuItem onSelect={onWebLyrics}>Buscar na internet</MenuItem>
-        <MenuItem onSelect={onEditSong}>Editar selecionada</MenuItem>
-      </Menu>
-      <Menu label="Tema">
-        <MenuItem onSelect={cycleTheme}>Próximo tema</MenuItem>
-        <MenuItem onSelect={onSettings}>Ajustar tema ativo</MenuItem>
-      </Menu>
-      <Menu label="Culto">
-        <MenuItem onSelect={() => setLiveMode(true)}>Modo operador</MenuItem>
-        <MenuItem onSelect={() => setCheckupOpen(true)}>Check-up pré-culto</MenuItem>
-        <MenuItem onSelect={() => setCommandOpen(true)}>Busca universal</MenuItem>
-        <MenuItem onSelect={() => setEmergencyOpen(true)}>Emergência</MenuItem>
-        <MenuItem onSelect={() => setTemplatesOpen(true)}>Templates</MenuItem>
-        <MenuItem onSelect={() => setHistoryOpen(true)}>Histórico / desfazer</MenuItem>
-        <MenuItem onSelect={() => setTrainingOpen(true)}>Simulador</MenuItem>
-        <MenuItem onSelect={() => setStatsOpen(true)}>Estatísticas</MenuItem>
-        <MenuItem
-          onSelect={() => {
+          },
+        },
+        { label: "Buscar letra na internet", onSelect: onWebLyrics, shortcut: "Ctrl+Shift+F" },
+        { label: "Editar selecionada", onSelect: onEditSong },
+        { label: "Otimizar apresentação", onSelect: onOptimize, shortcut: "Ctrl+Shift+O" },
+        { label: "Abrir Bíblia", onSelect: onBible, shortcut: "Ctrl+B" },
+      ],
+    },
+    {
+      label: "Culto",
+      items: [
+        { label: "Modo operador", onSelect: () => setLiveMode(true), shortcut: "F8" },
+        { label: "Check-up pré-culto", onSelect: () => setCheckupOpen(true), shortcut: "Ctrl+Shift+H" },
+        { label: "Busca universal", onSelect: () => setCommandOpen(true), shortcut: "Ctrl+K" },
+        { label: "Contagem regressiva", onSelect: onCountdown },
+        { label: "Templates de culto", onSelect: () => setTemplatesOpen(true) },
+        { label: "Histórico e desfazer", onSelect: () => setHistoryOpen(true), shortcut: "Ctrl+Z" },
+        { label: "Simulador", onSelect: () => setTrainingOpen(true) },
+        { label: "Estatísticas", onSelect: () => setStatsOpen(true) },
+        {
+          label: "Pedido do pastor",
+          onSelect: () => {
             const w = openOutputWindow("/pedido");
             if (!w) toast("Popup bloqueado — abra Pedido do pastor pelo menu do navegador");
-          }}
-        >
-          Pedido do pastor
-        </MenuItem>
-      </Menu>
-      <Menu label="Anúncios">
-        <MenuItem onSelect={onCountdown}>Contagem regressiva</MenuItem>
-      </Menu>
-      <Menu label="Tela">
-        <MenuItem onSelect={openProjector}>Abrir projetor</MenuItem>
-        <MenuItem onSelect={openStage}>Abrir palco</MenuItem>
-        <MenuItem onSelect={() => setFillMode("audience")}>Telão nesta janela</MenuItem>
-        <MenuItem onSelect={() => setWindowsSetupOpen(true)}>Instalar no Windows</MenuItem>
-        <MenuItem onSelect={onDisplay}>Configurações de exibição</MenuItem>
-        <MenuItem onSelect={goBlack}>Tela preta</MenuItem>
-        <MenuItem onSelect={goLogo}>Logo</MenuItem>
-        <MenuItem onSelect={goClear}>Ocultar texto</MenuItem>
-      </Menu>
-      <Menu label="Janelas">
-        <MenuItem onSelect={onBible}>Bíblia</MenuItem>
-        <MenuItem onSelect={onSettings}>Configurações</MenuItem>
-        <MenuItem onSelect={onHelp}>Atalhos</MenuItem>
-      </Menu>
-      <Menu label="Ajuda">
-        <MenuItem onSelect={onHelp}>Atalhos da cabine</MenuItem>
-        <MenuItem onSelect={() => setWindowsSetupOpen(true)}>Instalar no Windows</MenuItem>
+          },
+        },
+        {
+          label: "Emergência",
+          onSelect: () => setEmergencyOpen(true),
+          shortcut: "F9",
+          tone: "danger",
+        },
+      ],
+    },
+    {
+      label: "Tela",
+      items: [
+        { label: "Abrir projetor", onSelect: openProjector },
+        { label: "Abrir palco", onSelect: openStage },
+        { label: "Telão nesta janela", onSelect: () => setFillMode("audience") },
+        { label: "Configurações de exibição", onSelect: onDisplay },
+        { label: "Tema e tipografia", onSelect: onSettings },
+        { label: "Próximo tema", onSelect: cycleTheme, shortcut: "Ctrl+T" },
+        { label: "Tela preta", onSelect: goBlack, shortcut: "B" },
+        { label: "Logo", onSelect: goLogo, shortcut: "L" },
+        { label: "Ocultar letra", onSelect: goClear, shortcut: "C" },
+      ],
+    },
+    {
+      label: "Ajuda",
+      items: [
+        { label: "Atalhos da cabine", onSelect: onHelp, shortcut: "?" },
+        { label: "Instalar no Windows", onSelect: () => setWindowsSetupOpen(true) },
+      ],
+    },
+  ];
+
+  const tally =
+    status === "presenting"
+      ? ("live" as const)
+      : status === "black" || status === "clear" || status === "logo"
+        ? ("blank" as const)
+        : ("off" as const);
+  const tallyLabel =
+    status === "presenting"
+      ? "No ar"
+      : status === "black"
+        ? "Telão preto"
+        : status === "logo"
+          ? "Logo"
+          : status === "clear"
+            ? "Sem letra"
+            : "Parado";
+
+  return (
+    <header className="flex h-10 shrink-0 items-center gap-1 border-b border-border bg-surface px-2">
+      <LumenMark className="size-4" />
+      <span className="ml-1.5 mr-1 text-body font-semibold tracking-tight">Lúmen</span>
+
+      {/* Desktop: os cinco menus lado a lado. */}
+      <nav className="hidden items-center gap-0.5 sm:flex" aria-label="Menu principal">
+        {sections.map((section) => (
+          <Menu key={section.label}>
+            <MenuTrigger asChild>
+              <button
+                type="button"
+                className={cn(
+                  "rounded-md px-2 py-1 text-secondary text-muted",
+                  "transition-colors duration-[var(--motion-fast)] ease-[var(--ease-out)]",
+                  "hover:bg-elevated hover:text-fg",
+                  "data-[state=open]:bg-elevated data-[state=open]:text-fg",
+                  "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring",
+                )}
+              >
+                {section.label}
+              </button>
+            </MenuTrigger>
+            <MenuContent>
+              {section.items.map((item) => (
+                <MenuItem
+                  key={item.label}
+                  onSelect={item.onSelect}
+                  shortcut={item.shortcut}
+                  tone={item.tone}
+                >
+                  {item.label}
+                </MenuItem>
+              ))}
+            </MenuContent>
+          </Menu>
+        ))}
+      </nav>
+
+      {/* Celular: tudo num menu só. Antes, nada disto existia abaixo de 640px. */}
+      <Menu>
+        <MenuTrigger asChild>
+          <Button size="iconSm" variant="ghost" className="sm:hidden" aria-label="Menu">
+            <MenuIcon />
+          </Button>
+        </MenuTrigger>
+        <MenuContent>
+          {sections.map((section, i) => (
+            <Section key={section.label} first={i === 0} label={section.label}>
+              {section.items.map((item) => (
+                <MenuItem
+                  key={item.label}
+                  onSelect={item.onSelect}
+                  shortcut={item.shortcut}
+                  tone={item.tone}
+                >
+                  {item.label}
+                </MenuItem>
+              ))}
+            </Section>
+          ))}
+        </MenuContent>
       </Menu>
 
-      <p className="mx-auto hidden truncate text-xs text-muted md:block">{church}</p>
-      <div className="ml-auto flex items-center gap-0.5">
+      <p className="mx-auto hidden min-w-0 truncate px-2 text-secondary text-subtle md:block">
+        {church}
+      </p>
+
+      <div className="ml-auto flex items-center gap-1">
+        <Tally state={tally} label={tallyLabel} className="mr-1 hidden md:inline-flex" />
+
         {pending > 0 && (
-          <span className="mr-1 rounded-full bg-live px-2 py-0.5 text-xs text-accent-fg">{pending}</span>
+          <span
+            className="tnum animate-pop-in rounded-sm bg-accent px-1.5 py-0.5 text-caption font-semibold text-accent-fg"
+            title={`${pending} pedido(s) do palco`}
+          >
+            {pending}
+          </span>
         )}
-        <Button
-          size="sm"
-          variant="ghost"
-          className="hidden md:inline-flex"
-          onClick={() => setWindowsSetupOpen(true)}
-        >
-          <Download className="size-3.5" />
-          Instalar
-        </Button>
-        <Button size="sm" variant="live" onClick={() => setLiveMode(true)}>
-          <Radio className="size-3.5" />
-          <span className="hidden sm:inline">Modo operador</span>
-        </Button>
-        <Button size="iconSm" variant="ghost" aria-label="Busca universal" onClick={() => setCommandOpen(true)}>
-          <Search className="size-3.5" />
-        </Button>
-        <Button
-          size="iconSm"
-          variant={live ? "live" : "ghost"}
-          aria-label="Apresentar"
-          onClick={presentPreview}
-        >
-          <Play className="size-3.5" />
-        </Button>
-        <Button size="iconSm" variant="ghost" aria-label="Parar" onClick={stop}>
-          <Square className="size-3.5" />
-        </Button>
-        <Button size="iconSm" variant="ghost" aria-label="Countdown" onClick={onCountdown}>
-          <Timer className="size-3.5" />
-        </Button>
-        <Button size="iconSm" variant="ghost" aria-label="Atalhos" onClick={onHelp}>
-          <HelpCircle className="size-3.5" />
-        </Button>
-        <Button size="iconSm" variant="ghost" aria-label="Configurações" onClick={onSettings}>
-          <Settings2 className="size-3.5" />
-        </Button>
-        <Button size="iconSm" variant="ghost" aria-label="Projetor" onClick={openProjector}>
-          <Monitor className="size-3.5" />
+
+        <Hint label="Busca universal" keys="Ctrl+K">
+          <Button size="iconSm" variant="ghost" aria-label="Busca universal" onClick={() => setCommandOpen(true)}>
+            <Search />
+          </Button>
+        </Hint>
+
+        <Hint label="Apresentar o preview" keys="F5">
+          <Button
+            size="iconSm"
+            variant={status === "presenting" ? "live" : "ghost"}
+            aria-label="Apresentar"
+            onClick={presentPreview}
+          >
+            <Play />
+          </Button>
+        </Hint>
+
+        <Hint label="Parar de apresentar" keys="Esc">
+          <Button size="iconSm" variant="ghost" aria-label="Parar" onClick={stop}>
+            <Square />
+          </Button>
+        </Hint>
+
+        <Button size="sm" variant="secondary" onClick={() => setLiveMode(true)}>
+          <Radio />
+          <span className="hidden md:inline">Modo operador</span>
         </Button>
       </div>
     </header>
   );
 }
 
-function Menu({ label, children }: { label: string; children: ReactNode }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onDoc = (e: MouseEvent) => {
-      if (!ref.current?.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
-  }, [open]);
-
+function Section({
+  label,
+  first,
+  children,
+}: {
+  label: string;
+  first: boolean;
+  children: ReactNode;
+}) {
   return (
-    <div ref={ref} className="relative hidden sm:block">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className={cn(
-          "rounded-md px-2 py-1 text-sm text-muted transition-colors duration-[var(--motion-quick)] hover:bg-elevated hover:text-fg",
-          open && "bg-elevated text-fg",
-        )}
-      >
-        {label}
-      </button>
-      {open && (
-        <div
-          className="absolute left-0 top-full z-40 mt-1 min-w-48 origin-top-left rounded-lg bg-elevated py-1 shadow-[var(--shadow-border)]"
-          onClick={() => setOpen(false)}
-        >
-          {children}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function MenuItem({ onSelect, children }: { onSelect: () => void; children: ReactNode }) {
-  return (
-    <button
-      type="button"
-      className="block w-full px-3 py-1.5 text-left text-sm text-fg hover:bg-primary/10"
-      onClick={onSelect}
-    >
+    <>
+      {!first && <MenuSeparator />}
+      <MenuLabel>{label}</MenuLabel>
       {children}
-    </button>
+    </>
   );
 }
