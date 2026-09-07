@@ -18,6 +18,8 @@ import { SlideGrid } from "@/components/operator/slide-grid";
 import { ThemeRail } from "@/components/operator/theme-rail";
 import { BibleWorkspace } from "@/components/operator/bible-workspace";
 import { OpsLayer } from "@/components/operator/ops-layer";
+import { AutoSlideDialog, AutoSlidePanel } from "@/components/operator/auto-slide";
+import { useAutoSlide } from "@/components/operator/use-auto-slide";
 import { TourBanner } from "@/components/operator/tour";
 import { WindowsRuntime } from "@/components/operator/windows-setup";
 import { toast } from "sonner";
@@ -29,6 +31,7 @@ import { loadBuiltinBible } from "@/lib/bible";
 import { importWebSong } from "@/lib/import-web-song";
 import type { LiveFrame } from "@/lib/types";
 import { buildLiveFrame, useLumenStore } from "@/store/lumen-store";
+import { useAutoSlideStore } from "@/store/auto-slide-store";
 import { useOpsStore } from "@/store/ops-store";
 
 function isTypingTarget(el: EventTarget | null) {
@@ -52,8 +55,13 @@ export function OperatorApp() {
   const [webOpen, setWebOpen] = useState(false);
   const [display, setDisplay] = useState(false);
   const [bibleOpen, setBibleOpen] = useState(false);
+  const [autoSlide, setAutoSlide] = useState(false);
   const [mobileTab, setMobileTab] = useState<"lib" | "preview" | "culto">("preview");
   const liveMode = useOpsStore((s) => s.liveMode);
+
+  // O Auto-Slide escuta e pede o slide; quem projeta continua sendo a
+  // apresentação de sempre.
+  useAutoSlide();
 
   // O tutorial aponta para painéis que, em tela estreita, moram em abas.
   const tourTab = useOpsStore((s) => s.tourTab);
@@ -67,6 +75,7 @@ export function OperatorApp() {
       useLumenStore.getState().setHydrated();
     });
     void useLumenStore.persist.rehydrate();
+    void useAutoSlideStore.persist.rehydrate();
     return unsub;
   }, []);
 
@@ -309,9 +318,11 @@ export function OperatorApp() {
           onSettings={() => setSettings(true)}
           onBible={() => setBibleOpen(true)}
           onDisplay={() => setDisplay(true)}
+          onAutoSlide={() => setAutoSlide(true)}
           onOptimize={() => void runOptimize()}
         />
         <WindowsRuntime />
+        <AutoSlidePanel onConfig={() => setAutoSlide(true)} />
         <TourBanner />
 
         {!bibleOpen && (
@@ -403,6 +414,7 @@ export function OperatorApp() {
       />
       <HelpDialog open={help} onOpenChange={setHelp} />
       <SettingsDialog open={settings} onOpenChange={setSettings} />
+      <AutoSlideDialog open={autoSlide} onOpenChange={setAutoSlide} />
       <DisplayDialog open={display} onOpenChange={setDisplay} />
       <CountdownDialog open={countdown} onOpenChange={setCountdown} />
       <LyricsSearchDialog

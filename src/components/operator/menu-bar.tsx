@@ -33,6 +33,7 @@ export function MenuBar({
   onSettings,
   onBible,
   onDisplay,
+  onAutoSlide,
   onOptimize,
 }: {
   onNewSong: () => void;
@@ -43,6 +44,7 @@ export function MenuBar({
   onSettings: () => void;
   onBible: () => void;
   onDisplay: () => void;
+  onAutoSlide: () => void;
   onOptimize: () => void;
 }) {
   const church = useLumenStore((s) => s.settings.churchName);
@@ -196,6 +198,7 @@ export function MenuBar({
         { label: "Abrir palco", onSelect: openStage },
         { label: "Telão nesta janela", onSelect: () => setFillMode("audience") },
         { label: "Configurações de exibição", onSelect: onDisplay },
+        { label: "Reconhecimento de canto", onSelect: onAutoSlide },
         { label: "Tema e tipografia", onSelect: onSettings },
         { label: "Próximo tema", onSelect: cycleTheme, shortcut: "Ctrl+T" },
         { label: "Tela preta", onSelect: goBlack, shortcut: "B" },
