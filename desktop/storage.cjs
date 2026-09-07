@@ -1,7 +1,18 @@
 const fs = require("node:fs/promises");
 const path = require("node:path");
 
-const KEYS = new Set(["lumen-v2", "lumen-ops-v1", "lumen-bibles-v1", "lumen-auto-slide-v1"]);
+// Lista fechada de propósito: o app não grava no disco nada que não esteja
+// aqui. O preço é que toda gaveta nova precisa ser registrada — esquecer isso
+// derruba o app na abertura com "Chave inválida", e só no Windows, porque no
+// navegador o localStorage aceita qualquer chave. O teste ao lado compara
+// esta lista com os stores de verdade, para o esquecimento não voltar.
+const KEYS = new Set([
+  "lumen-v2",
+  "lumen-ops-v1",
+  "lumen-bibles-v1",
+  "lumen-auto-slide-v1",
+  "lumen-youtube-v1",
+]);
 const LIMIT = 100 * 1024 * 1024;
 
 function validate(data) {

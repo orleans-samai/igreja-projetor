@@ -6,6 +6,38 @@ import path from "node:path";
 import storageModule from "../desktop/storage.cjs";
 const { Storage } = storageModule;
 const state = (title) => JSON.stringify({ state: { title }, version: 0 });
+
+/**
+ * Toda gaveta que o app guarda precisa estar na lista de chaves permitidas.
+ *
+ * Esquecer de registrar uma derruba o app na abertura com "Chave inválida" —
+ * e só no Windows, porque no navegador o localStorage aceita qualquer chave.
+ * Foi assim que a fila do YouTube passou por todos os testes e quebrou o app
+ * instalado. Este teste lê os stores de verdade em vez de repetir a lista,
+ * então um store novo sem registro falha aqui, e não no culto.
+ */
+test("toda chave persistida pelos stores é aceita pelo disco", async () => {
+  const storeDir = new URL("../src/store/", import.meta.url);
+  const arquivos = await readdir(storeDir);
+  const chaves = new Set();
+  for (const nome of arquivos.filter((f) => f.endsWith(".ts"))) {
+    const fonte = await readFile(new URL(nome, storeDir), "utf8");
+    for (const m of fonte.matchAll(/name:\s*"(lumen-[a-z0-9-]+)"/g)) chaves.add(m[1]);
+  }
+  assert.ok(chaves.size >= 4, `esperava achar os stores persistidos, achei ${chaves.size}`);
+
+  const dir = await mkdtemp(path.join(os.tmpdir(), "lumen-chaves-"));
+  try {
+    const store = new Storage(dir);
+    await store.init();
+    for (const chave of chaves) {
+      await store.set(chave, state("teste"));
+      assert.equal(await store.get(chave), state("teste"), `${chave} não sobreviveu ao disco`);
+    }
+  } finally {
+    await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  }
+});
 test("serializes saves, survives restart, exports and restores", async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "lumen-storage-"));
   try {
