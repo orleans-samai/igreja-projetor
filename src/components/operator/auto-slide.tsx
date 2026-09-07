@@ -48,11 +48,18 @@ export function AutoSlidePanel({ onConfig }: { onConfig: () => void }) {
   const erro = useAutoSlideStore((s) => s.erro);
   const live = useLumenStore((s) => s.live);
   const liveIndex = useLumenStore((s) => s.liveIndex);
+  const modo = useAutoSlideStore((s) => s.modo);
+  const status = useLumenStore((s) => s.status);
 
-  if (!ligado) return null;
+  if (!ligado) return (
+    <div className="flex shrink-0 items-center gap-3 border-b border-border bg-elevated px-3 py-1.5">
+      <Button size="sm" variant="secondary" onClick={onConfig}><Mic /> Auto-Slide</Button>
+      <span className="truncate text-caption text-muted">Acompanhar a letra por voz · configurar</span>
+    </div>
+  );
 
   return (
-    <div className="animate-swap-in flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border bg-elevated px-3 py-1">
+    <div className="animate-swap-in flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-border bg-elevated px-3 py-1">
       <span className="flex shrink-0 items-center gap-1.5">
         <span
           aria-hidden
@@ -79,6 +86,12 @@ export function AutoSlidePanel({ onConfig }: { onConfig: () => void }) {
       {erro && <span className="min-w-0 flex-1 truncate text-caption text-danger">{erro}</span>}
 
       <div className="ml-auto flex shrink-0 items-center gap-1">
+        {modo === "sugerir" && estado === "casou" && candidato !== null && candidato !== liveIndex && live?.kind === "song" && status === "presenting" && (
+          <Button size="sm" onClick={() => {
+            useLumenStore.getState().goLiveIndex(candidato);
+            useAutoSlideStore.getState().zerar();
+          }}>Projetar slide {candidato + 1}</Button>
+        )}
         <Hint label="Ajustes do reconhecimento">
           <Button size="iconSm" variant="ghost" aria-label="Ajustes do Auto-Slide" onClick={onConfig}>
             <Mic />
@@ -112,6 +125,8 @@ export function AutoSlideDialog({
   const [fontes, setFontes] = useState<FonteDeAudio[]>([]);
   const [disp, setDisp] = useState<Disponibilidade | null>(null);
   const [buscando, setBuscando] = useState(false);
+  const [instalando, setInstalando] = useState(false);
+  const [instalacao, setInstalacao] = useState("");
   const [teste, setTeste] = useState("");
   const [testeSaida, setTesteSaida] = useState<string | null>(null);
   const [ouvindoTeste, setOuvindoTeste] = useState<Captura | null>(null);
@@ -163,6 +178,21 @@ export function AutoSlideDialog({
         className="w-[min(38rem,calc(100%-1.5rem))]"
       >
         <div className="space-y-4">
+          {window.lumenDesktop?.isDesktop && (
+            <div className="rounded-md bg-elevated p-3">
+              <p className="text-secondary">{disp?.ok ? `Pronto: ${disp.nome}` : "Instale o reconhecimento local uma vez. Depois funciona sem internet."}</p>
+              <Button className="mt-2" size="sm" variant="secondary" loading={instalando} disabled={s.ligado || instalando} onClick={async () => {
+                setInstalando(true); setInstalacao("Baixando o motor e o modelo de português… Pode levar alguns minutos.");
+                try {
+                  const result = await window.lumenDesktop!.autoSlideInstall();
+                  setInstalacao(result.ok ? "Reconhecimento instalado." : result.erro ?? "Falha na instalação.");
+                  setDisp(await disponibilidade());
+                } catch (e) { setInstalacao(String(e)); }
+                finally { setInstalando(false); }
+              }}>{disp?.ok ? "Verificar instalação" : "Instalar reconhecimento local"}</Button>
+              <p role="status" className="mt-1 text-caption text-muted">{instalacao}</p>
+            </div>
+          )}
           {disp && !disp.ok && (
             <p className="rounded-md bg-elevated p-2 text-secondary text-muted">
               <span className="text-fg">{disp.motivo}</span> {disp.comoResolver} O modo de teste
@@ -242,7 +272,12 @@ export function AutoSlideDialog({
           </div>
 
           <div>
-            <Label>Modo</Label>
+            <Label>Como acompanhar</Label>
+            <Segmented full label="Ação do Auto-Slide" value={s.modo} onChange={s.setModo} items={[
+              { value: "sugerir", label: "Sugerir slides" }, { value: "automatico", label: "Trocar automaticamente" },
+            ]} />
+            <p className="mt-1 text-caption text-muted">No modo de sugestões, você confirma cada troca. Pausa ao apagar o telão ou sair da música.</p>
+            <Label>Perfil de reconhecimento</Label>
             <Segmented
               full
               label="Perfil do Auto-Slide"
@@ -344,6 +379,7 @@ export function AutoSlideDialog({
           <div className="flex items-center justify-between border-t border-border pt-3">
             <Button
               variant={s.ligado ? "secondary" : "default"}
+              disabled={!s.ligado && !disp?.ok}
               onClick={() => s.setLigado(!s.ligado)}
             >
               {s.ligado ? <Pause /> : <Ear />}

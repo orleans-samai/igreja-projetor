@@ -13,6 +13,7 @@ export function runCheckup(input: {
   bibleReady: boolean;
   online: boolean;
   appInstalled?: boolean;
+  technical?: HealthItem[];
 }): { items: HealthItem[]; ready: boolean; score: number } {
   const items: HealthItem[] = [];
   const pl = input.playlists.find((p) => p.id === input.activePlaylistId);
@@ -157,6 +158,7 @@ export function runCheckup(input: {
     detail: "Integração de captura fica no computador da igreja — aqui o telão é a janela Projetor",
   });
 
+  items.push(...(input.technical ?? []));
   const fail = items.filter((i) => i.level === "fail").length;
   const warn = items.filter((i) => i.level === "warn").length;
   const ready = fail === 0;

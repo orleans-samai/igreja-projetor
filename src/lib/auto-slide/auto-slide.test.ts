@@ -108,6 +108,19 @@ describe("AutoSlideEngine", () => {
     assert.equal(d.index, 2);
   });
 
+  for (const interrupcao of ["", "o rio", "canta comigo a mesma cancao que atravessa"]) {
+    it(`reinicia confirmações depois de ${JSON.stringify(interrupcao)}`, () => {
+      const e = new AutoSlideEngine({ ...PERFIS.equilibrado, antecipar: false });
+      e.carregar(SLIDES);
+      e.decidir("o rio corre firme entre as pedras", 0, 10_000);
+      e.decidir(interrupcao, 0, 12_000);
+      const d = e.decidir("o rio corre firme entre as pedras", 0, 14_000);
+      assert.equal(d.trocar, false);
+      assert.equal(d.motivo, "aguardando-confirmacao");
+      assert.equal(e.decidir("o rio corre firme entre as pedras", 0, 16_000).trocar, true);
+    });
+  }
+
   it("não troca com confiança baixa", () => {
     const e = motor();
     const d = e.decidir("palavras que nao estao em lugar nenhum", 0, 10_000);

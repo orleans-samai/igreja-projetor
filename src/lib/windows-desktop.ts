@@ -33,6 +33,7 @@ export function isWindows(ua = typeof navigator === "undefined" ? "" : navigator
 
 export function isStandalone(): boolean {
   if (typeof window === "undefined") return false;
+  if (window.lumenDesktop?.isDesktop) return true;
   const nav = window.navigator as Navigator & { standalone?: boolean };
   if (nav.standalone) return true;
   return (
@@ -178,6 +179,15 @@ declare global {
   interface Window {
     lumenDesktop?: {
       isDesktop: boolean;
+      autoSlideStatus: () => Promise<{ pronto: boolean; nome?: string; motivo?: string }>;
+      autoSlideInstall: () => Promise<{ ok: boolean; erro?: string }>;
+      autoSlideTranscrever: (wav: Uint8Array) => Promise<{ ok: boolean; texto?: string; erro?: string }>;
+      autoSlideCancel: () => Promise<void>;
+      preflight: (urls: string[]) => Promise<PreflightReport>;
+      selectDisplay: (id: number) => Promise<void>;
+      testDisplay: (on: boolean) => Promise<void>;
+      exportService: (data: unknown) => Promise<{ canceled?: boolean; files?: number; path?: string }>;
+      importService: () => Promise<unknown>;
       suggestLyrics: (input: { query: string; artist?: string }) => Promise<import("./lyrics-web").LyricsSearchResult>;
       loadLyrics: (url: string) => Promise<{ ok: boolean; lyrics?: string; error?: string }>;
       storageGet: (key: string) => Promise<string | null>;
@@ -194,6 +204,14 @@ declare global {
       mediaResetFolder: (kind: MediaKind) => Promise<{ ok: boolean; dir: string }>;
     };
   }
+}
+
+export interface PreflightReport {
+  displays: { id: number; label: string; width: number; height: number; scaleFactor: number; primary: boolean }[];
+  selectedId: number | null;
+  projectorReady: boolean;
+  missing: string[];
+  external: string[];
 }
 
 export async function applyWakeLock(on: boolean): Promise<boolean> {

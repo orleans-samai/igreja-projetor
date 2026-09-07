@@ -1,3 +1,4 @@
+import { AutoSlidePanel } from "@/components/operator/auto-slide";
 import { AlertTriangle, ChevronLeft, ChevronRight, Mic, MicOff, Search, SkipForward, Square } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -140,9 +141,11 @@ function Timeline({ items, idx, start }: { items: PlaylistItem[]; idx: number; s
 export function LiveMode({
   outputFrame,
   previewFrame,
+  onAutoSlide,
 }: {
   outputFrame: LiveFrame;
   previewFrame: LiveFrame;
+  onAutoSlide: () => void;
 }) {
   const status = useLumenStore((s) => s.status);
   const live = useLumenStore((s) => s.live);
@@ -224,8 +227,8 @@ export function LiveMode({
             : "Preparado";
 
   return (
-    <div className="flex h-dvh flex-col bg-bg text-fg">
-      <header className="flex shrink-0 items-center gap-3 border-b border-border px-3 py-2">
+    <div className="operator-live flex h-dvh flex-col bg-bg text-fg">
+      <header className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-3 py-2">
         <h1 className="text-title font-semibold tracking-tight">Modo operador</h1>
         <Tally state={tally} label={tallyLabel} />
         <p className="tnum ml-auto font-mono text-body text-muted">{clock}</p>
@@ -233,12 +236,13 @@ export function LiveMode({
           Voltar à cabine
         </Button>
       </header>
+      <AutoSlidePanel onConfig={onAutoSlide} />
 
       <div className="empty:hidden px-3 pt-2">
         <InboxStrip />
       </div>
 
-      <div className="grid min-h-0 flex-1 gap-4 p-3 lg:grid-cols-[minmax(0,1.5fr)_minmax(17rem,0.7fr)]">
+      <div className="operator-live-layout grid min-h-0 flex-1 gap-3 overflow-y-auto p-3 lg:grid-cols-[minmax(0,1.5fr)_minmax(17rem,0.7fr)]">
         <section className="flex min-h-0 flex-col gap-3">
           <div>
             <p className="text-caption text-subtle">No ar agora</p>
@@ -325,7 +329,7 @@ export function LiveMode({
         </section>
 
         {/* Sem caixa dentro de caixa: filete e espaço separam as seções. */}
-        <aside className="flex min-h-0 flex-col gap-4">
+        <aside className="flex min-h-0 flex-col gap-3 overflow-y-auto">
           <div>
             <p className="text-caption text-subtle">Depois deste</p>
             <h3 className="mt-0.5 truncate text-display-sm font-semibold tracking-tight">

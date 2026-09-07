@@ -85,6 +85,32 @@ Ou adicione a pasta do projeto às exclusões do Defender (precisa de administra
 | **Emergência** | `F9` põe um versículo de socorro no ar |
 | **Recuperação** | Se o app fechar no meio do culto, ele oferece voltar ao ponto exato |
 
+## Auto-Slide por voz
+
+No aplicativo Windows, abra **Auto-Slide → Instalar reconhecimento local**.
+Essa primeira instalação baixa o motor e o modelo; depois o áudio é processado
+no computador, sem internet. Escolha a entrada de áudio, teste o nível e
+apresente uma música para iniciar o acompanhamento.
+
+O modo inicial é **Sugerir slides**: confirme cada sugestão em **Projetar slide**.
+Em **Trocar automaticamente**, o aplicativo usa a confiança e as confirmações
+do perfil escolhido. Uma troca manual tem prioridade; apagar o telão ou sair
+da música pausa o reconhecimento. Teste com a entrada de áudio da igreja antes
+de usar a troca automática em um culto.
+
+## Preparar e transportar um culto
+
+Em **Check-up pré-culto** (`Ctrl+Shift+H`), selecione o monitor externo,
+verifique a reprodução das mídias e teste imagem e som. Confirme as bordas
+no telão e o som nas caixas. Os testes de saída exigem encerrar a apresentação.
+
+Use **Arquivo → Exportar culto com mídias…** para salvar a programação ativa,
+suas letras, temas, Bíblia e arquivos em um pacote `.lumen`. Mídias online
+precisam de internet durante a exportação; arquivos temporários devem ser
+colocados na pasta de mídia primeiro. No outro computador, escolha
+**Arquivo → Importar culto com mídias…**. A importação adiciona o culto sem
+apagar a biblioteca existente e verifica a integridade das mídias.
+
 ## Atalhos da cabine
 
 No escuro, teclado é mais rápido que mouse.

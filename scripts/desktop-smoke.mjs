@@ -3,6 +3,7 @@ import { mkdtemp, readFile, mkdir } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import assert from "node:assert/strict";
+import { exportPackage, importPackage } from "../desktop/service-package.cjs";
 const root = path.resolve(import.meta.dirname, "..");
 const profile = await mkdtemp(path.join(os.tmpdir(), "lumen-smoke-"));
 const evidence = path.join(root, "artifacts", "desktop-smoke");
@@ -11,7 +12,7 @@ let app;
 const errors = [];
 try {
   const launch = async () => {
-    app = await electron.launch({ args: [root], env: { ...process.env, LUMEN_TEST_DATA: profile }, timeout: 60000 });
+    app = await electron.launch({ args: [root, "--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream"], env: { ...process.env, LUMEN_TEST_DATA: profile }, timeout: 60000 });
     const page = await app.firstWindow();
     page.on("pageerror", (error) => errors.push(error.message));
     await page.waitForFunction(() => document.querySelectorAll("button").length > 10);
@@ -33,6 +34,36 @@ try {
   });
   assert.ok(fonts);
   assert.equal(await page.evaluate(async () => (await fetch("/missing.js")).status), 404);
+  // Exercise packaged media through the actual Electron protocol, including seeking.
+  const bytes = Buffer.alloc(32044);
+  bytes.write("RIFF"); bytes.writeUInt32LE(bytes.length - 8, 4); bytes.write("WAVEfmt ", 8);
+  bytes.writeUInt32LE(16, 16); bytes.writeUInt16LE(1, 20); bytes.writeUInt16LE(1, 22);
+  bytes.writeUInt32LE(16000, 24); bytes.writeUInt32LE(32000, 28);
+  bytes.writeUInt16LE(2, 32); bytes.writeUInt16LE(16, 34); bytes.write("data", 36); bytes.writeUInt32LE(32000, 40);
+  const packageFile = path.join(profile, "smoke.lumen");
+  await exportPackage(packageFile, { format: "lumen-service-v1", media: [{ type: "audio", path: "data:audio/wav;base64," + bytes.toString("base64") }] }, async () => null);
+  const imported = await importPackage(packageFile, path.join(profile, "packages"));
+  const mediaUrl = imported.media[0].path;
+  const range = await page.evaluate(async (url) => {
+    const response = await fetch(url, { headers: { Range: "bytes=0-43" } });
+    return { status: response.status, length: (await response.arrayBuffer()).byteLength };
+  }, mediaUrl);
+  assert.deepEqual(range, { status: 206, length: 44 });
+  const preflight = await page.evaluate((url) => window.lumenDesktop.preflight([url, "/missing.mp4"]), mediaUrl);
+  assert.deepEqual(preflight.missing, ["/missing.mp4"]);
+  assert.equal((await page.evaluate(() => window.lumenDesktop.autoSlideStatus())).pronto, false);
+  await page.getByRole("button", { name: "Auto-Slide", exact: true }).click();
+  const autoDialog = page.getByRole("dialog", { name: "Reconhecimento de canto" });
+  await autoDialog.waitFor();
+  await autoDialog.getByRole("button", { name: "Instalar reconhecimento local", exact: true }).waitFor();
+  await page.screenshot({ path: path.join(evidence, "auto-slide.png") });
+  await autoDialog.getByRole("button", { name: "Fechar", exact: true }).click();
+  await page.keyboard.press("Control+Shift+H");
+  const checkup = page.getByRole("dialog", { name: "Check-up pré-culto" });
+  await checkup.waitFor();
+  await checkup.getByRole("button", { name: "Verificar reprodução", exact: true }).waitFor();
+  await page.screenshot({ path: path.join(evidence, "preflight.png") });
+  await checkup.getByRole("button", { name: "Fechar", exact: true }).click();
   const saved = await page.evaluate(async () => {
     const api = window.lumenDesktop;
     const data = JSON.parse(await api.storageGet("lumen-v2"));
@@ -67,7 +98,7 @@ try {
   assert.deepEqual(errors, []);
   const disk = JSON.parse(await readFile(path.join(profile, "data", "library.json"), "utf8"));
   assert.ok(disk.values["lumen-v2"]);
-  console.log(`PASS: offline, fonts, Bible, restart persistence, projector, 800×600. Evidence: ${evidence}`);
+  console.log(`PASS: offline, fonts, Bible, restart persistence, projector, 800×600, packaged audio ranges, preflight and Auto-Slide dialogs. Evidence: ${evidence}`);
 } finally {
   if (app) await app.close();
   console.log(`Isolated test profile: ${profile}`);

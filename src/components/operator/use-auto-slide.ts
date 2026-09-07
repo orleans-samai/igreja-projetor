@@ -21,6 +21,15 @@ export function useAutoSlide() {
   const motor = useRef<AutoSlideEngine | null>(null);
   if (!motor.current) motor.current = new AutoSlideEngine({ ...config });
   const pedidoDoMotor = useRef<number | null>(null);
+  const contexto = useRef(0);
+
+  // Invalida o áudio em processamento inclusive se o operador sair e voltar
+  // ao mesmo slide antes de a transcrição terminar.
+  useEffect(() => useLumenStore.subscribe((next, previous) => {
+    if (next.live !== previous.live || next.liveIndex !== previous.liveIndex || next.status !== previous.status) {
+      contexto.current += 1;
+    }
+  }), []);
 
   useEffect(() => motor.current?.ajustar(config), [config]);
 
@@ -35,14 +44,17 @@ export function useAutoSlide() {
   // O operador tem prioridade absoluta: qualquer troca que não tenha saído do
   // motor reposiciona o contexto e segura o motor por um cooldown.
   useEffect(() => {
-    if (pedidoDoMotor.current === liveIndex) return;
+    if (pedidoDoMotor.current === liveIndex) {
+      pedidoDoMotor.current = null;
+      return;
+    }
     motor.current?.marcarManual(Date.now());
   }, [liveIndex]);
 
   const decidir = useCallback(
     (texto: string) => {
       const st = useLumenStore.getState();
-      if (!texto.trim() || !st.live) return;
+      if (!texto.trim() || !st.live || st.live.kind !== "song" || st.status !== "presenting") return;
       const d = motor.current!.decidir(texto, st.liveIndex, Date.now());
       relatar({ ouvido: texto, candidato: d.index, score: d.score, motivo: d.motivo });
       setEstado(d.trocar || d.motivo === "ja-esta-nele" ? "casou" : "confianca-baixa");
@@ -51,7 +63,7 @@ export function useAutoSlide() {
           `[AutoSlide] "${texto}" → slide ${d.index + 1} (${(d.score * 100).toFixed(0)}%) ${d.motivo}`,
         );
       }
-      if (!d.trocar) return;
+      if (!d.trocar || useAutoSlideStore.getState().modo === "sugerir") return;
       pedidoDoMotor.current = d.index;
       st.goLiveIndex(d.index);
       contarTroca();
@@ -60,13 +72,16 @@ export function useAutoSlide() {
   );
 
   useEffect(() => {
-    if (!ligado || status === "idle") {
+    if (!ligado || status !== "presenting" || live?.kind !== "song") {
       if (!ligado) setEstado("desligado");
+      else setEstado("pausado");
       return;
     }
     let captura: Captura | null = null;
     let reconhecedor: Reconhecedor | null = null;
     let cancelado = false;
+    let processando = false;
+    motor.current?.interromper();
 
     void (async () => {
       const disp = await disponibilidade();
@@ -79,22 +94,37 @@ export function useAutoSlide() {
       try {
         captura = await capturar({
           deviceId: deviceId || undefined,
-          onNivel: (n) => setNivel(n),
-          onErro: (e) => setEstado("erro-audio", e),
+          onNivel: (n) => { if (!cancelado) setNivel(n); },
+          onErro: (e) => { if (!cancelado) setEstado("erro-audio", e); },
           onJanela: async ({ amostras, nivel }) => {
-            if (cancelado || !reconhecedor) return;
+            if (cancelado || !reconhecedor || processando) return;
             // Silêncio não é frase: poupa a CPU e evita alucinação do modelo.
             if (nivel < 0.01) {
+              motor.current?.interromper();
               setEstado("sem-audio");
               return;
             }
             setEstado("processando");
-            const texto = await reconhecedor.transcrever(amostras);
-            if (cancelado || !texto.trim()) return;
-            decidir(texto);
+            processando = true;
+            const versao = contexto.current;
+            try {
+              const texto = await reconhecedor.transcrever(amostras);
+              if (cancelado || versao !== contexto.current) return;
+              if (!texto.trim()) {
+                motor.current?.interromper();
+                setEstado("escutando");
+                return;
+              }
+              decidir(texto);
+            } catch (error) {
+              if (!cancelado) setEstado("erro-audio", error instanceof Error ? error.message : "Falha no reconhecimento local.");
+            } finally {
+              processando = false;
+            }
           },
         });
-        if (!cancelado) setEstado("escutando");
+        if (cancelado) captura.parar();
+        else setEstado("escutando");
       } catch {
         if (!cancelado) {
           setEstado("erro-audio", "Não foi possível abrir a entrada de áudio escolhida.");
@@ -108,5 +138,5 @@ export function useAutoSlide() {
       reconhecedor?.encerrar();
       setNivel(0);
     };
-  }, [ligado, deviceId, status, decidir, setEstado, setNivel]);
+  }, [ligado, deviceId, status, live, decidir, setEstado, setNivel]);
 }

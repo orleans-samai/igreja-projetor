@@ -11,6 +11,7 @@ import { openOutputWindow } from "@/lib/live-channel";
 import { openProjectorWindow } from "@/lib/windows-desktop";
 import { useLumenStore } from "@/store/lumen-store";
 import { useOpsStore } from "@/store/ops-store";
+import { exportService, importService } from "@/lib/service-package";
 
 interface Action {
   label: string;
@@ -130,6 +131,8 @@ export function MenuBar({
     {
       label: "Arquivo",
       items: [
+        { label: "Exportar culto com mídias…", onSelect: () => void exportService() },
+        { label: "Importar culto com mídias…", onSelect: () => void importService() },
         { label: "Exportar repertório", onSelect: exportRepertoire },
         { label: "Importar repertório", onSelect: importRepertoire },
         { label: "Instalar no Windows", onSelect: () => setWindowsSetupOpen(true) },

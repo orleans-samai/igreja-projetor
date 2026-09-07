@@ -156,6 +156,8 @@ export function OperatorApp() {
       }
 
       if (ops.commandOpen) return;
+      // Dialogs own their keyboard: Enter in the microphone test must not advance the telão.
+      if (document.querySelector('[role="dialog"]')) return;
 
       if (e.key === "F5") {
         e.preventDefault();
@@ -299,7 +301,8 @@ export function OperatorApp() {
   if (liveMode) {
     return (
       <TooltipProvider>
-        <LiveMode outputFrame={outputFrame} previewFrame={previewFrame} />
+        <LiveMode outputFrame={outputFrame} previewFrame={previewFrame} onAutoSlide={() => setAutoSlide(true)} />
+        <AutoSlideDialog open={autoSlide} onOpenChange={setAutoSlide} />
         <OpsLayer />
         <HelpDialog open={help} onOpenChange={setHelp} />
       </TooltipProvider>
@@ -326,7 +329,7 @@ export function OperatorApp() {
         <TourBanner />
 
         {!bibleOpen && (
-          <div className="border-b border-border bg-surface px-2 py-1.5 lg:hidden">
+          <div className="border-b border-border bg-surface px-2 py-1.5 xl:hidden">
             <Segmented
               label="Área da cabine"
               full
@@ -346,7 +349,7 @@ export function OperatorApp() {
             <BibleWorkspace previewFrame={previewFrame} onBack={() => setBibleOpen(false)} />
           ) : (
             <>
-          <div className="hidden h-full lg:block">
+          <div className="hidden h-full xl:block">
             <Group orientation="horizontal" className="h-full">
               <Panel defaultSize="19%" minSize="15%" className="h-full overflow-hidden">
                 <LibraryPanel
@@ -378,7 +381,7 @@ export function OperatorApp() {
               </Panel>
             </Group>
           </div>
-          <div className="h-full lg:hidden">
+          <div className="h-full xl:hidden">
             {mobileTab === "lib" && (
               <LibraryPanel
                 onNewSong={() => setSongEd(true)}

@@ -23,6 +23,8 @@ import { applyTemplate, SERVICE_TEMPLATES } from "@/lib/templates";
 import { DRILLS, gradeDrill, type Drill } from "@/lib/training";
 import { useLumenStore } from "@/store/lumen-store";
 import { bindSessionWatch, useOpsStore } from "@/store/ops-store";
+import { PreflightControls } from "@/components/operator/preflight";
+import type { HealthItem } from "@/lib/types";
 
 export function OpsLayer() {
   const crash = useOpsStore((s) => s.crashOffer);
@@ -189,6 +191,7 @@ function labelFrom(from: string) {
 }
 
 function CheckupDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
+  const [technical, setTechnical] = useState<HealthItem[]>([]);
   const songs = useLumenStore((s) => s.songs);
   const playlists = useLumenStore((s) => s.playlists);
   const activePlaylistId = useLumenStore((s) => s.activePlaylistId);
@@ -214,13 +217,15 @@ function CheckupDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v
         bibleReady: !!getBible(bibleVersionId),
         online: typeof navigator === "undefined" ? true : navigator.onLine,
         appInstalled: isStandalone(),
+        technical,
       }),
-    [songs, playlists, activePlaylistId, themes, songThemeId, settings, projectorOpen, palcoOpen, bibleVersionId],
+    [songs, playlists, activePlaylistId, themes, songThemeId, settings, projectorOpen, palcoOpen, bibleVersionId, technical],
   );
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent title="Check-up pré-culto">
+        <PreflightControls open={open} onItems={setTechnical} />
         <div className="mb-3 flex items-end justify-between">
           <p className="text-display tnum font-semibold tracking-tight">{report.score}</p>
           <p className={cn("text-body", report.ready ? "text-ok" : "text-danger")}>

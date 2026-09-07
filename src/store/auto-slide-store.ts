@@ -24,6 +24,7 @@ export type EstadoAuto =
   | "erro-audio";
 
 export interface AutoSlideAjustes {
+  modo: "sugerir" | "automatico";
   ligado: boolean;
   deviceId: string;
   perfil: Perfil;
@@ -32,6 +33,7 @@ export interface AutoSlideAjustes {
 }
 
 interface AutoSlideStore extends AutoSlideAjustes {
+  setModo: (modo: AutoSlideAjustes["modo"]) => void;
   estado: EstadoAuto;
   nivel: number;
   ouvido: string;
@@ -56,6 +58,8 @@ interface AutoSlideStore extends AutoSlideAjustes {
 export const useAutoSlideStore = create<AutoSlideStore>()(
   persist(
     (set, get) => ({
+      modo: "sugerir",
+      setModo: (modo) => set({ modo, candidato: null }),
       ligado: false,
       deviceId: "",
       perfil: "equilibrado",
@@ -90,7 +94,7 @@ export const useAutoSlideStore = create<AutoSlideStore>()(
       name: "lumen-auto-slide-v1",
       skipHydration: true,
       storage: durableStorage,
-      partialize: (s) => ({ deviceId: s.deviceId, perfil: s.perfil, config: s.config }),
+      partialize: (s) => ({ modo: s.modo, deviceId: s.deviceId, perfil: s.perfil, config: s.config }),
     },
   ),
 );

@@ -4,6 +4,9 @@ const { resolveAsset } = require("./assets.cjs");
 const media = require("./media.cjs");
 const fs = require("node:fs");
 const path = require("node:path");
+const { mediaResponse } = require("./media-response.cjs");
+const { Recognition } = require("./recognition.cjs");
+const packages = require("./service-package.cjs");
 
 
 const ORIGIN = "lumen://app";
@@ -13,6 +16,16 @@ protocol.registerSchemesAsPrivileged([{ scheme: "lumen", privileges: {
 // Keep the historical profile name so upgrades do not discard existing profiles.
 if (process.env.LUMEN_TEST_DATA && !app.isPackaged) app.setPath("userData", process.env.LUMEN_TEST_DATA);
 const dataDir = app.getPath("userData");
+const recognition = new Recognition(dataDir);
+const packageRoot = path.join(dataDir, "packages");
+let testWindow = null;
+async function localMedia(url) {
+  const parsed = new URL(url, ORIGIN);
+  if (parsed.protocol !== "lumen:" || parsed.hostname !== "app") return null;
+  if (parsed.pathname.startsWith("/__pacotes/")) return packages.resolvePackage(url, packageRoot);
+  if (parsed.pathname.startsWith("/__midia/")) return media.resolveMedia(decodeURIComponent(parsed.pathname));
+  return resolveAsset(wwwRoot(), parsed.href);
+}
 const settingsFile = path.join(dataDir, "desktop-settings.json");
 let desktopSettings = {};
 try { desktopSettings = JSON.parse(fs.readFileSync(settingsFile, "utf8")); } catch { /* first run */ }
@@ -45,16 +58,21 @@ function wwwRoot() { return path.join(__dirname, "www"); }
 async function startServer() {
   if (!fs.existsSync(path.join(wwwRoot(), "index.html"))) throw new Error("Interface ausente. Reinstale o Lúmen.");
   protocol.handle("lumen", async (request) => {
-    log("asset " + request.url);
     // Mídia da igreja mora fora do www; resolveMedia prende o caminho dentro
     // da pasta configurada para o tipo e recusa qualquer outra coisa.
     let file = null;
     try {
       const pathname = decodeURIComponent(new URL(request.url).pathname);
       if (pathname.startsWith("/__midia/")) file = await media.resolveMedia(pathname);
+      if (pathname.startsWith("/__pacotes/")) file = await packages.resolvePackage(request.url, packageRoot);
     } catch { /* url malformada cai no 404 */ }
     if (!file) file = await resolveAsset(wwwRoot(), request.url);
     if (!file) return new Response("Arquivo não encontrado", { status: 404 });
+    // Stream media without buffering whole videos in the main process.
+    if (/\.(mp4|webm|m4v|ogv|mp3|m4a|aac|wav|ogg|opus|flac)$/i.test(file)) {
+      const types = { ".mp4": "video/mp4", ".webm": "video/webm", ".m4v": "video/mp4", ".ogv": "video/ogg", ".mp3": "audio/mpeg", ".m4a": "audio/mp4", ".aac": "audio/aac", ".wav": "audio/wav", ".ogg": "audio/ogg", ".opus": "audio/ogg", ".flac": "audio/flac" };
+      return mediaResponse(file, request, types[path.extname(file).toLowerCase()]);
+    }
     const mime = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".json": "application/json", ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".woff2": "font/woff2", ".woff": "font/woff", ".ico": "image/x-icon", ".mp4": "video/mp4", ".webm": "video/webm", ".m4v": "video/mp4", ".ogv": "video/ogg", ".mp3": "audio/mpeg", ".m4a": "audio/mp4", ".aac": "audio/aac", ".wav": "audio/wav", ".ogg": "audio/ogg", ".opus": "audio/ogg", ".flac": "audio/flac", ".gif": "image/gif", ".avif": "image/avif", ".bmp": "image/bmp" };
     return new Response(await fs.promises.readFile(file), { headers: { "content-type": mime[path.extname(file)] || "application/octet-stream", "x-content-type-options": "nosniff" } });
   });
@@ -78,6 +96,7 @@ function fitCabine() {
   cabine.setBounds({ width, height, x: Math.max(area.x, Math.min(bounds.x, area.x + area.width - width)), y: Math.max(area.y, Math.min(bounds.y, area.y + area.height - height)) });
 }
 function displaysChanged() {
+  if (testWindow && !testWindow.isDestroyed()) testWindow.close();
   if (projetor && !projetor.isDestroyed()) {
     if (externalDisplay()) { projetor.showInactive(); placeOnExternal(projetor); }
     else { projetor.hide(); openCabine(); }
@@ -321,6 +340,7 @@ handle("lumen:displays", () =>
     id: d.id,
     bounds: d.bounds,
     primary: d.id === screen.getPrimaryDisplay().id,
+    label: d.label || `Monitor ${d.id}`,
   })),
 );
 
@@ -360,6 +380,7 @@ async function restoreBackup() {
   }
 }
 app.on("before-quit", (event) => {
+  recognition.cancel();
   if (quitting || !storage) return;
   event.preventDefault();
   quitting = true;
@@ -375,3 +396,45 @@ handle("lumen:media-choose", (kind) => media.choose(kind));
 handle("lumen:media-reset", (kind) => media.reset(kind));
 handle("lumen:lyrics-suggest", (input) => require("./lyrics.cjs").suggest(input));
 handle("lumen:lyrics-load", (url) => require("./lyrics.cjs").load(url));
+handle("lumen:auto-slide-status", () => recognition.status());
+handle("lumen:auto-slide-install", () => recognition.install());
+handle("lumen:auto-slide-transcribe", (wav) => recognition.transcribe(wav));
+handle("lumen:auto-slide-cancel", () => recognition.cancel());
+handle("lumen:preflight", async (urls = []) => {
+  if (!Array.isArray(urls) || urls.length > 2048 || urls.some((u) => typeof u !== "string" || u.length > 4096)) throw new Error("Lista de mídias inválida.");
+  const displays = screen.getAllDisplays();
+  const selected = externalDisplay();
+  const projector = projetor && !projetor.isDestroyed() ? screen.getDisplayMatching(projetor.getBounds()) : null;
+  const missing = [];
+  for (const url of urls) if ((url.startsWith("lumen:") || url.startsWith("/")) && !await localMedia(url)) missing.push(url);
+  return {
+    displays: displays.map((d) => ({ id: d.id, label: d.label || `Monitor ${d.id}`, width: d.bounds.width, height: d.bounds.height, scaleFactor: d.scaleFactor, primary: d.id === screen.getPrimaryDisplay().id })),
+    selectedId: selected?.id ?? null,
+    projectorReady: !!selected && projector?.id === selected.id && projetor.isVisible(),
+    missing,
+    external: urls.filter((u) => /^https?:|^blob:/.test(u)),
+  };
+});
+handle("lumen:select-display", (id) => {
+  if (!screen.getAllDisplays().some((d) => d.id === id && d.id !== screen.getPrimaryDisplay().id)) throw new Error("Escolha um monitor externo conectado.");
+  desktopSettings.displayId = id; saveDesktopSettings(); displaysChanged();
+});
+handle("lumen:test-display", (on) => {
+  if (testWindow && !testWindow.isDestroyed()) testWindow.close();
+  if (!on) return;
+  if (!externalDisplay()) throw new Error("Conecte um segundo monitor e escolha Estender no Windows.");
+  testWindow = createWindow("/projector-test.html", { title: "Lúmen — teste do telão", kiosk: true, frame: false });
+  placeOnExternal(testWindow);
+  const current = testWindow;
+  setTimeout(() => { if (!current.isDestroyed()) current.close(); }, 15000);
+});
+handle("lumen:export-service", async (data) => {
+  const { filePath } = await dialog.showSaveDialog({ title: "Exportar culto com mídias", defaultPath: "Culto.lumen", filters: [{ name: "Culto Lúmen", extensions: ["lumen"] }] });
+  if (!filePath) return { canceled: true };
+  return { ...await packages.exportPackage(filePath, data, localMedia), path: filePath };
+});
+handle("lumen:import-service", async () => {
+  const { canceled, filePaths } = await dialog.showOpenDialog({ title: "Importar culto com mídias", filters: [{ name: "Culto Lúmen", extensions: ["lumen"] }], properties: ["openFile"] });
+  if (canceled) return null;
+  return packages.importPackage(filePaths[0], packageRoot);
+});

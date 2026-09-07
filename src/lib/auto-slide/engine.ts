@@ -102,6 +102,12 @@ export class AutoSlideEngine {
   /** Troca de música: a letra é outra e o contexto anterior não vale mais. */
   carregar(textos: string[]) {
     this.slides = prepararSlides(textos);
+    this.interromper();
+    this.ultimaTrocaEm = 0;
+  }
+
+  /** Silêncio ou evidência inconclusiva interrompem a sequência de confirmações. */
+  interromper() {
     this.candidato = null;
     this.repeticoes = 0;
   }
@@ -146,7 +152,10 @@ export class AutoSlideEngine {
       trecho: "",
       notas,
     });
-    if (notas.length === 0) return vazio("audio-curto");
+    if (notas.length === 0) {
+      this.interromper();
+      return vazio("audio-curto");
+    }
 
     // A evidência é do trecho anterior e voltar está desligado. Isso precisa
     // ser dito com esse nome: pesada pelo contexto, a nota cairia a zero e a
@@ -200,6 +209,7 @@ export class AutoSlideEngine {
     // Dois slides igualmente prováveis costumam ser o mesmo refrão repetido.
     // Trocar no cara ou coroa é o pior dos mundos: espera-se mais áudio.
     if (segundo && segundo.index !== melhor.index && melhor.score - segundo.score < MARGEM) {
+      this.interromper();
       return resposta(false, "empate");
     }
 

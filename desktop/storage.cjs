@@ -1,7 +1,7 @@
 const fs = require("node:fs/promises");
 const path = require("node:path");
 
-const KEYS = new Set(["lumen-v2", "lumen-ops-v1", "lumen-bibles-v1"]);
+const KEYS = new Set(["lumen-v2", "lumen-ops-v1", "lumen-bibles-v1", "lumen-auto-slide-v1"]);
 const LIMIT = 100 * 1024 * 1024;
 
 function validate(data) {

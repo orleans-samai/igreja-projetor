@@ -23,6 +23,7 @@ export type Disponibilidade =
   | { ok: false; motivo: string; comoResolver: string };
 
 interface PonteLocal {
+  autoSlideCancel?: () => Promise<void>;
   autoSlideStatus?: () => Promise<{ pronto: boolean; nome?: string; motivo?: string }>;
   autoSlideTranscrever?: (wav: Uint8Array) => Promise<{ ok: boolean; texto?: string; erro?: string }>;
 }
@@ -55,7 +56,7 @@ export async function disponibilidade(): Promise<Disponibilidade> {
     return {
       ok: false,
       motivo: s.motivo ?? "O modelo de reconhecimento ainda não está instalado.",
-      comoResolver: "Instale o modelo em Tela → Reconhecimento de canto.",
+      comoResolver: "Abra Auto-Slide e clique em Instalar reconhecimento local.",
     };
   } catch {
     return {
@@ -85,15 +86,16 @@ export function criarReconhecedorLocal(): Reconhecedor {
       ocupado = true;
       try {
         const r = await p.autoSlideTranscrever(paraWav(amostras, TAXA));
-        return r.ok ? (r.texto ?? "") : "";
-      } catch {
-        return "";
+        if (encerrado) return "";
+        if (!r.ok) throw new Error(r.erro ?? "Falha no reconhecimento local.");
+        return r.texto ?? "";
       } finally {
         ocupado = false;
       }
     },
     encerrar: () => {
       encerrado = true;
+      void p?.autoSlideCancel?.().catch(() => undefined);
     },
   };
 }
