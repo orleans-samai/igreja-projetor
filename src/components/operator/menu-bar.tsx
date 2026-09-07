@@ -11,6 +11,7 @@ import { openOutputWindow } from "@/lib/live-channel";
 import { openProjectorWindow } from "@/lib/windows-desktop";
 import { useLumenStore } from "@/store/lumen-store";
 import { useOpsStore } from "@/store/ops-store";
+import { useYoutubeStore } from "@/store/youtube-store";
 import { exportService, importService } from "@/lib/service-package";
 
 interface Action {
@@ -66,6 +67,8 @@ export function MenuBar({
   const setLiveMode = useOpsStore((s) => s.setLiveMode);
   const setTourOpen = useOpsStore((s) => s.setTourOpen);
   const reorganizando = useOpsStore((s) => s.reorganizando);
+  const youtubeAberto = useYoutubeStore((s) => s.aberto);
+  const setYoutubeAberto = useYoutubeStore((s) => s.setAberto);
   const setReorganizando = useOpsStore((s) => s.setReorganizando);
   const setCommandOpen = useOpsStore((s) => s.setCommandOpen);
   const setCheckupOpen = useOpsStore((s) => s.setCheckupOpen);
@@ -291,6 +294,22 @@ export function MenuBar({
           )}
         >
           Reorganizar
+        </button>
+
+        <button
+          type="button"
+          aria-pressed={youtubeAberto}
+          onClick={() => setYoutubeAberto(!youtubeAberto)}
+          className={cn(
+            "rounded-md px-2 py-1 text-secondary",
+            "transition-colors duration-[var(--motion-fast)] ease-[var(--ease-out)]",
+            "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring",
+            youtubeAberto
+              ? "bg-danger/20 text-danger"
+              : "text-muted hover:bg-elevated hover:text-fg",
+          )}
+        >
+          YouTube
         </button>
       </nav>
 

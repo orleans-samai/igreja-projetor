@@ -175,9 +175,33 @@ export interface Deck {
 }
 
 /** Snapshot sent from the operator to projection/stage windows. */
+/**
+ * O vídeo do YouTube que está na projeção.
+ *
+ * Viaja dentro do quadro, pelo mesmo canal de sempre: a cabine descreve o
+ * estado desejado e o projetor, que é quem tem o player de verdade, aplica.
+ * A cabine nunca toca no player — se tocasse, o áudio sairia duas vezes.
+ *
+ * `busca` é um contador, não um tempo: sem ele, mandar voltar duas vezes para
+ * o mesmo segundo seria um quadro idêntico ao anterior, e o projetor não teria
+ * como saber que houve um segundo pedido.
+ */
+export interface YoutubeFrame {
+  videoId: string;
+  titulo: string;
+  acao: "tocar" | "pausar" | "parar";
+  tempo: number;
+  busca: number;
+  /** De 0 a 100, como a IFrame Player API espera. */
+  volume: number;
+  mudo: boolean;
+}
+
 export interface LiveFrame {
   v: 1;
   status: OutputStatus;
+  /** Player do YouTube na projeção, quando há um. */
+  youtube?: YoutubeFrame | null;
   theme: Theme;
   stageTheme: Theme;
   deck: Deck | null;

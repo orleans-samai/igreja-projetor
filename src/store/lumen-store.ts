@@ -42,6 +42,7 @@ import type {
   Song,
   SongGroup,
   Theme,
+  YoutubeFrame,
 } from "@/lib/types";
 
 const DEFAULT_SETTINGS: Settings = {
@@ -122,6 +123,8 @@ export interface LumenState {
   selectedGroupId: string | "all";
   preview: Deck | null;
   previewIndex: number;
+  /** Vídeo do YouTube na projeção, ou null quando não há nenhum. */
+  youtube: YoutubeFrame | null;
   live: Deck | null;
   liveIndex: number;
   status: OutputStatus;
@@ -147,6 +150,10 @@ export interface LumenState {
   setPreviewIndex: (i: number) => void;
   presentPreview: () => void;
   presentSlide: (i: number) => void;
+  projetarYoutube: (videoId: string, titulo: string) => void;
+  comandarYoutube: (patch: Partial<Omit<YoutubeFrame, "videoId">>) => void;
+  buscarYoutube: (tempo: number) => void;
+  removerYoutube: () => void;
   stop: () => void;
   goBlack: () => void;
   goLogo: () => void;
@@ -218,6 +225,7 @@ export type LiveFrameInput = Pick<
   | "stageThemeId"
   | "themes"
   | "settings"
+  | "youtube"
 >;
 
 export function buildLiveFrame(s: LiveFrameInput): LiveFrame {
@@ -228,6 +236,7 @@ export function buildLiveFrame(s: LiveFrameInput): LiveFrame {
     status: s.status,
     theme: themeById(s.themes, themeId),
     stageTheme: themeById(s.themes, s.stageThemeId),
+    youtube: s.youtube,
     deck: s.live,
     index: s.liveIndex,
     alert: s.alert,
@@ -323,6 +332,10 @@ const empty = (): Omit<
   | "setPreviewIndex"
   | "presentPreview"
   | "presentSlide"
+  | "projetarYoutube"
+  | "comandarYoutube"
+  | "buscarYoutube"
+  | "removerYoutube"
   | "stop"
   | "goBlack"
   | "goLogo"
@@ -398,6 +411,7 @@ const empty = (): Omit<
   selectedGroupId: "all",
   preview: textToDeck(SEED_TEXTS.find((t) => t.id === "txt-bemvindo") ?? SEED_TEXTS[0]),
   previewIndex: 0,
+  youtube: null,
   live: null,
   liveIndex: 0,
   status: "idle",
@@ -542,6 +556,56 @@ export const useLumenStore = create<LumenState>()(
           set,
         );
       },
+
+      /**
+       * Põe um vídeo do YouTube na projeção.
+       *
+       * Entra pausado. "Projetar" prepara o vídeo no telão; "Tocar" é que o
+       * começa — num culto, a distância entre as duas coisas é quem decide a
+       * hora, e não dá para desfazer um vídeo que já começou na frente de
+       * todo mundo.
+       */
+      projetarYoutube: (videoId, titulo) => {
+        broadcast(
+          {
+            youtube: {
+              videoId,
+              titulo,
+              acao: "pausar",
+              tempo: 0,
+              busca: 0,
+              volume: get().youtube?.volume ?? 85,
+              mudo: get().youtube?.mudo ?? false,
+            },
+          },
+          set,
+        );
+      },
+
+      comandarYoutube: (patch) => {
+        const atual = get().youtube;
+        if (!atual) return;
+        broadcast({ youtube: { ...atual, ...patch } }, set);
+      },
+
+      /**
+       * Ir para um ponto do vídeo.
+       *
+       * O contador sobe a cada pedido: voltar duas vezes para o mesmo segundo
+       * geraria dois quadros idênticos, e o projetor não teria como distinguir
+       * o segundo pedido de um quadro repetido.
+       */
+      buscarYoutube: (tempo) => {
+        const atual = get().youtube;
+        if (!atual) return;
+        broadcast(
+          { youtube: { ...atual, tempo: Math.max(0, tempo), busca: atual.busca + 1 } },
+          set,
+        );
+      },
+
+      /** Tira o vídeo da projeção e devolve o telão ao conteúdo de sempre. */
+      removerYoutube: () => broadcast({ youtube: null }, set),
 
       stop: () => broadcast({ status: "idle", fillMode: "console" }, set),
       goBlack: () =>

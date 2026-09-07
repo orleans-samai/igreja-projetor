@@ -22,6 +22,7 @@ import { AutoSlideDialog, AutoSlidePanel } from "@/components/operator/auto-slid
 import { useAutoSlide } from "@/components/operator/use-auto-slide";
 import { PainelArrastavel, ReorganizeBar } from "@/components/operator/reorganize";
 import { TourBanner } from "@/components/operator/tour";
+import { YoutubePanel } from "@/components/operator/youtube-panel";
 import { WindowsRuntime } from "@/components/operator/windows-setup";
 import { toast } from "sonner";
 import { runOptimize } from "@/lib/run-optimize";
@@ -34,6 +35,7 @@ import { TAMANHO_PAINEL, type PainelId } from "@/lib/paineis";
 import type { LiveFrame } from "@/lib/types";
 import { buildLiveFrame, useLumenStore } from "@/store/lumen-store";
 import { useAutoSlideStore } from "@/store/auto-slide-store";
+import { useYoutubeStore } from "@/store/youtube-store";
 import { useOpsStore } from "@/store/ops-store";
 
 function isTypingTarget(el: EventTarget | null) {
@@ -79,6 +81,7 @@ export function OperatorApp() {
     });
     void useLumenStore.persist.rehydrate();
     void useAutoSlideStore.persist.rehydrate();
+    void useYoutubeStore.persist.rehydrate();
     return unsub;
   }, []);
 
@@ -94,6 +97,7 @@ export function OperatorApp() {
     stageThemeId,
     themes,
     settings: outputSettings,
+    youtube,
   } = store;
   const outputFrame = useMemo(
     () =>
@@ -109,6 +113,7 @@ export function OperatorApp() {
         stageThemeId,
         themes,
         settings: outputSettings,
+        youtube,
       }),
     [
       status,
@@ -122,6 +127,7 @@ export function OperatorApp() {
       stageThemeId,
       themes,
       outputSettings,
+      youtube,
     ],
   );
 
@@ -357,6 +363,7 @@ export function OperatorApp() {
         />
         <WindowsRuntime />
         <AutoSlidePanel onConfig={() => setAutoSlide(true)} />
+        <YoutubePanel />
         <ReorganizeBar />
         <TourBanner />
 

@@ -15,7 +15,17 @@ export type OpsMessage =
   | { type: "request"; request: StageRequest }
   | { type: "ack"; id: string; status: "done" | "dismissed" }
   | { type: "takeover"; sessionId: string }
-  | { type: "chat"; from: RequestFrom; text: string; at: number };
+  | { type: "chat"; from: RequestFrom; text: string; at: number }
+  // O player do YouTube vive na janela de projeção; a cabine só sabe onde o
+  // vídeo está porque o projetor conta. Sem projetor aberto, a barra de
+  // progresso fica parada — e isso já é a resposta certa.
+  | {
+      type: "youtube-tempo";
+      tempo: number;
+      duracao: number;
+      estado: "tocando" | "pausado" | "parado" | "carregando" | "fim";
+      erro?: string;
+    };
 
 let channel: BroadcastChannel | null = null;
 
