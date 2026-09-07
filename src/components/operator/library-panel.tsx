@@ -3,6 +3,8 @@ import {
   FolderCog,
   FolderOpen,
   Globe,
+  ListPlus,
+  Loader2,
   Plus,
   RefreshCw,
   Search,
@@ -25,7 +27,10 @@ import {
   searchVerses,
 } from "@/lib/bible";
 import { cn } from "@/lib/cn";
-import { nid } from "@/lib/fold";
+import { fold, nid } from "@/lib/fold";
+import { fetchAndImportWebSong } from "@/lib/import-web-song";
+import { suggestSongs } from "@/lib/lyrics-suggestions";
+import type { LyricsHit } from "@/lib/lyrics-web";
 import { isWall, optimizeRawText } from "@/lib/slide-optimize";
 import {
   MEDIA_KINDS,
@@ -170,6 +175,8 @@ function SongsList({
   const selectSong = useLumenStore((s) => s.selectSong);
   const addToPlaylist = useLumenStore((s) => s.addToPlaylist);
 
+  const [sugestoes, setSugestoes] = useState(0);
+
   const list = useMemo(() => searchSongs(songs, search, groupId), [songs, search, groupId]);
   const lastPlayed = (id: string) => logs.find((l) => l.refId === id)?.playedAt;
 
@@ -186,10 +193,16 @@ function SongsList({
         ))}
       </div>
 
+      <WebSuggestions onCount={setSugestoes} />
+
       {list.length === 0 ? (
         <Empty
           title={search ? `Nada encontrado para “${search}”.` : "O repertório está vazio."}
-          hint="Busque a letra na internet ou escreva uma nova."
+          hint={
+            sugestoes > 0
+              ? "O que está em ouro acima veio da internet e ainda não é seu."
+              : "Busque a letra na internet ou escreva uma nova."
+          }
           action={
             <div className="flex gap-2">
               <Button size="sm" onClick={onWebLyrics}>
@@ -240,6 +253,154 @@ function SongsList({
               </li>
             );
           })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+/** A mesma música, escrita de dois jeitos, é a mesma música. */
+function jaTem(songs: { title: string; artist: string }[], hit: LyricsHit) {
+  const t = fold(hit.title || "");
+  const a = fold(hit.artist || "");
+  return songs.some((s) => {
+    if (fold(s.title) !== t) return false;
+    const sa = fold(s.artist);
+    return !sa || !a || sa === a;
+  });
+}
+
+/**
+ * Sugestões da internet dentro da busca do repertório.
+ *
+ * O operador digita o nome do louvor sem saber se ele já está no repertório;
+ * quando não está, o Letras e o Vagalume respondem aqui mesmo, em ouro velho,
+ * acima do que já é seu — a cor separa o que você tem do que é oferta.
+ *
+ * Some sozinho: assim que a música entra no repertório ela deixa de ser
+ * sugestão e passa a ser um item da lista de baixo, no lugar de sempre.
+ */
+function WebSuggestions({ onCount }: { onCount: (n: number) => void }) {
+  const search = useLumenStore((s) => s.search);
+  const songs = useLumenStore((s) => s.songs);
+  const selectSong = useLumenStore((s) => s.selectSong);
+  const addToPlaylist = useLumenStore((s) => s.addToPlaylist);
+  const [hits, setHits] = useState<LyricsHit[]>([]);
+  const [buscando, setBuscando] = useState(false);
+  const [ocupado, setOcupado] = useState<string | null>(null);
+  const [dispensadas, setDispensadas] = useState<string[]>([]);
+
+  const termo = search.trim();
+
+  // Menos de três letras é ruído: quase tudo casa e a lista pisca a cada
+  // tecla. A pausa de meio segundo é a diferença entre digitar e procurar.
+  useEffect(() => {
+    if (termo.length < 3) {
+      setHits([]);
+      setBuscando(false);
+      return;
+    }
+    let vivo = true;
+    setBuscando(true);
+    const timer = window.setTimeout(async () => {
+      try {
+        const r = await suggestSongs(termo, "");
+        if (vivo) setHits(r.ok ? r.hits : []);
+      } catch {
+        if (vivo) setHits([]);
+      } finally {
+        if (vivo) setBuscando(false);
+      }
+    }, 500);
+    return () => {
+      vivo = false;
+      window.clearTimeout(timer);
+    };
+  }, [termo]);
+
+  const novas = useMemo(
+    () =>
+      hits
+        .filter((h) => !dispensadas.includes(h.sourceUrl))
+        .filter((h) => !jaTem(songs, h))
+        .slice(0, 4),
+    [hits, songs, dispensadas],
+  );
+
+  useEffect(() => onCount(novas.length), [novas.length, onCount]);
+
+  const adicionar = async (hit: LyricsHit, paraOCulto: boolean) => {
+    setOcupado(`${hit.sourceUrl}|${paraOCulto}`);
+    const r = await fetchAndImportWebSong(hit);
+    setOcupado(null);
+    if (!r.ok) {
+      toast.error(r.error);
+      return;
+    }
+    setDispensadas((v) => [...v, hit.sourceUrl]);
+    selectSong(r.id);
+    if (paraOCulto) {
+      addToPlaylist({
+        type: "song",
+        refId: r.id,
+        notes: "",
+        title: hit.title,
+        subtitle: hit.artist,
+      });
+      toast(`“${hit.title}” entrou no culto — confira os slides no preview`);
+    } else {
+      toast(`“${hit.title}” entrou no repertório — confira os slides no preview`);
+    }
+  };
+
+  if (termo.length < 3 || (!buscando && novas.length === 0)) return null;
+
+  return (
+    <div className="animate-swap-in border-y border-web/25 bg-web/[0.06]">
+      <div className="flex items-center gap-1.5 px-3 pb-1 pt-2">
+        <Globe className="size-3 shrink-0 text-web" aria-hidden />
+        <p className="min-w-0 flex-1 truncate text-caption font-medium text-web">
+          Da internet · Letras e Vagalume
+        </p>
+        {buscando && <Loader2 className="size-3 shrink-0 animate-spin text-web" aria-hidden />}
+      </div>
+
+      {novas.length === 0 ? (
+        <p className="px-3 pb-2 text-secondary text-subtle">Procurando…</p>
+      ) : (
+        <ul className="pb-1.5">
+          {novas.map((hit) => (
+            <li key={hit.sourceUrl || hit.title} className="px-3 py-1">
+              <p className="truncate text-body font-medium text-web">{hit.title}</p>
+              <p className="truncate text-secondary text-subtle">
+                {[hit.artist, hit.sourceName].filter(Boolean).join(" · ")}
+              </p>
+              <div className="mt-1 flex flex-wrap gap-1">
+                <Hint label="Guarda a letra no seu repertório">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={!!ocupado}
+                    loading={ocupado === `${hit.sourceUrl}|false`}
+                    onClick={() => void adicionar(hit, false)}
+                  >
+                    <Plus /> Repertório
+                  </Button>
+                </Hint>
+                <Hint label="Guarda e já põe na ordem do culto de hoje">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={!!ocupado}
+                    loading={ocupado === `${hit.sourceUrl}|true`}
+                    onClick={() => void adicionar(hit, true)}
+                  >
+                    <ListPlus /> Culto
+                  </Button>
+                </Hint>
+              </div>
+            </li>
+          ))}
         </ul>
       )}
     </div>

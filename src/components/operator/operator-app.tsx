@@ -25,8 +25,7 @@ import { SlideStage } from "@/components/slide/slide-renderer";
 import { Segmented } from "@/components/ui/segmented";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { loadBuiltinBible } from "@/lib/bible";
-import { nid, fold } from "@/lib/fold";
-import { formatImportedLyrics } from "@/lib/lyrics";
+import { importWebSong } from "@/lib/import-web-song";
 import type { LiveFrame } from "@/lib/types";
 import { buildLiveFrame, useLumenStore } from "@/store/lumen-store";
 import { useOpsStore } from "@/store/ops-store";
@@ -408,34 +407,7 @@ export function OperatorApp() {
         open={webOpen}
         onOpenChange={setWebOpen}
         prefillQuery={store.search}
-        onPick={(hit) => {
-          const groupId =
-            store.selectedGroupId === "all" ? "g-louvor" : store.selectedGroupId;
-          const lyricsRaw = formatImportedLyrics(hit.lyrics);
-          const existing = store.songs.find(
-            (s) =>
-              fold(s.title) === fold(hit.title || "") &&
-              fold(s.artist) === fold(hit.artist || ""),
-          );
-          store.saveSong({
-            id: existing?.id ?? nid(),
-            title: hit.title || "Música importada",
-            artist: hit.artist || existing?.artist || "",
-            groupId: existing?.groupId ?? groupId,
-            key: existing?.key ?? "",
-            copyright: [
-              hit.copyright,
-              hit.publicDomain ? "domínio público" : "",
-              hit.sourceName,
-            ]
-              .filter(Boolean)
-              .join(" · "),
-            lyricsRaw,
-            slides: [],
-            createdAt: existing?.createdAt ?? Date.now(),
-            updatedAt: Date.now(),
-          });
-        }}
+        onPick={(hit) => void importWebSong(hit)}
       />
     </TooltipProvider>
   );

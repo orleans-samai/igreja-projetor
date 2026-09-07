@@ -85,6 +85,11 @@
   --color-ok: #6f9e78;
   --color-ring: #b9c6d4;
 
+  /* Ouro velho: o que veio da internet e ainda não é seu. Fica ao lado do
+     tungstênio sem se confundir com ele — mais amarelo, menos aceso — porque
+     "no ar" não pode dividir cor com nada. */
+  --color-web: #cfa94e;
+
   /* -- superfícies de projeção -------------------------------------------- */
   --color-paper: #f3efe6;
   --color-paper-fg: #1c1a16;
