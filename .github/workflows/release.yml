@@ -1,0 +1,83 @@
+# Compila o instalador do Windows na nuvem e publica em Releases.
+#
+# Existe para que ninguém precise instalar Node.js para ter o app: quem opera
+# o culto baixa o .exe pronto da página de Releases. De quebra, resolve dois
+# problemas que só aparecem na máquina de casa — o Defender travando os
+# binários do Electron e o build de doze minutos.
+#
+# Para lançar:  git tag v1.1.0 && git push origin v1.1.0
+
+name: Instalador Windows
+
+on:
+  push:
+    tags: ["v*"]
+  # Permite gerar um instalador sem criar tag, pelo botão na aba Actions.
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Verificar
+        run: |
+          npm run typecheck
+          npm run lint
+
+      # `npm test` inclui testes do andaime da plataforma que leem `.grok/`,
+      # pasta que está no .gitignore e portanto não existe num clone limpo.
+      # `test:app` roda os testes do Lúmen, que é o que faz sentido aqui.
+      - name: Testes
+        run: npm run test:app
+
+      - name: Compilar interface e instalador
+        run: npm run win:exe -- --x64
+        env:
+          # Sem certificado de assinatura: não procure identidade nem tente assinar.
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+      # Guarda o resultado mesmo quando não há tag, para dar para baixar e testar.
+      - name: Guardar como artefato
+        uses: actions/upload-artifact@v4
+        with:
+          name: lumen-windows-x64
+          path: |
+            dist-win/release/*.exe
+            dist-win/release/*.zip
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Publicar em Releases
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist-win/release/*.exe
+            dist-win/release/*.zip
+          body: |
+            Instalador do Lúmen para Windows.
+
+            **No PC da igreja não é preciso instalar mais nada** — nem Node.js,
+            nem runtime: o app carrega o próprio motor.
+
+            1. Baixe o `Lúmen-Setup-...-x64.exe`.
+            2. O Windows avisa "editor desconhecido", porque o app não é
+               assinado. Use **Mais informações → Executar assim mesmo**.
+            3. O atalho aparece na área de trabalho e no Menu Iniciar.
+
+            Quem preferir não instalar pode usar o `.zip`, que roda da pasta
+            ou de um pendrive.

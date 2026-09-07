@@ -22,6 +22,7 @@
     "win:exe": "npm run desktop:build && node scripts/build-win.mjs",
     "typecheck": "tsc --noEmit",
     "check:auth": "node scripts/check-auth-invariant.mjs",
+    "test:app": "node --test scripts/desktop-assets.test.mjs scripts/desktop-storage.test.mjs scripts/lyrics-providers.test.mjs scripts/media-folders.test.mjs && node --experimental-strip-types --test src/lib/app-data/app-data.test.ts src/lib/auth/gate-identity.test.ts src/lib/auth/sign-in-gate.test.ts src/lib/slide-optimize.test.ts src/lib/transition.test.ts src/lib/copilot.test.ts src/lib/health.test.ts src/lib/windows-desktop.test.ts",
     "test": "node --test \"scripts/**/*.test.mjs\" && node --experimental-strip-types --test src/lib/app-data/app-data.test.ts src/lib/auth/gate-identity.test.ts src/lib/auth/sign-in-gate.test.ts src/lib/slide-optimize.test.ts src/lib/transition.test.ts src/lib/copilot.test.ts src/lib/health.test.ts src/lib/windows-desktop.test.ts",
     "lint": "eslint .",
     "format": "prettier --write .",

@@ -36,6 +36,13 @@ vendo, e só o aro âmbar quando o telão está preto ou na logo.
 
 ## Instalar no PC da igreja
 
+> **O computador da igreja não precisa de Node.js, nem de nada instalado antes.**
+> O `Lúmen.exe` carrega o próprio motor dentro dele. É baixar o instalador,
+> executar e usar.
+
+Baixe o instalador pronto em **[Releases](https://github.com/orleanss777-sys/igreja-projetor/releases)**
+— ou gere um você mesmo, numa máquina de desenvolvimento:
+
 ```bash
 npm run win:exe
 ```
@@ -116,7 +123,10 @@ O ajuste **baixo desempenho** desliga o papel de parede inteiro, e
 
 ## Rodar o código
 
-Requer [Node.js 22](https://nodejs.org/).
+Só quem for **mexer no código** precisa do [Node.js 22 ou mais novo](https://nodejs.org/)
+— e mesmo isso dá para evitar: um `git tag` faz o GitHub compilar o instalador
+na nuvem e publicá-lo em Releases, sem instalar nada na sua máquina
+(veja [Publicar uma versão](#publicar-uma-versão)).
 
 ```bash
 git clone https://github.com/orleanss777-sys/igreja-projetor.git
@@ -128,11 +138,28 @@ npm run dev
 | Comando | Faz |
 |---|---|
 | `npm run dev` | Cabine no navegador |
-| `npm test` | Testes |
+| `npm run test:app` | Testes do Lúmen |
 | `npm run typecheck` | TypeScript |
 | `npm run lint` | ESLint |
 | `npm run desktop:build` | Compila a interface do app Windows |
 | `npm run win:exe` | Gera o app e o instalador |
+
+## Publicar uma versão
+
+O instalador é compilado pelo GitHub, não na sua máquina. Marque a versão e
+empurre a tag:
+
+```bash
+npm version patch      # ou minor / major
+git push --follow-tags
+```
+
+O fluxo em [`.github/workflows/release.yml`](.github/workflows/release.yml)
+verifica tipos, roda o lint e os testes, compila e publica o `.exe` e o `.zip`
+em **Releases**. A igreja baixa de lá.
+
+Sem tag também dá: a aba **Actions → Instalador Windows → Run workflow** gera
+os arquivos como artefato para baixar e testar.
 
 ## Como está organizado
 
