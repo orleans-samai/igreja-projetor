@@ -18,8 +18,10 @@ import { Empty } from "@/components/ui/panel";
 import { Hint } from "@/components/ui/tooltip";
 import { cn } from "@/lib/cn";
 import { subscribeOps } from "@/lib/ops-channel";
+import { openProjectorWindow } from "@/lib/windows-desktop";
 import { capaDoVideo, dadosDoVideo, idDoVideo, relogio } from "@/lib/youtube";
 import { useLumenStore } from "@/store/lumen-store";
+import { useOpsStore } from "@/store/ops-store";
 import { useYoutubeStore } from "@/store/youtube-store";
 
 /**
@@ -51,11 +53,16 @@ export function YoutubePanel() {
   const comandar = useLumenStore((s) => s.comandarYoutube);
   const buscar = useLumenStore((s) => s.buscarYoutube);
   const tirar = useLumenStore((s) => s.removerYoutube);
+  const setFillMode = useLumenStore((s) => s.setFillMode);
+  const secondMonitor = useLumenStore((s) => s.settings.secondMonitor);
+  const startFullscreen = useLumenStore((s) => s.settings.startFullscreen);
+  const setWindows = useOpsStore((s) => s.setWindows);
 
   const [url, setUrl] = useState("");
   const [erroUrl, setErroUrl] = useState<string | null>(null);
   const [carregando, setCarregando] = useState(false);
   const [arrastando, setArrastando] = useState<number | null>(null);
+  const [semProjetor, setSemProjetor] = useState(false);
 
   const item = fila.find((v) => v.id === atual) ?? null;
   const indice = item ? fila.findIndex((v) => v.id === item.id) : -1;
@@ -63,14 +70,43 @@ export function YoutubePanel() {
   const noAr = projetado?.videoId === item?.videoId && !!projetado;
   const tocando = estado === "tocando";
 
-  // O projetor conta onde o vídeo está. Sem projetor aberto, nada chega — e a
-  // barra parada é a informação correta, não um defeito.
+  // O projetor conta onde o vídeo está.
+  const ultimoRelato = useRef(0);
   useEffect(() => {
     return subscribeOps((msg) => {
       if (msg.type !== "youtube-tempo") return;
+      ultimoRelato.current = Date.now();
+      setSemProjetor(false);
       relatar({ tempo: msg.tempo, duracao: msg.duracao, estado: msg.estado, erro: msg.erro });
     });
   }, [relatar]);
+
+  /**
+   * Vigia do silêncio.
+   *
+   * O player mora na janela de projeção. Com ela fechada não existe player
+   * nenhum: Projetar e Tocar não fazem nada, o tempo fica em 0:00 / 0:00 e o
+   * operador fica olhando para uma cabine que parece quebrada. Alguns segundos
+   * sem notícia do projetor já são resposta suficiente para dizer isso — e
+   * para oferecer o caminho, que é abrir a janela.
+   */
+  const videoProjetado = projetado?.videoId ?? null;
+  useEffect(() => {
+    if (!videoProjetado) {
+      setSemProjetor(false);
+      return;
+    }
+    // A contagem recomeça a cada vídeo novo, e não a cada comando: o player
+    // demora alguns segundos para carregar a API, e acusar ausência antes
+    // disso daria alarme falso em toda projeção. Mas reiniciar a cada ajuste
+    // de volume esconderia um projetor de fato fechado.
+    ultimoRelato.current = Date.now();
+    setSemProjetor(false);
+    const id = window.setInterval(() => {
+      setSemProjetor(Date.now() - ultimoRelato.current > 6000);
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [videoProjetado]);
 
   // Fim do vídeo: por padrão só prepara o próximo. Emendar sozinho no meio de
   // um culto é o tipo de ajuda que ninguém pediu.
@@ -104,6 +140,19 @@ export function YoutubePanel() {
     setCarregando(false);
     adicionar({ videoId: id, titulo: dados?.titulo ?? "Vídeo do YouTube", autor: dados?.autor ?? "" });
     setUrl("");
+  };
+
+  // Mesmo caminho do menu Tela, inclusive a saída quando o popup é bloqueado:
+  // sem segunda janela, o telão passa a ser esta, e o vídeo toca do mesmo jeito.
+  const abrirProjetor = () => {
+    void openProjectorWindow({ secondMonitor, fullscreen: startFullscreen }).then((w) => {
+      if (w) {
+        setWindows({ projectorOpen: true });
+        return;
+      }
+      setFillMode("audience");
+      toast("Popup bloqueado — telão nesta janela");
+    });
   };
 
   return (
@@ -158,6 +207,21 @@ export function YoutubePanel() {
           <p role="alert" className="text-secondary text-danger">
             {erroPlayer}
           </p>
+        )}
+
+        {semProjetor && (
+          <div
+            role="alert"
+            className="flex flex-wrap items-center gap-2 rounded-md bg-accent/12 px-2 py-1.5"
+          >
+            <MonitorOff className="size-3.5 shrink-0 text-accent" aria-hidden />
+            <p className="min-w-0 flex-1 text-secondary text-fg">
+              A janela de projeção não está aberta — é nela que o vídeo toca.
+            </p>
+            <Button size="sm" variant="secondary" onClick={abrirProjetor}>
+              Abrir projetor
+            </Button>
+          </div>
         )}
 
         {item ? (
