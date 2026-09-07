@@ -27,21 +27,24 @@ function empacotar(archArg, saida) {
   return run.status ?? 1;
 }
 
+/**
+ * Onde o pacote é montado.
+ *
+ * Nunca dentro do projeto. O antivírus do Windows segura a pasta recém-
+ * extraída quando o projeto mora em Downloads ou em OneDrive, e o
+ * electron-builder morre no rename do win-unpacked — de forma intermitente,
+ * que é pior do que falhar sempre. Montar fora e copiar o resultado custa
+ * segundos e vale em qualquer máquina, inclusive na do GitHub.
+ */
+const oficina = join(process.env.LOCALAPPDATA || tmpdir(), "lumen-build", "release");
+
 const hashes = [];
 for (const archArg of new Set(arches)) {
   const arch = archArg.slice(2);
-  let saida = destino;
-  if (empacotar(archArg, null) !== 0) {
-    // O antivírus do Windows segura a pasta recém-extraída quando o projeto
-    // mora em Downloads, e o electron-builder morre no rename do
-    // win-unpacked. Fora de lá o mesmo pacote sai inteiro, então a segunda
-    // tentativa monta em AppData e traz os arquivos de volta.
-    saida = join(process.env.LOCALAPPDATA || tmpdir(), "lumen-build", "release");
-    console.warn(`\nEmpacotamento falhou em ${destino}. Repetindo em ${saida}.\n`);
-    rmSync(saida, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
-    const status = empacotar(archArg, saida);
-    if (status !== 0) process.exit(status);
-  }
+  const saida = oficina;
+  rmSync(saida, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  const status = empacotar(archArg, saida);
+  if (status !== 0) process.exit(status);
   for (const file of [`Lúmen-Setup-${pkg.version}-${arch}.exe`, `Lúmen-${pkg.version}-${arch}.zip`]) {
     const origem = join(saida, file);
     if (!existsSync(origem)) throw new Error(`Artefato ausente: ${origem}`);
