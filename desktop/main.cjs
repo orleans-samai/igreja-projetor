@@ -7,6 +7,7 @@ const path = require("node:path");
 const { mediaResponse } = require("./media-response.cjs");
 const { Recognition } = require("./recognition.cjs");
 const packages = require("./service-package.cjs");
+const { YoutubeHost } = require("./youtube-host.cjs");
 
 
 const ORIGIN = "lumen://app";
@@ -17,6 +18,7 @@ protocol.registerSchemesAsPrivileged([{ scheme: "lumen", privileges: {
 if (process.env.LUMEN_TEST_DATA && !app.isPackaged) app.setPath("userData", process.env.LUMEN_TEST_DATA);
 const dataDir = app.getPath("userData");
 const recognition = new Recognition(dataDir);
+const youtubeHost = new YoutubeHost(path.join(__dirname, "www"));
 const packageRoot = path.join(dataDir, "packages");
 let testWindow = null;
 async function localMedia(url) {
@@ -396,6 +398,7 @@ handle("lumen:media-choose", (kind) => media.choose(kind));
 handle("lumen:media-reset", (kind) => media.reset(kind));
 handle("lumen:lyrics-suggest", (input) => require("./lyrics.cjs").suggest(input));
 handle("lumen:lyrics-load", (url) => require("./lyrics.cjs").load(url));
+handle("lumen:youtube-host", () => youtubeHost.start());
 handle("lumen:auto-slide-status", () => recognition.status());
 handle("lumen:auto-slide-install", () => recognition.install());
 handle("lumen:auto-slide-transcribe", (wav) => recognition.transcribe(wav));

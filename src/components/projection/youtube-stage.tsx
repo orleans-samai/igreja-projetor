@@ -4,238 +4,128 @@ import { mensagemDeErro } from "@/lib/youtube";
 import type { YoutubeFrame } from "@/lib/types";
 
 /**
- * O player do YouTube, na janela de projeção.
+ * O YouTube na janela de projeção.
  *
- * Só existe aqui. A cabine descreve o estado desejado no quadro e este
- * componente aplica — se a cabine também tivesse um player, o áudio sairia
- * duas vezes na caixa da igreja, que é exatamente o problema que o player de
- * áudio local já resolveu do mesmo jeito.
+ * O player não é criado aqui: ele mora numa página servida por http://127.0.0.1
+ * e esta janela conversa com ela por postMessage. O motivo é concreto — o app
+ * instalado roda de lumen://app, e de um esquema próprio o YouTube recusa a
+ * reprodução com o erro 153, porque não há referrer http para mandar aos
+ * servidores dele. Servido por http, o mesmo vídeo toca.
  *
- * Tudo pela IFrame Player API oficial: nada é baixado, nada é extraído, e as
- * restrições de incorporação do dono do vídeo são respeitadas — quando ele
- * não deixa, a tela diz isso ao operador em vez de tentar contornar.
+ * Isso custa uma página e uma porta no laço local, e evita mexer na origem do
+ * app inteiro — que é onde moram a autorização de IPC e as travas de
+ * navegação. O player continua existindo só aqui: a cabine manda, o telão
+ * reproduz, e o som sai uma vez só.
  */
 
-interface Player {
-  loadVideoById: (id: string) => void;
-  cueVideoById: (id: string) => void;
-  playVideo: () => void;
-  pauseVideo: () => void;
-  stopVideo: () => void;
-  seekTo: (s: number, exato: boolean) => void;
-  setVolume: (v: number) => void;
-  mute: () => void;
-  unMute: () => void;
-  getCurrentTime: () => number;
-  getDuration: () => number;
-  destroy: () => void;
+interface Mensagem {
+  lumen?: string;
+  estado?: "tocando" | "pausado" | "parado" | "carregando" | "fim";
+  tempo?: number;
+  duracao?: number;
+  codigo?: number;
 }
 
-interface YT {
-  Player: new (
-    el: HTMLElement,
-    opcoes: Record<string, unknown>,
-  ) => Player;
-  PlayerState: { ENDED: number; PLAYING: number; PAUSED: number; BUFFERING: number; CUED: number };
-}
-
-declare global {
-  interface Window {
-    YT?: YT;
-    onYouTubeIframeAPIReady?: () => void;
-  }
-}
-
-/** A API entra uma vez por janela; todo player depois disso reaproveita. */
-let carregando: Promise<YT> | null = null;
-function carregarApi(): Promise<YT> {
-  if (typeof window === "undefined") return Promise.reject(new Error("sem janela"));
-  if (window.YT?.Player) return Promise.resolve(window.YT);
-  if (carregando) return carregando;
-  carregando = new Promise<YT>((resolve, reject) => {
-    const anterior = window.onYouTubeIframeAPIReady;
-    const limite = window.setTimeout(
-      () => reject(new Error("A API do YouTube não respondeu.")),
-      15000,
-    );
-    window.onYouTubeIframeAPIReady = () => {
-      window.clearTimeout(limite);
-      anterior?.();
-      if (window.YT?.Player) resolve(window.YT);
-      else reject(new Error("A API do YouTube carregou incompleta."));
-    };
-    const tag = document.createElement("script");
-    tag.src = "https://www.youtube.com/iframe_api";
-    tag.async = true;
-    tag.onerror = () => {
-      window.clearTimeout(limite);
-      carregando = null;
-      reject(new Error("Sem internet para carregar o player do YouTube."));
-    };
-    document.head.appendChild(tag);
-  });
-  return carregando;
+/** Endereço da página do player: servidor local no app, mesma origem na web. */
+async function enderecoDoPlayer(): Promise<string> {
+  const d = typeof window !== "undefined" ? window.lumenDesktop : undefined;
+  const ponte = d as unknown as { youtubeHost?: () => Promise<string> } | undefined;
+  if (d?.isDesktop && ponte?.youtubeHost) return ponte.youtubeHost();
+  return "/youtube-player.html";
 }
 
 export function YoutubeStage({ frame }: { frame: YoutubeFrame }) {
-  const caixa = useRef<HTMLDivElement>(null);
-  const player = useRef<Player | null>(null);
-  const [pronto, setPronto] = useState(false);
+  const quadro = useRef<HTMLIFrameElement>(null);
+  const [endereco, setEndereco] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+  const [vivo, setVivo] = useState(false);
   const buscaFeita = useRef(frame.busca);
-  const videoNoPlayer = useRef<string>("");
-  // O relógio publica a cada meio segundo e não sabe o que o player está
-  // fazendo; quem sabe é o onStateChange. Sem guardar o estado aqui, a cabine
-  // receberia "tocando" para sempre e o botão de Tocar nunca voltaria ao
-  // normal depois de uma pausa.
-  const estadoAtual = useRef<"tocando" | "pausado" | "parado" | "carregando" | "fim">("parado");
 
-  // Um player por janela, criado uma vez. Trocar de vídeo é carregar outro id
-  // dentro do mesmo player, não montar tudo de novo.
   useEffect(() => {
-    let vivo = true;
-    let relogio = 0;
-    carregarApi()
-      .then((yt) => {
-        if (!vivo || !caixa.current) return;
-        player.current = new yt.Player(caixa.current, {
-          host: "https://www.youtube.com",
-          playerVars: {
-            autoplay: 0,
-            controls: 0,
-            disablekb: 1,
-            modestbranding: 1,
-            rel: 0,
-            playsinline: 1,
-            iv_load_policy: 3,
-            origin: window.location.origin,
-          },
-          events: {
-            onReady: () => {
-              if (!vivo) return;
-              setPronto(true);
-              relogio = window.setInterval(() => {
-                const p = player.current;
-                if (!p) return;
-                try {
-                  publishOps({
-                    type: "youtube-tempo",
-                    tempo: p.getCurrentTime() || 0,
-                    duracao: p.getDuration() || 0,
-                    estado: estadoAtual.current,
-                  });
-                } catch {
-                  /* player entre estados */
-                }
-              }, 500);
-            },
-            onError: (e: { data: number }) => {
-              if (!vivo) return;
-              const msg = mensagemDeErro(e.data);
-              setErro(msg);
-              publishOps({ type: "youtube-tempo", tempo: 0, duracao: 0, estado: "parado", erro: msg });
-            },
-            onStateChange: (e: { data: number }) => {
-              if (!vivo || !window.YT) return;
-              const s = window.YT.PlayerState;
-              const estado =
-                e.data === s.PLAYING
-                  ? "tocando"
-                  : e.data === s.PAUSED
-                    ? "pausado"
-                    : e.data === s.ENDED
-                      ? "fim"
-                      : e.data === s.BUFFERING
-                        ? "carregando"
-                        : "parado";
-              estadoAtual.current = estado;
-              const p = player.current;
-              publishOps({
-                type: "youtube-tempo",
-                tempo: p?.getCurrentTime() ?? 0,
-                duracao: p?.getDuration() ?? 0,
-                estado,
-              });
-            },
-          },
-        });
-      })
-      .catch((e: Error) => {
-        if (vivo) setErro(e.message);
-      });
-
+    let ativo = true;
+    enderecoDoPlayer()
+      .then((url) => ativo && setEndereco(url))
+      .catch(() => ativo && setErro("Não foi possível preparar o player do YouTube."));
     return () => {
-      vivo = false;
-      window.clearInterval(relogio);
-      try {
-        player.current?.destroy();
-      } catch {
-        /* já destruído */
-      }
-      player.current = null;
+      ativo = false;
     };
   }, []);
 
-  // Vídeo pedido pela cabine.
+  // O que a página do player conta de volta vira o que a cabine mostra.
+  //
+  // A conferência é pela origem, não por comparar objetos de janela: entre
+  // origens diferentes essa comparação é frágil, e a origem é justamente a
+  // garantia que interessa — só a página que servimos em 127.0.0.1 fala aqui.
+  const origemDoPlayer = endereco ? new URL(endereco, window.location.href).origin : null;
   useEffect(() => {
-    const p = player.current;
-    if (!pronto || !p || videoNoPlayer.current === frame.videoId) return;
-    videoNoPlayer.current = frame.videoId;
-    setErro(null);
-    try {
-      // Entra preparado, não tocando: quem decide a hora é a cabine.
-      p.cueVideoById(frame.videoId);
-    } catch {
-      setErro("Não foi possível carregar este vídeo.");
-    }
-  }, [pronto, frame.videoId]);
-
-  // Tocar, pausar, parar.
-  useEffect(() => {
-    const p = player.current;
-    if (!pronto || !p || erro) return;
-    try {
-      if (frame.acao === "tocar") p.playVideo();
-      else if (frame.acao === "pausar") p.pauseVideo();
-      else {
-        p.stopVideo();
-        p.seekTo(0, true);
+    if (!origemDoPlayer) return;
+    const onMsg = (ev: MessageEvent<Mensagem>) => {
+      if (ev.origin !== origemDoPlayer) return;
+      const d = ev.data;
+      if (!d || typeof d.lumen !== "string") return;
+      if (d.lumen === "yt-vivo" || d.lumen === "yt-pronto") {
+        setVivo(true);
+        return;
       }
-    } catch {
-      /* comando chegou entre estados do player */
-    }
-  }, [pronto, erro, frame.acao, frame.videoId]);
+      if (d.lumen === "yt-erro") {
+        const msg =
+          d.codigo === -1
+            ? "Sem internet para carregar o player do YouTube."
+            : mensagemDeErro(d.codigo ?? 0);
+        setErro(msg);
+        publishOps({ type: "youtube-tempo", tempo: 0, duracao: 0, estado: "parado", erro: msg });
+        return;
+      }
+      if (d.lumen === "yt-estado") {
+        setErro(null);
+        publishOps({
+          type: "youtube-tempo",
+          tempo: d.tempo ?? 0,
+          duracao: d.duracao ?? 0,
+          estado: d.estado ?? "parado",
+        });
+      }
+    };
+    window.addEventListener("message", onMsg);
+    return () => window.removeEventListener("message", onMsg);
+  }, [origemDoPlayer]);
 
-  // Ir para um ponto: só quando o contador de pedidos muda.
+  // Estado desejado → página do player. A busca só viaja quando o contador
+  // muda, senão todo ajuste de volume rebobinaria o vídeo.
   useEffect(() => {
-    const p = player.current;
-    if (!pronto || !p || frame.busca === buscaFeita.current) return;
+    const janela = quadro.current?.contentWindow;
+    if (!vivo || !janela) return;
+    const buscar = frame.busca !== buscaFeita.current ? frame.tempo : undefined;
     buscaFeita.current = frame.busca;
-    try {
-      p.seekTo(frame.tempo, true);
-    } catch {
-      /* player ainda carregando */
-    }
-  }, [pronto, frame.busca, frame.tempo]);
-
-  // Volume e mudo.
-  useEffect(() => {
-    const p = player.current;
-    if (!pronto || !p) return;
-    try {
-      p.setVolume(Math.max(0, Math.min(100, frame.volume)));
-      if (frame.mudo) p.mute();
-      else p.unMute();
-    } catch {
-      /* player ainda carregando */
-    }
-  }, [pronto, frame.volume, frame.mudo]);
+    janela.postMessage(
+      {
+        lumen: "yt",
+        videoId: frame.videoId,
+        acao: frame.acao,
+        volume: frame.volume,
+        mudo: frame.mudo,
+        ...(buscar === undefined ? {} : { buscar }),
+      },
+      "*",
+    );
+  }, [vivo, frame.videoId, frame.acao, frame.volume, frame.mudo, frame.busca, frame.tempo]);
 
   return (
     <div className="absolute inset-0 z-20 flex items-center justify-center bg-black">
-      {/* Proporção mantida, preto em volta: a caixa acompanha a menor sobra. */}
-      <div className="relative aspect-video max-h-full max-w-full" style={{ width: "100%" }}>
-        <div ref={caixa} className="absolute inset-0 size-full" />
+      <div className="relative aspect-video max-h-full w-full max-w-full">
+        {endereco && (
+          <iframe
+            ref={quadro}
+            src={endereco}
+            title="Vídeo do YouTube"
+            allow="autoplay; encrypted-media; fullscreen"
+            // Carregou é sinal suficiente de que a página está lá: não depender
+            // só do aperto de mão evita o vídeo ficar parado se a primeira
+            // mensagem se perder.
+            onLoad={() => setVivo(true)}
+            className="absolute inset-0 size-full border-0"
+          />
+        )}
       </div>
 
       {erro && (

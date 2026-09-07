@@ -82,6 +82,12 @@ export function mensagemDeErro(codigo: number): string {
   if (codigo === 101 || codigo === 150) {
     return "O dono deste vídeo não permite exibi-lo fora do YouTube. Escolha outro.";
   }
+  // 153 não está na documentação, mas é o que o YouTube devolve quando a
+  // página que hospeda o player não tem uma origem http válida. Era o erro que
+  // o app dava em toda reprodução, escondido atrás da frase genérica.
+  if (codigo === 153) {
+    return "O player não conseguiu falar com o YouTube. Feche e abra o Lúmen; se persistir, verifique a internet.";
+  }
   return "Não foi possível reproduzir este vídeo.";
 }
 

@@ -2,6 +2,7 @@ const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("lumenDesktop", {
   isDesktop: true,
+  youtubeHost: () => ipcRenderer.invoke("lumen:youtube-host"),
   autoSlideStatus: () => ipcRenderer.invoke("lumen:auto-slide-status"),
   autoSlideInstall: () => ipcRenderer.invoke("lumen:auto-slide-install"),
   autoSlideTranscrever: (wav) => ipcRenderer.invoke("lumen:auto-slide-transcribe", wav),

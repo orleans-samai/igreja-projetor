@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="pt-BR">
+<meta charset="utf-8">
+<title>Player do YouTube</title>
+<!--
+  A casa do player do YouTube.
+
+  Existe por um motivo só: o app instalado roda de lumen://app, um esquema
+  próprio, e de lá o YouTube recusa a reprodução com o erro 153 — não há
+  referrer http para enviar aos servidores dele. Esta página é servida por
+  http://127.0.0.1, que é uma origem de verdade, e o player passa a funcionar.
+
+  Ela não decide nada: recebe comandos da janela de projeção por postMessage e
+  devolve tempo, duração e erros. Quem manda continua sendo a cabine.
+-->
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  #player, iframe { width: 100%; height: 100%; border: 0; display: block; }
+</style>
+<div id="player"></div>
+<script>
+(function () {
+  "use strict";
+  var player = null;
+  var pronto = false;
+  var estado = "parado";
+  var pendente = null;
+  var relogio = 0;
+
+  function avisar(msg) {
+    // O pai é a janela de projeção, em outra origem. "*" é seguro aqui porque
+    // nada do que sai daqui é sigiloso: tempo, duração e código de erro.
+    if (window.parent !== window) window.parent.postMessage(msg, "*");
+  }
+
+  function contar() {
+    if (!player || !pronto) return;
+    try {
+      avisar({
+        lumen: "yt-estado",
+        estado: estado,
+        tempo: player.getCurrentTime() || 0,
+        duracao: player.getDuration() || 0
+      });
+    } catch (e) { /* player entre estados */ }
+  }
+
+  function nomeDoEstado(n) {
+    if (!window.YT) return "parado";
+    var s = window.YT.PlayerState;
+    if (n === s.PLAYING) return "tocando";
+    if (n === s.PAUSED) return "pausado";
+    if (n === s.ENDED) return "fim";
+    if (n === s.BUFFERING) return "carregando";
+    return "parado";
+  }
+
+  function criar(videoId) {
+    // O vídeo entra no construtor: criar o player vazio e só depois pedir o
+    // vídeo foi justamente o que não funcionou.
+    player = new window.YT.Player("player", {
+      videoId: videoId,
+      playerVars: {
+        autoplay: 0, controls: 0, disablekb: 1, modestbranding: 1,
+        rel: 0, playsinline: 1, iv_load_policy: 3
+        // Sem "origin" de propósito: esta página fica aninhada num pai de
+        // outra origem, e ali a API calcula o destino errado e o aperto de
+        // mão com o embed morre em silêncio — onReady nunca dispara. Deixada
+        // sozinha, ela resolve certo.
+      },
+      events: {
+        onReady: function () {
+          pronto = true;
+          avisar({ lumen: "yt-pronto" });
+          contar();
+          relogio = setInterval(contar, 500);
+          if (pendente) { aplicar(pendente); pendente = null; }
+        },
+        onStateChange: function (e) { estado = nomeDoEstado(e.data); contar(); },
+        onError: function (e) { avisar({ lumen: "yt-erro", codigo: e.data }); }
+      }
+    });
+  }
+
+  function aplicar(c) {
+    if (!player || !pronto) { pendente = c; return; }
+    try {
+      if (c.videoId && c.videoId !== player.__video) {
+        player.__video = c.videoId;
+        player.cueVideoById(c.videoId);
+      }
+      if (typeof c.volume === "number") player.setVolume(Math.max(0, Math.min(100, c.volume)));
+      if (typeof c.mudo === "boolean") { if (c.mudo) player.mute(); else player.unMute(); }
+      if (typeof c.buscar === "number") player.seekTo(c.buscar, true);
+      if (c.acao === "tocar") player.playVideo();
+      else if (c.acao === "pausar") player.pauseVideo();
+      else if (c.acao === "parar") { player.stopVideo(); player.seekTo(0, true); }
+    } catch (e) {
+      avisar({ lumen: "yt-erro", codigo: 0 });
+    }
+  }
+
+  window.addEventListener("message", function (ev) {
+    var d = ev.data;
+    if (!d || d.lumen !== "yt") return;
+    if (!player) {
+      if (!d.videoId) return;
+      pendente = d;
+      if (window.YT && window.YT.Player) criar(d.videoId);
+      else window.__criarQuando = d.videoId;
+      return;
+    }
+    aplicar(d);
+  });
+
+  window.onYouTubeIframeAPIReady = function () {
+    if (window.__criarQuando) { var v = window.__criarQuando; window.__criarQuando = null; criar(v); }
+  };
+
+  var tag = document.createElement("script");
+  tag.src = "https://www.youtube.com/iframe_api";
+  tag.onerror = function () { avisar({ lumen: "yt-erro", codigo: -1 }); };
+  document.head.appendChild(tag);
+
+  avisar({ lumen: "yt-vivo" });
+})();
+</script>
+</html>
