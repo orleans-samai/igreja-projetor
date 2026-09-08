@@ -7,6 +7,8 @@ import { Menu, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrigger } fr
 import { Tally } from "@/components/ui/panel";
 import { Hint } from "@/components/ui/tooltip";
 import { cn } from "@/lib/cn";
+import { fold, nid } from "@/lib/fold";
+import { escreverMuf, lerMuf } from "@/lib/muf";
 import { openOutputWindow } from "@/lib/live-channel";
 import { openProjectorWindow } from "@/lib/windows-desktop";
 import { useLumenStore } from "@/store/lumen-store";
@@ -105,6 +107,86 @@ export function MenuBar({
     if (next) applyThemeLive(next);
   };
 
+  /**
+   * Exporta o repertório inteiro num pacote .muf.
+   *
+   * Só letra, sem mídia: é o que se leva para outra igreja, para o
+   * computador novo da cabine, ou para um backup que caiba num e-mail.
+   */
+  const exportarMuf = async () => {
+    const st = useLumenStore.getState();
+    if (st.songs.length === 0) {
+      toast("O repertório está vazio.");
+      return;
+    }
+    const bytes = await escreverMuf(
+      st.songs.map((s) => ({
+        titulo: s.title,
+        artista: s.artist,
+        tom: s.key,
+        copyright: s.copyright,
+        letra: s.lyricsRaw,
+      })),
+    );
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([bytes as BlobPart], { type: "application/gzip" }));
+    a.download = `repertorio-lumen-${new Date().toISOString().slice(0, 10)}.muf`;
+    a.click();
+    toast(`${st.songs.length} músicas exportadas`);
+  };
+
+  /**
+   * Importa um pacote em lote.
+   *
+   * Música que já existe com o mesmo título e artista é atualizada, não
+   * duplicada: quem importa um hinário duas vezes quer o hinário, não duas
+   * cópias dele.
+   */
+  const importarMuf = () => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".muf,.mufl,application/gzip,application/json";
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      const lido = await lerMuf(new Uint8Array(await file.arrayBuffer()));
+      if (!lido.ok) {
+        toast.error(lido.erro);
+        return;
+      }
+      const st = useLumenStore.getState();
+      let novas = 0;
+      let atualizadas = 0;
+      for (const m of lido.musicas) {
+        const igual = useLumenStore
+          .getState()
+          .songs.find(
+            (s) => fold(s.title) === fold(m.titulo) && fold(s.artist) === fold(m.artista),
+          );
+        if (igual) atualizadas += 1;
+        else novas += 1;
+        st.saveSong({
+          id: igual?.id ?? nid(),
+          title: m.titulo,
+          artist: m.artista,
+          groupId: igual?.groupId ?? "g-louvor",
+          key: m.tom || (igual?.key ?? ""),
+          copyright: m.copyright || (igual?.copyright ?? ""),
+          lyricsRaw: m.letra,
+          slides: [],
+          createdAt: igual?.createdAt ?? Date.now(),
+          updatedAt: Date.now(),
+        });
+      }
+      toast(
+        atualizadas > 0
+          ? `${novas} músicas novas, ${atualizadas} atualizadas`
+          : `${novas} músicas importadas`,
+      );
+    };
+    input.click();
+  };
+
   const exportRepertoire = () => {
     const blob = new Blob([exportLibrary()], { type: "application/json" });
     const a = document.createElement("a");
@@ -140,6 +222,8 @@ export function MenuBar({
         { label: "Importar culto com mídias…", onSelect: () => void importService() },
         { label: "Exportar repertório", onSelect: exportRepertoire },
         { label: "Importar repertório", onSelect: importRepertoire },
+        { label: "Exportar repertório em lote (.muf)", onSelect: () => void exportarMuf() },
+        { label: "Importar repertório em lote (.muf)", onSelect: importarMuf },
         { label: "Instalar no Windows", onSelect: () => setWindowsSetupOpen(true) },
         { label: "Configurações", onSelect: onSettings },
       ],
