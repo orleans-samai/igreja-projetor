@@ -1,0 +1,28 @@
+const { contextBridge, ipcRenderer } = require("electron");
+
+contextBridge.exposeInMainWorld("lumenDesktop", {
+  isDesktop: true,
+  youtubeHost: () => ipcRenderer.invoke("lumen:youtube-host"),
+  autoSlideStatus: () => ipcRenderer.invoke("lumen:auto-slide-status"),
+  autoSlideInstall: () => ipcRenderer.invoke("lumen:auto-slide-install"),
+  autoSlideTranscrever: (wav) => ipcRenderer.invoke("lumen:auto-slide-transcribe", wav),
+  autoSlideCancel: () => ipcRenderer.invoke("lumen:auto-slide-cancel"),
+  preflight: (urls) => ipcRenderer.invoke("lumen:preflight", urls),
+  selectDisplay: (id) => ipcRenderer.invoke("lumen:select-display", id),
+  testDisplay: (on) => ipcRenderer.invoke("lumen:test-display", on),
+  exportService: (data) => ipcRenderer.invoke("lumen:export-service", data),
+  importService: () => ipcRenderer.invoke("lumen:import-service"),
+  suggestLyrics: (input) => ipcRenderer.invoke("lumen:lyrics-suggest", input),
+  loadLyrics: (url) => ipcRenderer.invoke("lumen:lyrics-load", url),
+  mediaList: (kind) => ipcRenderer.invoke("lumen:media-list", kind),
+  mediaFolders: () => ipcRenderer.invoke("lumen:media-folders"),
+  mediaOpenFolder: (kind) => ipcRenderer.invoke("lumen:media-open", kind),
+  mediaChooseFolder: (kind) => ipcRenderer.invoke("lumen:media-choose", kind),
+  mediaResetFolder: (kind) => ipcRenderer.invoke("lumen:media-reset", kind),
+  storageGet: (key) => ipcRenderer.invoke("lumen:storage-get", key),
+  storageSet: (key, value) => ipcRenderer.invoke("lumen:storage-set", key, value),
+  openProjector: () => ipcRenderer.invoke("lumen:open-projector"),
+  openStage: () => ipcRenderer.invoke("lumen:open-stage"),
+  openPedido: () => ipcRenderer.invoke("lumen:open-pedido"),
+  displays: () => ipcRenderer.invoke("lumen:displays"),
+});

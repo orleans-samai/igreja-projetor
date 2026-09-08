@@ -1,0 +1,45 @@
+appId: br.igreja.lumen
+productName: Lúmen
+copyright: Igreja local
+asar: true
+directories:
+  output: dist-win/release
+  buildResources: desktop/build
+files:
+  - desktop/*.cjs
+  - desktop/www/**/*
+  - desktop/build/icon.png
+  - package.json
+  - "!**/node_modules/**"
+  - "!**/*.{md,map,ts,tsx}"
+afterPack: scripts/after-pack.cjs
+extraMetadata:
+  main: desktop/main.cjs
+win:
+  icon: desktop/build/icon.ico
+  target:
+    - nsis
+    - zip
+    - dir
+  artifactName: ${productName}-${version}-${arch}.${ext}
+  signAndEditExecutable: false
+electronLanguages:
+  - pt-BR
+  - en-US
+nsis:
+  artifactName: ${productName}-Setup-${version}-${arch}.${ext}
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Lúmen
+  uninstallDisplayName: Lúmen
+  installerLanguages:
+    - pt_BR
+  language: "1046"
+  displayLanguageSelector: false
+  deleteAppDataOnUninstall: false
+compression: maximum
+removePackageScripts: true
+npmRebuild: false

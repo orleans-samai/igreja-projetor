@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 330" width="1200" height="330" role="img" aria-label="As quatro janelas do Lúmen: cabine, telão, palco e pedido do pastor">
+  <style>
+    .rot { font: 600 15px 'Instrument Sans','Segoe UI',system-ui,sans-serif; fill: #ecebe8; }
+    .leg { font: 13px 'Instrument Sans','Segoe UI',system-ui,sans-serif; fill: #8e8d89; }
+    .mini { font: 9px 'Instrument Sans','Segoe UI',system-ui,sans-serif; fill: #74736f; }
+    .tela { fill: #05060a; }
+    .quadro { fill: #1a1a1d; stroke: #2b2b31; }
+  </style>
+
+  <rect width="1200" height="330" fill="#141416"/>
+
+  <!-- cabine -->
+  <g transform="translate(40 40)">
+    <rect class="quadro" width="250" height="150" rx="6"/>
+    <rect x="1" y="1" width="248" height="14" rx="5" fill="#232327"/>
+    <circle cx="234" cy="8" r="3" fill="#eba63f"/>
+    <rect x="8" y="24" width="52" height="118" rx="3" fill="#232327"/>
+    <rect x="66" y="24" width="52" height="118" rx="3" fill="#232327"/>
+    <rect x="124" y="24" width="80" height="90" rx="3" fill="#05060a"/>
+    <rect x="140" y="60" width="48" height="3" rx="1.5" fill="#6b6a66"/>
+    <rect x="146" y="68" width="36" height="3" rx="1.5" fill="#4c4b48"/>
+    <rect x="124" y="120" width="80" height="22" rx="3" fill="#232327"/>
+    <rect x="210" y="24" width="32" height="118" rx="3" fill="#232327"/>
+    <text class="rot" x="0" y="176">Cabine</text>
+    <text class="leg" x="0" y="196">O operador monta e dispara</text>
+    <text class="mini" x="0" y="214">monitor principal</text>
+  </g>
+
+  <!-- telão -->
+  <g transform="translate(330 40)">
+    <rect class="quadro" width="250" height="150" rx="6"/>
+    <rect x="6" y="6" width="238" height="138" rx="4" class="tela"/>
+    <rect x="58" y="58" width="134" height="7" rx="3.5" fill="#e8e5dd"/>
+    <rect x="74" y="72" width="102" height="7" rx="3.5" fill="#e8e5dd"/>
+    <rect x="66" y="86" width="118" height="7" rx="3.5" fill="#e8e5dd"/>
+    <circle cx="228" cy="20" r="4" fill="#eba63f"/>
+    <text class="rot" x="0" y="176">Telão</text>
+    <text class="leg" x="0" y="196">O que a igreja lê</text>
+    <text class="mini" x="0" y="214">segundo monitor, tela cheia</text>
+  </g>
+
+  <!-- palco -->
+  <g transform="translate(620 40)">
+    <rect class="quadro" width="250" height="150" rx="6"/>
+    <rect x="6" y="6" width="238" height="138" rx="4" class="tela"/>
+    <rect x="52" y="44" width="146" height="7" rx="3.5" fill="#e8e5dd"/>
+    <rect x="70" y="58" width="110" height="7" rx="3.5" fill="#e8e5dd"/>
+    <rect x="18" y="104" width="60" height="5" rx="2.5" fill="#7d9bb8"/>
+    <rect x="18" y="115" width="92" height="4" rx="2" fill="#4c4b48"/>
+    <rect x="150" y="104" width="80" height="4" rx="2" fill="#4c4b48"/>
+    <rect x="168" y="114" width="62" height="4" rx="2" fill="#3a3a41"/>
+    <text class="rot" x="0" y="176">Palco</text>
+    <text class="leg" x="0" y="196">Retorno com cifra e o que vem</text>
+    <text class="mini" x="0" y="214">TV do louvor</text>
+  </g>
+
+  <!-- pedido -->
+  <g transform="translate(910 40)">
+    <rect class="quadro" width="250" height="150" rx="6"/>
+    <rect x="88" y="10" width="74" height="130" rx="9" fill="#0f0f11" stroke="#2b2b31"/>
+    <rect x="97" y="26" width="56" height="12" rx="3" fill="#47709c" opacity="0.85"/>
+    <rect x="97" y="48" width="36" height="4" rx="2" fill="#4c4b48"/>
+    <rect x="97" y="60" width="56" height="10" rx="3" fill="#232327"/>
+    <rect x="97" y="76" width="26" height="10" rx="3" fill="#232327"/>
+    <rect x="129" y="76" width="24" height="10" rx="3" fill="#232327"/>
+    <rect x="97" y="96" width="56" height="13" rx="3" fill="#e9e8e5"/>
+    <text class="rot" x="0" y="176">Pedido do pastor</text>
+    <text class="leg" x="0" y="196">Pede o versículo do púlpito</text>
+    <text class="mini" x="0" y="214">celular</text>
+  </g>
+
+  <!-- as setas dizem quem manda em quem -->
+  <g stroke="#3a3a41" stroke-width="1.5" fill="none">
+    <path d="M296 115 L322 115" marker-end="url(#seta)"/>
+    <path d="M586 115 L612 115" marker-end="url(#seta)"/>
+    <path d="M1035 30 C1035 16 165 16 165 30" stroke-dasharray="4 4" marker-end="url(#seta)"/>
+  </g>
+  <defs>
+    <marker id="seta" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto">
+      <path d="M0 0 L10 5 L0 10 z" fill="#3a3a41"/>
+    </marker>
+  </defs>
+
+  <text class="mini" x="600" y="300" text-anchor="middle">
+    Tudo na mesma máquina, sem internet — o pedido do pastor volta para a cabine, que decide a hora
+  </text>
+</svg>
