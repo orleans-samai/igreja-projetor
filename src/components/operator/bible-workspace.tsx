@@ -28,10 +28,10 @@ import {
   bookSection,
   bookShort,
   bookTinyName,
-  findBookByTyped,
 } from "@/lib/bible-books";
 import { cn } from "@/lib/cn";
 import { fold } from "@/lib/fold";
+import { BibleReferencePopup } from "@/components/operator/bible-reference-popup";
 import type { LiveFrame } from "@/lib/types";
 import { useLumenStore } from "@/store/lumen-store";
 
@@ -123,6 +123,8 @@ export function BibleWorkspace({
   const [favOpen, setFavOpen] = useState(false);
   const [hint, setHint] = useState("");
   const [filtro, setFiltro] = useState("");
+  const [refAberta, setRefAberta] = useState(false);
+  const [refTexto, setRefTexto] = useState("");
   const [projected, setProjected] = useState<Set<string>>(() => new Set());
   const typeBuf = useRef("");
   const typeTimer = useRef(0);
@@ -248,9 +250,14 @@ export function BibleWorkspace({
         }
         return;
       }
+      // Letra digitada abre a busca de referência com o que já foi teclado.
+      // Antes o app adivinhava o livro e pulava sozinho: quando errava, o
+      // operador não via o que o programa tinha entendido.
       if (buf.length >= 1) {
-        const book = findBookByTyped(buf);
-        if (book) state.go(book.id, 1, 1);
+        setRefTexto(buf);
+        setRefAberta(true);
+        typeBuf.current = "";
+        setHint("");
       }
     };
     window.addEventListener("keydown", onKey);
@@ -261,7 +268,7 @@ export function BibleWorkspace({
   }, []);
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-bg">
+    <div className="relative flex h-full min-h-0 flex-col bg-bg">
       <div className="flex flex-wrap items-center gap-2 border-b border-border bg-surface px-3 py-2">
         <Button size="sm" variant="secondary" onClick={onBack}>
           <ArrowLeft className="size-3.5" /> Cabine
@@ -554,11 +561,21 @@ export function BibleWorkspace({
         </div>
       )}
 
+      <BibleReferencePopup
+        aberto={refAberta}
+        textoInicial={refTexto}
+        versionId={versionId}
+        aoFechar={() => setRefAberta(false)}
+        aoEscolher={(bookId, capitulo, versiculo, projetar) =>
+          go(bookId, capitulo, versiculo, projetar)
+        }
+      />
+
       <p className="flex items-center gap-2 border-t border-border px-3 py-1.5 text-secondary text-subtle">
         <BookOpen className="size-3" />
         <span className="min-w-0 flex-1 truncate">
-          Digite uma tecla para localizar o versículo ou o livro · duplo clique projeta · Enter
-          envia ao telão · Esc volta à cabine
+          Digite o nome de um livro para abrir a busca · número vai ao versículo · duplo clique
+          projeta · Enter envia ao telão · Esc volta à cabine
         </span>
         {hint && (
           <kbd className="rounded bg-elevated px-2 py-0.5 font-mono text-secondary text-fg">{hint}</kbd>
