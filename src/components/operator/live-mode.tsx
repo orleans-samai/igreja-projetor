@@ -14,6 +14,7 @@ import { cn } from "@/lib/cn";
 import type { LiveFrame, PlaylistItem } from "@/lib/types";
 import { useLumenStore } from "@/store/lumen-store";
 import { useOpsStore } from "@/store/ops-store";
+import { useAutoSlideStore } from "@/store/auto-slide-store";
 
 function playlistCursor() {
   const s = useLumenStore.getState();
@@ -162,6 +163,7 @@ export function LiveMode({
   const jumpLabel = useLumenStore((s) => s.jumpLabel);
 
   const setLiveMode = useOpsStore((s) => s.setLiveMode);
+  const autoSlideLigado = useAutoSlideStore((s) => s.ligado);
   const setCommandOpen = useOpsStore((s) => s.setCommandOpen);
   const setEmergencyOpen = useOpsStore((s) => s.setEmergencyOpen);
   const voiceOn = useOpsStore((s) => s.voiceOn);
@@ -232,6 +234,15 @@ export function LiveMode({
         <h1 className="text-title font-semibold tracking-tight">Modo operador</h1>
         <Tally state={tally} label={tallyLabel} />
         <p className="tnum ml-auto font-mono text-body text-muted">{clock}</p>
+        {/* Fora do Modo operador o gatilho é o menu Mais da cabine, que não
+            existe aqui — sem isto, ligar o Auto-Slide pela primeira vez
+            neste modo não teria por onde. Some sozinho depois de ligado: a
+            faixa do Auto-Slide já mostra o próprio ajuste dali em diante. */}
+        {!autoSlideLigado && (
+          <Button size="sm" variant="ghost" onClick={onAutoSlide}>
+            <Mic /> Auto-Slide
+          </Button>
+        )}
         <Button size="sm" variant="ghost" onClick={() => setLiveMode(false)}>
           Voltar à cabine
         </Button>

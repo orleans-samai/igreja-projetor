@@ -51,12 +51,9 @@ export function AutoSlidePanel({ onConfig }: { onConfig: () => void }) {
   const modo = useAutoSlideStore((s) => s.modo);
   const status = useLumenStore((s) => s.status);
 
-  if (!ligado) return (
-    <div className="flex shrink-0 items-center gap-3 border-b border-border bg-elevated px-3 py-1.5">
-      <Button size="sm" variant="secondary" onClick={onConfig}><Mic /> Auto-Slide</Button>
-      <span className="truncate text-caption text-muted">Acompanhar a letra por voz · configurar</span>
-    </div>
-  );
+  // O convite a configurar não mora mais aqui: o gatilho é o menu Mais, na
+  // barra superior. Enquanto desligado, esta faixa não ocupa espaço nenhum.
+  if (!ligado) return null;
 
   return (
     <div className="animate-swap-in flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-border bg-elevated px-3 py-1">

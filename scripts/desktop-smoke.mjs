@@ -53,7 +53,10 @@ try {
   const preflight = await page.evaluate((url) => window.lumenDesktop.preflight([url, "/missing.mp4"]), mediaUrl);
   assert.deepEqual(preflight.missing, ["/missing.mp4"]);
   assert.equal((await page.evaluate(() => window.lumenDesktop.autoSlideStatus())).pronto, false);
-  await page.getByRole("button", { name: "Auto-Slide", exact: true }).click();
+  // Auto-Slide e YouTube não são mais botões soltos na barra — moraram para
+  // dentro de "Mais", que só os revela com um clique.
+  await page.getByRole("button", { name: "Mais", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Auto-Slide", exact: true }).click();
   const autoDialog = page.getByRole("dialog", { name: "Reconhecimento de canto" });
   await autoDialog.waitFor();
   await autoDialog.getByRole("button", { name: "Instalar reconhecimento local", exact: true }).waitFor();
@@ -133,7 +136,10 @@ try {
       await locator.waitFor({ state: "visible" });
       assert.ok(await locator.evaluate((el) => { const r = el.getBoundingClientRect(); return r.left >= 0 && r.top >= 0 && r.right <= innerWidth + 1 && r.bottom <= innerHeight + 1; }), `Control outside viewport: ${width}x${height}@${zoom}`);
     };
-    await assertWithin(page.getByRole("button", { name: "Auto-Slide", exact: true }));
+    // Na cabine, o gatilho persistente agora é "Mais" — Auto-Slide só aparece
+    // dentro do menu que ele abre. No Modo operador (F8) não existe "Mais",
+    // então o botão Auto-Slide continua direto na barra.
+    await assertWithin(page.getByRole("button", { name: "Mais", exact: true }));
     await page.screenshot({ animations: "disabled", path: path.join(evidence, `cabine-${width}-${zoom}.png`) });
     await page.keyboard.press("F8");
     await assertWithin(page.getByRole("button", { name: "Auto-Slide", exact: true }));

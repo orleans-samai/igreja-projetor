@@ -1,4 +1,4 @@
-import { GraduationCap, Menu as MenuIcon, Play, Radio, Search, Square } from "lucide-react";
+import { Check, GraduationCap, Menu as MenuIcon, Play, Radio, Search, Square } from "lucide-react";
 import { type ReactNode } from "react";
 import { toast } from "sonner";
 import { LumenMark } from "@/components/logo";
@@ -13,6 +13,7 @@ import { openOutputWindow } from "@/lib/live-channel";
 import { openProjectorWindow } from "@/lib/windows-desktop";
 import { useLumenStore } from "@/store/lumen-store";
 import { useOpsStore } from "@/store/ops-store";
+import { useAutoSlideStore } from "@/store/auto-slide-store";
 import { useYoutubeStore } from "@/store/youtube-store";
 import { exportService, importService } from "@/lib/service-package";
 
@@ -71,6 +72,7 @@ export function MenuBar({
   const setLiveMode = useOpsStore((s) => s.setLiveMode);
   const setTourOpen = useOpsStore((s) => s.setTourOpen);
   const reorganizando = useOpsStore((s) => s.reorganizando);
+  const autoSlideLigado = useAutoSlideStore((s) => s.ligado);
   const youtubeAberto = useYoutubeStore((s) => s.aberto);
   const setYoutubeAberto = useYoutubeStore((s) => s.setAberto);
   const setReorganizando = useOpsStore((s) => s.setReorganizando);
@@ -383,21 +385,53 @@ export function MenuBar({
           Reorganizar
         </button>
 
-        <button
-          type="button"
-          aria-pressed={youtubeAberto}
-          onClick={() => setYoutubeAberto(!youtubeAberto)}
-          className={cn(
-            "rounded-md px-2 py-1 text-secondary",
-            "transition-colors duration-[var(--motion-fast)] ease-[var(--ease-out)]",
-            "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring",
-            youtubeAberto
-              ? "bg-danger/20 text-danger"
-              : "text-muted hover:bg-elevated hover:text-fg",
-          )}
-        >
-          YouTube
-        </button>
+        {/* Auto-Slide e YouTube são recursos extras, não um modo permanente
+            como Reorganizar — por isso ficam escondidos atrás de um clique
+            em vez de ocupar a barra o tempo todo. O ponto aceso no gatilho
+            avisa quando um dos dois está ligado, mesmo fechado. */}
+        <Menu>
+          <MenuTrigger asChild>
+            <button
+              type="button"
+              className={cn(
+                "flex items-center gap-1.5 rounded-md px-2 py-1 text-secondary",
+                "transition-colors duration-[var(--motion-fast)] ease-[var(--ease-out)]",
+                "data-[state=open]:bg-elevated data-[state=open]:text-fg",
+                "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring",
+                autoSlideLigado || youtubeAberto
+                  ? "text-accent"
+                  : "text-muted hover:bg-elevated hover:text-fg",
+              )}
+            >
+              Mais
+              {(autoSlideLigado || youtubeAberto) && (
+                <span aria-hidden className="size-1.5 rounded-full bg-accent" />
+              )}
+            </button>
+          </MenuTrigger>
+          <MenuContent>
+            <MenuItem onSelect={onAutoSlide}>
+              <span className="flex items-center gap-2">
+                {autoSlideLigado ? (
+                  <Check className="size-3.5 shrink-0" aria-hidden />
+                ) : (
+                  <span className="size-3.5 shrink-0" aria-hidden />
+                )}
+                Auto-Slide
+              </span>
+            </MenuItem>
+            <MenuItem onSelect={() => setYoutubeAberto(!youtubeAberto)}>
+              <span className="flex items-center gap-2">
+                {youtubeAberto ? (
+                  <Check className="size-3.5 shrink-0" aria-hidden />
+                ) : (
+                  <span className="size-3.5 shrink-0" aria-hidden />
+                )}
+                YouTube
+              </span>
+            </MenuItem>
+          </MenuContent>
+        </Menu>
       </nav>
 
       {/* Celular: tudo num menu só. Antes, nada disto existia abaixo de 640px. */}
