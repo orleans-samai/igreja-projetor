@@ -209,6 +209,11 @@ declare global {
       remoteControlRegeneratePin: () => Promise<import("./remote-control").RemoteStatus>;
       remoteControlPushState: (payload: import("./remote-control").RemoteStatePayload) => void;
       onRemoteCommand: (cb: (acao: string) => void) => () => void;
+      updateCheck: () => Promise<{ ok: boolean; erro?: string }>;
+      updateDownload: () => Promise<import("./updates").EstadoAtualizacao>;
+      updateInstall: () => Promise<import("./updates").EstadoAtualizacao>;
+      updateStatus: () => Promise<import("./updates").EstadoAtualizacao>;
+      onUpdateStatus: (cb: (estado: import("./updates").EstadoAtualizacao) => void) => () => void;
     };
   }
 }

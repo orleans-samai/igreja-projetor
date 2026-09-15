@@ -5,14 +5,22 @@
 # problemas que só aparecem na máquina de casa — o Defender travando os
 # binários do Electron e o build de doze minutos.
 #
-# Para lançar:  git tag v1.1.0 && git push origin v1.1.0
+# Todo push para main publica uma versão nova sozinho — não é preciso criar
+# tag nem compilar na mão para o app instalado enxergar a atualização (veja
+# desktop/updater.cjs). A versão é <major>.<minor do package.json>.<número da
+# execução>, sempre maior que a anterior, o que é tudo que o electron-updater
+# precisa para saber que há algo novo.
+#
+# Uma tag v1.2.0 continua funcionando para uma versão "de verdade", com esse
+# número exato em vez do calculado.
 
 name: Instalador Windows
 
 on:
   push:
+    branches: [main]
     tags: ["v*"]
-  # Permite gerar um instalador sem criar tag, pelo botão na aba Actions.
+  # Permite gerar um instalador sem publicar nada, pelo botão na aba Actions.
   workflow_dispatch:
 
 permissions:
@@ -41,8 +49,26 @@ jobs:
       # `npm test` inclui testes do andaime da plataforma que leem `.grok/`,
       # pasta que está no .gitignore e portanto não existe num clone limpo.
       # `test:app` roda os testes do Lúmen, que é o que faz sentido aqui.
+      # Roda ANTES de definir a versão e compilar: código que não passa
+      # nunca chega a virar uma atualização publicada.
       - name: Testes
         run: npm run test:app
+
+      # Uma tag "v1.2.3" usa esse número exato. Um push comum em main ganha
+      # <major>.<minor>.<execução> — sempre maior que a última, sem precisar
+      # de coordenação manual nenhuma a cada push.
+      - name: Definir a versão desta compilação
+        id: versao
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          else
+            BASE=$(node -p "require('./package.json').version.split('.').slice(0,2).join('.')")
+            VERSION="$BASE.$GITHUB_RUN_NUMBER"
+          fi
+          npm pkg set version="$VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Compilar interface e instalador
         run: npm run win:exe -- --x64
@@ -50,7 +76,8 @@ jobs:
           # Sem certificado de assinatura: não procure identidade nem tente assinar.
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
 
-      # Guarda o resultado mesmo quando não há tag, para dar para baixar e testar.
+      # Guarda o resultado mesmo quando não publica nada, para dar para
+      # baixar e testar direto da aba Actions.
       - name: Guardar como artefato
         uses: actions/upload-artifact@v4
         with:
@@ -62,9 +89,11 @@ jobs:
           retention-days: 14
 
       - name: Publicar em Releases
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: github.event_name == 'push'
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: v${{ steps.versao.outputs.version }}
+          name: Lúmen ${{ steps.versao.outputs.version }}
           # latest.yml e o .blockmap são o que o app já instalado lê para
           # descobrir que existe uma versão nova (desktop/updater.cjs) — sem
           # eles a Release aparece normal no GitHub, mas ninguém que já tem
@@ -75,10 +104,14 @@ jobs:
             dist-win/release/latest.yml
             dist-win/release/*.blockmap
           body: |
-            Instalador do Lúmen para Windows.
+            ${{ startsWith(github.ref, 'refs/tags/v') && 'Instalador do Lúmen para Windows.' || format('Publicado automaticamente a partir do commit {0}.', github.sha) }}
 
             **No PC da igreja não é preciso instalar mais nada** — nem Node.js,
             nem runtime: o app carrega o próprio motor.
+
+            Quem já tem o Lúmen aberto recebe um aviso para atualizar sozinho
+            (Arquivo → Verificar atualizações, ou a faixa que aparece
+            sozinha). Para instalar pela primeira vez:
 
             1. Baixe o `Lúmen-Setup-...-x64.exe`.
             2. O Windows avisa "editor desconhecido", porque o app não é

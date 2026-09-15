@@ -93,6 +93,19 @@ try {
   await page.evaluate(() => window.lumenDesktop.remoteControlStop());
   await assert.rejects(fetch(remoteBase + "/"));
 
+  // Verificar atualizações sob pedido: não afirma um resultado — o repositório
+  // pode ou não ter uma Release publicada no instante em que este teste roda
+  // — só que pedir a verificação pelo menu não derruba a cabine. O status
+  // final por IPC precisa ser um dos que o updater sabe relatar.
+  const statusAtualizacao = await page.evaluate(async () => {
+    await window.lumenDesktop.updateCheck();
+    return window.lumenDesktop.updateStatus();
+  });
+  assert.ok(
+    ["atualizado", "disponivel", "erro", "sem-verificacao"].includes(statusAtualizacao.fase),
+    `fase inesperada: ${statusAtualizacao.fase}`,
+  );
+
   await page.keyboard.press("Control+Shift+H");
   const checkup = page.getByRole("dialog", { name: "Check-up pré-culto" });
   await checkup.waitFor();
@@ -182,7 +195,7 @@ try {
   assert.deepEqual(errors, []);
   const disk = JSON.parse(await readFile(path.join(profile, "data", "library.json"), "utf8"));
   assert.ok(disk.values["lumen-v2"]);
-  console.log(`PASS: offline, fonts, Bible, restart persistence, projector, media ranges, preflight, Auto-Slide, remote control (LAN + PIN), review before apply, 1366×768 at 100/125/150% and 800×600. Evidence: ${evidence}`);
+  console.log(`PASS: offline, fonts, Bible, restart persistence, projector, media ranges, preflight, Auto-Slide, remote control (LAN + PIN), update check, review before apply, 1366×768 at 100/125/150% and 800×600. Evidence: ${evidence}`);
 } finally {
   if (app) await app.close();
   console.log(`Isolated test profile: ${profile}`);

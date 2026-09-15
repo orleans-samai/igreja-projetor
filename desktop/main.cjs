@@ -9,6 +9,7 @@ const { Recognition } = require("./recognition.cjs");
 const packages = require("./service-package.cjs");
 const { YoutubeHost } = require("./youtube-host.cjs");
 const { RemoteControl } = require("./remote-control.cjs");
+const updater = require("./updater.cjs");
 
 
 const ORIGIN = "lumen://app";
@@ -343,7 +344,10 @@ if (!gotLock) {
     const ext = externalDisplay();
     if (ext && !process.env.LUMEN_TEST_DATA) openProjector();
     log("Started " + app.getVersion() + " Electron " + process.versions.electron + " " + process.arch);
-    require("./updater.cjs").checkForUpdates({ log, isPackaged: app.isPackaged });
+    updater.iniciar({ log, isPackaged: app.isPackaged });
+    updater.assinar((estadoAtualizacao) => {
+      if (cabine && !cabine.isDestroyed()) cabine.webContents.send("lumen:update-status", estadoAtualizacao);
+    });
   }).catch((error) => { reportError(error); app.quit(); });
 }
 
@@ -422,6 +426,10 @@ handle("lumen:media-reset", (kind) => media.reset(kind));
 handle("lumen:lyrics-suggest", (input) => require("./lyrics.cjs").suggest(input));
 handle("lumen:lyrics-load", (url) => require("./lyrics.cjs").load(url));
 handle("lumen:youtube-host", () => youtubeHost.start());
+handle("lumen:update-check", () => updater.verificar());
+handle("lumen:update-download", () => { updater.baixar(); return updater.status(); });
+handle("lumen:update-install", () => { updater.instalarAgora(); return updater.status(); });
+handle("lumen:update-status", () => updater.status());
 handle("lumen:remote-control-start", () => remoteControl.ligar());
 handle("lumen:remote-control-stop", () => remoteControl.desligar());
 handle("lumen:remote-control-status", () => remoteControl.status());

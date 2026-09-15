@@ -1,64 +1,104 @@
 const { autoUpdater } = require("electron-updater");
-const { dialog } = require("electron");
 
 /**
- * Verifica se há uma versão nova no GitHub Releases quando o Lúmen abre.
+ * Verifica, baixa e aplica atualizações publicadas no GitHub Releases.
  *
- * Nunca baixa nem reinicia sozinho: o app fica aberto durante o culto, e um
- * reinício sem aviso no meio do serviço é pior do que simplesmente não
- * avisar. Quem opera a cabine decide quando baixar e quando reiniciar —
- * as duas perguntas abaixo sempre têm "Depois" como resposta padrão.
+ * Cada push para o GitHub agora publica uma versão nova sozinho — veja
+ * .github/workflows/release.yml. Este módulo fecha o ciclo do outro lado:
+ * o app aberto na cabine descobre essa versão sozinho, sem ninguém precisar
+ * compilar ou instalar nada na mão.
  *
- * Se o PC da igreja estiver offline, `checkForUpdates` só falha em silêncio
- * (vai para o log, não interrompe o app).
+ * Nunca baixa nem reinicia sem avisar: o app roda durante o culto, e um
+ * reinício de surpresa no meio do serviço é pior do que só avisar e esperar.
+ * Quem decide baixar e quando reiniciar é o operador, pela faixa de
+ * atualização ou por Arquivo → Verificar atualizações.
  */
-function checkForUpdates({ log, isPackaged }) {
-  if (!isPackaged) return; // build de desenvolvimento: sem verificação.
+
+let estado = { fase: "sem-verificacao", versao: null, progresso: 0, erro: null };
+const ouvintes = new Set();
+let logRef = () => {};
+
+function relatar(patch) {
+  estado = { ...estado, ...patch };
+  for (const fn of ouvintes) {
+    try {
+      fn(estado);
+    } catch {
+      /* um ouvinte quebrado não pode derrubar o updater */
+    }
+  }
+}
+
+/** Chamado uma vez, na abertura do app. */
+function iniciar({ log, isPackaged }) {
+  logRef = log;
+  if (!isPackaged) {
+    relatar({ fase: "sem-verificacao" });
+    return; // build de desenvolvimento: nada publicado para verificar.
+  }
 
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = false;
 
-  autoUpdater.on("error", (err) => {
-    log("Atualização: " + (err?.message || err));
-  });
-
+  autoUpdater.on("checking-for-update", () => relatar({ fase: "verificando", erro: null }));
+  autoUpdater.on("update-not-available", () => relatar({ fase: "atualizado", versao: null, progresso: 0 }));
   autoUpdater.on("update-available", (info) => {
     log("Atualização disponível: " + info.version);
-    dialog
-      .showMessageBox({
-        type: "info",
-        title: "Lúmen — atualização disponível",
-        message: `Versão ${info.version} disponível (esta é a ${autoUpdater.currentVersion}).`,
-        detail: "O Lúmen continua funcionando normalmente enquanto baixa em segundo plano.",
-        buttons: ["Baixar agora", "Depois"],
-        defaultId: 0,
-        cancelId: 1,
-      })
-      .then(({ response }) => {
-        if (response === 0) autoUpdater.downloadUpdate();
-      });
+    relatar({ fase: "disponivel", versao: info.version, progresso: 0 });
   });
-
+  autoUpdater.on("download-progress", (p) => {
+    relatar({ fase: "baixando", progresso: Math.round(p.percent) });
+  });
   autoUpdater.on("update-downloaded", (info) => {
     log("Atualização baixada: " + info.version);
-    dialog
-      .showMessageBox({
-        type: "info",
-        title: "Lúmen — pronto para atualizar",
-        message: `Versão ${info.version} baixada.`,
-        detail: "Reiniciar agora aplica a atualização. Se o culto está no ar, escolha Depois e reinicie quando puder — a atualização fica pronta esperando.",
-        buttons: ["Reiniciar agora", "Depois"],
-        defaultId: 1,
-        cancelId: 1,
-      })
-      .then(({ response }) => {
-        if (response === 0) autoUpdater.quitAndInstall();
-      });
+    relatar({ fase: "pronto", versao: info.version, progresso: 100 });
+  });
+  autoUpdater.on("error", (err) => {
+    const msg = String(err?.message || err);
+    log("Atualização: " + msg);
+    relatar({ fase: "erro", erro: msg });
   });
 
-  autoUpdater
-    .checkForUpdates()
-    .catch((err) => log("Atualização: falha ao verificar — " + (err?.message || err)));
+  void verificar();
 }
 
-module.exports = { checkForUpdates };
+/** Verifica agora — na abertura, e sob pedido (menu, ou a faixa). */
+async function verificar() {
+  try {
+    await autoUpdater.checkForUpdates();
+    return { ok: true };
+  } catch (err) {
+    const msg = String(err?.message || err);
+    logRef("Atualização: falha ao verificar — " + msg);
+    relatar({ fase: "erro", erro: msg });
+    return { ok: false, erro: msg };
+  }
+}
+
+function baixar() {
+  if (estado.fase !== "disponivel") return;
+  autoUpdater.downloadUpdate().catch((err) => {
+    const msg = String(err?.message || err);
+    logRef("Atualização: falha ao baixar — " + msg);
+    relatar({ fase: "erro", erro: msg });
+  });
+}
+
+/** Fecha o app e instala — só depois de "pronto", nunca antes. */
+function instalarAgora() {
+  if (estado.fase !== "pronto") return;
+  autoUpdater.quitAndInstall();
+}
+
+function status() {
+  return estado;
+}
+
+/** A cabine assina para saber de cada mudança de fase, em tempo real. */
+function assinar(fn) {
+  ouvintes.add(fn);
+  fn(estado);
+  return () => ouvintes.delete(fn);
+}
+
+module.exports = { iniciar, verificar, baixar, instalarAgora, status, assinar };

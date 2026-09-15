@@ -3,6 +3,15 @@ const { contextBridge, ipcRenderer } = require("electron");
 contextBridge.exposeInMainWorld("lumenDesktop", {
   isDesktop: true,
   youtubeHost: () => ipcRenderer.invoke("lumen:youtube-host"),
+  updateCheck: () => ipcRenderer.invoke("lumen:update-check"),
+  updateDownload: () => ipcRenderer.invoke("lumen:update-download"),
+  updateInstall: () => ipcRenderer.invoke("lumen:update-install"),
+  updateStatus: () => ipcRenderer.invoke("lumen:update-status"),
+  onUpdateStatus: (cb) => {
+    const listener = (_event, estado) => cb(estado);
+    ipcRenderer.on("lumen:update-status", listener);
+    return () => ipcRenderer.removeListener("lumen:update-status", listener);
+  },
   remoteControlStart: () => ipcRenderer.invoke("lumen:remote-control-start"),
   remoteControlStop: () => ipcRenderer.invoke("lumen:remote-control-stop"),
   remoteControlStatus: () => ipcRenderer.invoke("lumen:remote-control-status"),

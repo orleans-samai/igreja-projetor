@@ -105,6 +105,27 @@ export function MenuBar({
     if (!w) setFillMode("stage");
   };
 
+  /**
+   * Verificação sob pedido.
+   *
+   * A cada abertura o app já verifica sozinho; isto é para quem não quer
+   * esperar — ou quer confirmar que subiu certo depois de um push. Achando
+   * uma versão nova ou pronta, a faixa de atualização aparece sozinha; aqui
+   * só cabe dizer quando não há nada de novo ou quando a verificação falhou.
+   */
+  const verificarAtualizacoes = async () => {
+    const d = window.lumenDesktop;
+    if (!d?.isDesktop) {
+      toast("Verificação de atualização só existe no aplicativo do Windows.");
+      return;
+    }
+    toast("Verificando atualizações…");
+    await d.updateCheck();
+    const s = await d.updateStatus();
+    if (s.fase === "atualizado") toast("Você já está na versão mais recente.");
+    else if (s.fase === "erro") toast.error(s.erro ?? "Não foi possível verificar agora.");
+  };
+
   const cycleTheme = () => {
     const ids = themes.map((t) => t.id);
     const next = ids[(ids.indexOf(songThemeId) + 1) % ids.length];
@@ -229,6 +250,7 @@ export function MenuBar({
         { label: "Exportar repertório em lote (.muf)", onSelect: () => void exportarMuf() },
         { label: "Importar repertório em lote (.muf)", onSelect: importarMuf },
         { label: "Instalar no Windows", onSelect: () => setWindowsSetupOpen(true) },
+        { label: "Verificar atualizações", onSelect: () => void verificarAtualizacoes() },
         { label: "Configurações", onSelect: onSettings },
       ],
     },

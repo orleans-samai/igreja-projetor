@@ -24,6 +24,7 @@ import { useRemoteControl } from "@/components/operator/use-remote-control";
 import { useAutoSlide } from "@/components/operator/use-auto-slide";
 import { PainelArrastavel, ReorganizeBar } from "@/components/operator/reorganize";
 import { TourBanner } from "@/components/operator/tour";
+import { UpdateBanner } from "@/components/operator/update-banner";
 import { YoutubePanel } from "@/components/operator/youtube-panel";
 import { WindowsRuntime } from "@/components/operator/windows-setup";
 import { toast } from "sonner";
@@ -367,6 +368,7 @@ export function OperatorApp() {
           onOptimize={() => void runOptimize()}
         />
         <WindowsRuntime />
+        <UpdateBanner />
         <AutoSlidePanel onConfig={() => setAutoSlide(true)} />
         {/* A Bíblia é espaço de trabalho de tela cheia. O que pertence ao fluxo
             de músicas — vídeo e grade de letras — sai de cena enquanto ela está
