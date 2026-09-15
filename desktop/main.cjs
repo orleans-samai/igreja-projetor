@@ -343,6 +343,7 @@ if (!gotLock) {
     const ext = externalDisplay();
     if (ext && !process.env.LUMEN_TEST_DATA) openProjector();
     log("Started " + app.getVersion() + " Electron " + process.versions.electron + " " + process.arch);
+    require("./updater.cjs").checkForUpdates({ log, isPackaged: app.isPackaged });
   }).catch((error) => { reportError(error); app.quit(); });
 }
 

@@ -2,6 +2,14 @@ appId: br.igreja.lumen
 productName: Lúmen
 copyright: Igreja local
 asar: true
+# Gera latest.yml/.blockmap ao lado do instalador — build-win.mjs já sabia
+# copiá-los, só faltava o electron-builder ter para onde apontar. `--publish
+# never` (usado no build normal) segue sem subir nada sozinho; é a Release do
+# GitHub que hospeda os arquivos, e o app (desktop/updater.cjs) só lê de lá.
+publish:
+  provider: github
+  owner: orleans-samai
+  repo: igreja-projetor
 directories:
   output: dist-win/release
   buildResources: desktop/build
@@ -12,6 +20,31 @@ files:
   - package.json
   - "!**/node_modules/**"
   - "!**/*.{md,map,ts,tsx}"
+  # O main process não usa nenhum pacote de node_modules em runtime — tudo
+  # mais é bundle da UI (Vite) já dentro de desktop/www. A única exceção é
+  # electron-updater, para desktop/updater.cjs; a lista abaixo é a árvore de
+  # dependências dele inteira (resolvida via `require()` em cada
+  # package.json, não só o que apareceu num teste manual), reincluída uma a
+  # uma DEPOIS do "!**/node_modules/**" acima — o electron-builder aplica os
+  # padrões em ordem e o último que casa vence, então isto tem que vir
+  # depois para não puxar node_modules inteiro (pglite, radix etc. ficam de
+  # fora, como sempre estiveram).
+  - node_modules/electron-updater/**/*
+  - node_modules/builder-util-runtime/**/*
+  - node_modules/argparse/**/*
+  - node_modules/debug/**/*
+  - node_modules/fs-extra/**/*
+  - node_modules/graceful-fs/**/*
+  - node_modules/js-yaml/**/*
+  - node_modules/jsonfile/**/*
+  - node_modules/lazy-val/**/*
+  - node_modules/lodash.escaperegexp/**/*
+  - node_modules/lodash.isequal/**/*
+  - node_modules/ms/**/*
+  - node_modules/sax/**/*
+  - node_modules/semver/**/*
+  - node_modules/tiny-typed-emitter/**/*
+  - node_modules/universalify/**/*
 afterPack: scripts/after-pack.cjs
 extraMetadata:
   main: desktop/main.cjs

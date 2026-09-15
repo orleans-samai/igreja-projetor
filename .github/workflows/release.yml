@@ -65,9 +65,15 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
+          # latest.yml e o .blockmap são o que o app já instalado lê para
+          # descobrir que existe uma versão nova (desktop/updater.cjs) — sem
+          # eles a Release aparece normal no GitHub, mas ninguém que já tem
+          # o Lúmen aberto fica sabendo.
           files: |
             dist-win/release/*.exe
             dist-win/release/*.zip
+            dist-win/release/latest.yml
+            dist-win/release/*.blockmap
           body: |
             Instalador do Lúmen para Windows.
 
