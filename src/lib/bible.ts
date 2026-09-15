@@ -10,13 +10,22 @@ import { fold, nid } from "./fold";
 import { parseBibleRef, formatRef, type ParsedRef } from "./bible-ref";
 import type { CompactBible, CompactBook, Slide } from "./types";
 
-const BUILTIN_URL = "/bible/almeida-1819.json";
+export const BUILTIN_BIBLES = [
+  { id: "almeida-1819", url: "/bible/almeida-1819.json", name: "Almeida 1819", license: "domínio público" },
+  {
+    id: "blivre-2018",
+    url: "/bible/blivre-2018.json",
+    name: "Bíblia Livre (BLIVRE)",
+    license: "CC BY 4.0 — Diego Santos, Mario Sérgio e Marco Teles (biblialivre.org)",
+  },
+] as const;
+
 const IDB_NAME = "lumen-bible";
 const IDB_STORE = "versions";
 
-let builtin: CompactBible | null = null;
+const builtins = new Map<string, CompactBible>();
+const builtinLoads = new Map<string, Promise<CompactBible>>();
 const extras = new Map<string, CompactBible>();
-let loadPromise: Promise<CompactBible> | null = null;
 
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -103,24 +112,29 @@ export function normalizeImported(raw: unknown): CompactBible {
   throw new Error("Formato não reconhecido. Use o JSON compacto Lúmen ou o formato midvash.");
 }
 
-export async function loadBuiltinBible(): Promise<CompactBible> {
-  if (builtin) return builtin;
-  if (!loadPromise) {
-    loadPromise = fetch(BUILTIN_URL)
+export async function loadBuiltinBible(id: string = "almeida-1819"): Promise<CompactBible> {
+  const cached = builtins.get(id);
+  if (cached) return cached;
+  let p = builtinLoads.get(id);
+  if (!p) {
+    const meta = BUILTIN_BIBLES.find((b) => b.id === id);
+    if (!meta) throw new Error(`Versão embutida desconhecida: ${id}`);
+    p = fetch(meta.url)
       .then((r) => {
         if (!r.ok) throw new Error("Não foi possível carregar a Bíblia");
         return r.json() as Promise<CompactBible>;
       })
       .then((data) => {
-        builtin = data;
+        builtins.set(id, data);
         return data;
       })
       .catch((err) => {
-        loadPromise = null;
+        builtinLoads.delete(id);
         throw err;
       });
+    builtinLoads.set(id, p);
   }
-  return loadPromise;
+  return p;
 }
 
 export async function hydrateExtraVersions(): Promise<CompactBible[]> {
@@ -158,14 +172,13 @@ export async function importBibleVersion(raw: unknown): Promise<CompactBible> {
 }
 
 export function getBible(versionId: string): CompactBible | null {
-  if (builtin && (versionId === builtin.id || versionId === "almeida-1819")) return builtin;
-  return extras.get(versionId) ?? builtin;
+  return builtins.get(versionId) ?? extras.get(versionId) ?? builtins.get("almeida-1819") ?? null;
 }
 
 export function listVersions(): { id: string; name: string; license: string }[] {
-  const list = builtin
-    ? [{ id: builtin.id, name: builtin.name, license: builtin.license }]
-    : [{ id: "almeida-1819", name: "Almeida 1819", license: "domínio público" }];
+  const list: { id: string; name: string; license: string }[] = BUILTIN_BIBLES.map(
+    ({ id, name, license }) => ({ id, name, license }),
+  );
   for (const v of extras.values()) list.push({ id: v.id, name: v.name, license: v.license });
   return list;
 }

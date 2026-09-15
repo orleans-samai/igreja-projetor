@@ -131,7 +131,7 @@ export function BibleWorkspace({
 
   useEffect(() => {
     let alive = true;
-    Promise.all([loadBuiltinBible(), hydrateExtraVersions()])
+    Promise.all([loadBuiltinBible(), loadBuiltinBible("blivre-2018"), hydrateExtraVersions()])
       .then(() => {
         if (!alive) return;
         setReady(true);
@@ -283,6 +283,7 @@ export function BibleWorkspace({
           aria-label="Versão da Bíblia"
         >
           <option value="almeida-1819">Almeida 1819</option>
+          <option value="blivre-2018">Bíblia Livre (BLIVRE)</option>
           {extra.map((v) => (
             <option key={v.id} value={v.id}>
               {v.name}
@@ -392,7 +393,7 @@ export function BibleWorkspace({
       </div>
 
       {!ready && !err && (
-        <p className="px-4 py-10 text-body text-muted">Carregando Almeida 1819…</p>
+        <p className="px-4 py-10 text-body text-muted">Carregando a Bíblia…</p>
       )}
       {err && <p className="px-4 py-10 text-body text-danger">{err}</p>}
 

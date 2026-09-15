@@ -457,7 +457,7 @@ function BibleList({
 
   useEffect(() => {
     let alive = true;
-    Promise.all([loadBuiltinBible(), hydrateExtraVersions()])
+    Promise.all([loadBuiltinBible(), loadBuiltinBible("blivre-2018"), hydrateExtraVersions()])
       .then(() => {
         if (alive) {
           setReady(true);
@@ -516,7 +516,7 @@ function BibleList({
       {!ready && !err && (
         <div className="space-y-2 py-2" aria-live="polite">
           <div className="sweep-bar h-0.5 w-full rounded-sm" />
-          <p className="text-secondary text-muted">Carregando Almeida 1819…</p>
+          <p className="text-secondary text-muted">Carregando a Bíblia…</p>
         </div>
       )}
       {err && <p className="py-2 text-secondary text-danger">{err}</p>}
@@ -530,6 +530,7 @@ function BibleList({
             aria-label="Versão da Bíblia"
           >
             <option value="almeida-1819">Almeida 1819</option>
+            <option value="blivre-2018">Bíblia Livre (BLIVRE)</option>
             {extra.map((v) => (
               <option key={v.id} value={v.id}>
                 {v.name}

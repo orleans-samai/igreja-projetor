@@ -1256,6 +1256,7 @@ export const useLumenStore = create<LumenState>()(
 
 function listVersionName(id: string): string {
   if (id === "almeida-1819") return "Almeida 1819";
+  if (id === "blivre-2018") return "Bíblia Livre (BLIVRE)";
   const extra = useLumenStore.getState().extraVersionIds.find((v) => v.id === id);
   return extra?.name ?? id;
 }
