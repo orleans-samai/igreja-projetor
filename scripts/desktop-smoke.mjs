@@ -12,7 +12,8 @@ let app;
 const errors = [];
 try {
   const launch = async () => {
-    app = await electron.launch({ args: [root, "--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream"], env: { ...process.env, LUMEN_TEST_DATA: profile }, timeout: 60000 });
+    const executablePath = process.env.LUMEN_SMOKE_EXE;
+    app = await electron.launch({ ...(executablePath ? { executablePath } : {}), args: [ ...(executablePath ? ["--smoke-test"] : [root]), "--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream"], env: { ...process.env, LUMEN_TEST_DATA: profile }, timeout: 60000 });
     const page = await app.firstWindow();
     page.on("pageerror", (error) => errors.push(error.message));
     await page.waitForFunction(() => document.querySelectorAll("button").length > 10);
@@ -56,14 +57,91 @@ try {
   const autoDialog = page.getByRole("dialog", { name: "Reconhecimento de canto" });
   await autoDialog.waitFor();
   await autoDialog.getByRole("button", { name: "Instalar reconhecimento local", exact: true }).waitFor();
-  await page.screenshot({ path: path.join(evidence, "auto-slide.png") });
+  await page.screenshot({ animations: "disabled", path: path.join(evidence, "auto-slide.png") });
   await autoDialog.getByRole("button", { name: "Fechar", exact: true }).click();
+  await autoDialog.waitFor({ state: "hidden" });
+
+  // Controle remoto: liga o servidor de verdade, pareia como um celular de
+  // fora pareia (fetch deste processo Node, não de dentro da página — é o
+  // único jeito de provar que a porta está realmente aberta na rede), manda
+  // um comando e confirma que a cabine mudou pelo canal ao vivo, não só que
+  // o comando foi aceito.
+  const remoteStatus = await page.evaluate(() => window.lumenDesktop.remoteControlStart());
+  assert.equal(remoteStatus.ligado, true);
+  assert.match(remoteStatus.pin, /^\d{6}$/);
+  const remoteBase = `http://127.0.0.1:${remoteStatus.porta}`;
+  const pinErrado = await fetch(`${remoteBase}/parear`, { method: "POST", body: JSON.stringify({ pin: "000001" }) });
+  assert.equal(pinErrado.status, 401);
+  const pareado = await fetch(`${remoteBase}/parear`, { method: "POST", body: JSON.stringify({ pin: remoteStatus.pin }) }).then((r) => r.json());
+  assert.equal(pareado.ok, true);
+  const statusAtual = () => page.evaluate(() => JSON.parse(localStorage.getItem("lumen-live-frame") ?? "null")?.status);
+  assert.notEqual(await statusAtual(), "black");
+  const comando = await fetch(`${remoteBase}/comando`, { method: "POST", body: JSON.stringify({ token: pareado.token, acao: "preto" }) }).then((r) => r.json());
+  assert.equal(comando.ok, true);
+  await page.waitForFunction(() => JSON.parse(localStorage.getItem("lumen-live-frame") ?? "null")?.status === "black");
+  // "preto" alterna, e alternar de novo pousaria em "presenting" — não em
+  // "idle". Só "parar" devolve o estado exato que o resto do smoke espera,
+  // e é o que evita a guarda de beforeunload (que trava em qualquer status
+  // diferente de idle) atrapalhar o relançamento do Electron mais abaixo.
+  await fetch(`${remoteBase}/comando`, { method: "POST", body: JSON.stringify({ token: pareado.token, acao: "parar" }) });
+  await page.waitForFunction(() => JSON.parse(localStorage.getItem("lumen-live-frame") ?? "null")?.status === "idle");
+  const semSessao = await fetch(`${remoteBase}/comando`, { method: "POST", body: JSON.stringify({ token: "invalido", acao: "preto" }) });
+  assert.equal(semSessao.status, 401);
+  await page.evaluate(() => window.lumenDesktop.remoteControlStop());
+  await assert.rejects(fetch(remoteBase + "/"));
+
   await page.keyboard.press("Control+Shift+H");
   const checkup = page.getByRole("dialog", { name: "Check-up pré-culto" });
   await checkup.waitFor();
   await checkup.getByRole("button", { name: "Verificar reprodução", exact: true }).waitFor();
-  await page.screenshot({ path: path.join(evidence, "preflight.png") });
+  await page.screenshot({ animations: "disabled", path: path.join(evidence, "preflight.png") });
   await checkup.getByRole("button", { name: "Fechar", exact: true }).click();
+  await checkup.waitFor({ state: "hidden" });
+  // Review uses a fixture in this isolated profile, never the church library.
+  const reviewText = "Deus é o nosso refúgio e fortaleza e está sempre presente para nos ajudar nas dificuldades. Cantamos juntos com alegria e gratidão por todo o seu amor e por sua presença em cada momento da nossa vida.";
+  await page.evaluate(async (text) => {
+    const api = window.lumenDesktop;
+    const data = JSON.parse(await api.storageGet("lumen-v2"));
+    const slides = [{ id: "review-slide", label: "Verso", text, sortOrder: 0 }];
+    data.state.songs.push({ id: "review-song", title: "Teste de leitura", artist: "", groupId: data.state.groups[0]?.id ?? "", key: "", copyright: "", lyricsRaw: text, slides, createdAt: 0, updatedAt: 0 });
+    data.state.preview = { kind: "song", refId: "review-song", title: "Teste de leitura", subtitle: "", slides };
+    data.state.previewIndex = 0;
+    data.state.status = "idle";
+    await api.storageSet("lumen-v2", JSON.stringify(data));
+  }, reviewText);
+  await page.reload();
+  await page.waitForFunction(() => document.querySelectorAll("button").length > 10);
+  await page.keyboard.press("Control+Shift+O");
+  const review = page.getByRole("dialog", { name: "Revisar leitura no telão" });
+  await review.waitFor();
+  await review.getByLabel("Resolução para revisar").selectOption("1024x768");
+  await review.getByLabel("Enquadramento da sugestão").selectOption("cover");
+  await review.getByText(/O preenchimento corta/).waitFor();
+  await page.screenshot({ animations: "disabled", path: path.join(evidence, "readability-review.png") });
+  assert.equal(await page.evaluate(async () => JSON.parse(await window.lumenDesktop.storageGet("lumen-v2")).state.songs.find((s) => s.id === "review-song").lyricsRaw), reviewText);
+  await review.getByLabel("Enquadramento da sugestão").selectOption("contain");
+  await review.getByRole("button", { name: "Aplicar correções", exact: true }).click();
+  await review.waitFor({ state: "hidden" });
+  await page.waitForFunction(async () => JSON.parse(await window.lumenDesktop.storageGet("lumen-v2")).state.songs.find((s) => s.id === "review-song").slides.length > 1);
+  // Effective CSS viewport at 125%/150% matches Windows display scaling pressure.
+  for (const [width, height, zoom] of [[1366, 768, 1], [1366, 768, 1.25], [1366, 768, 1.5], [800, 600, 1]]) {
+    await app.evaluate(({ BrowserWindow }, args) => {
+      const win = BrowserWindow.getAllWindows().find((w) => w.webContents.getURL() === "lumen://app/");
+      win.setSize(args.width, args.height); win.webContents.setZoomFactor(args.zoom);
+    }, { width, height, zoom });
+    const assertWithin = async (locator) => {
+      await locator.waitFor({ state: "visible" });
+      assert.ok(await locator.evaluate((el) => { const r = el.getBoundingClientRect(); return r.left >= 0 && r.top >= 0 && r.right <= innerWidth + 1 && r.bottom <= innerHeight + 1; }), `Control outside viewport: ${width}x${height}@${zoom}`);
+    };
+    await assertWithin(page.getByRole("button", { name: "Auto-Slide", exact: true }));
+    await page.screenshot({ animations: "disabled", path: path.join(evidence, `cabine-${width}-${zoom}.png`) });
+    await page.keyboard.press("F8");
+    await assertWithin(page.getByRole("button", { name: "Auto-Slide", exact: true }));
+    await assertWithin(page.getByRole("button", { name: "Próximo", exact: true }));
+    await assertWithin(page.getByRole("button", { name: "Preto", exact: true }));
+    await page.screenshot({ animations: "disabled", path: path.join(evidence, `operador-${width}-${zoom}.png`) });
+    await page.keyboard.press("F8");
+  }
   const saved = await page.evaluate(async () => {
     const api = window.lumenDesktop;
     const data = JSON.parse(await api.storageGet("lumen-v2"));
@@ -92,13 +170,13 @@ try {
   await page.waitForFunction(() => localStorage.getItem("lumen-smoke-ready") === "yes");
   await page.evaluate(() => { const channel = new BroadcastChannel("lumen-smoke"); channel.postMessage("ok"); channel.close(); });
   assert.equal(await received, true);
-  await page.screenshot({ path: path.join(evidence, "operator.png") });
-  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => w.getTitle().includes("cabine"))?.setSize(800, 600));
-  await page.screenshot({ path: path.join(evidence, "operator-800x600.png") });
+  await page.screenshot({ animations: "disabled", path: path.join(evidence, "operator.png") });
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => w.webContents.getURL() === "lumen://app/")?.setSize(800, 600));
+  await page.screenshot({ animations: "disabled", path: path.join(evidence, "operator-800x600.png") });
   assert.deepEqual(errors, []);
   const disk = JSON.parse(await readFile(path.join(profile, "data", "library.json"), "utf8"));
   assert.ok(disk.values["lumen-v2"]);
-  console.log(`PASS: offline, fonts, Bible, restart persistence, projector, 800×600, packaged audio ranges, preflight and Auto-Slide dialogs. Evidence: ${evidence}`);
+  console.log(`PASS: offline, fonts, Bible, restart persistence, projector, media ranges, preflight, Auto-Slide, remote control (LAN + PIN), review before apply, 1366×768 at 100/125/150% and 800×600. Evidence: ${evidence}`);
 } finally {
   if (app) await app.close();
   console.log(`Isolated test profile: ${profile}`);

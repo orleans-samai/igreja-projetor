@@ -1102,3 +1102,18 @@ html[data-low-performance="true"] *, html[data-low-performance="true"] *::before
     radial-gradient(44% 30% at 72% 62%, rgb(198 208 214 / 0.45), transparent 72%);
   animation: bg-deriva 50s ease-in-out infinite alternate;
 }
+
+/* Keep the transport and recognition controls reachable on scaled notebooks. */
+.operator-live-layout > section { min-height: 300px; }
+.operator-live-layout > section > .preview-well { min-height: 100px; }
+.operator-live-layout > section > .flex > button { min-height: 44px; }
+@media (min-width: 700px) {
+  .operator-live-layout { grid-template-columns: minmax(0, 1.55fr) minmax(210px, 0.7fr); }
+}
+@media (max-height: 650px) {
+  .operator-live h2 { font-size: 22px; line-height: 1.15; }
+  .operator-live h3 { font-size: 18px; }
+  .operator-live-layout { gap: 10px; padding: 8px; }
+  .operator-live-layout > section { gap: 6px; min-height: 260px; }
+  .operator-live-layout > aside { gap: 8px; }
+}

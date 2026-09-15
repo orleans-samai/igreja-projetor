@@ -8,6 +8,7 @@ const { mediaResponse } = require("./media-response.cjs");
 const { Recognition } = require("./recognition.cjs");
 const packages = require("./service-package.cjs");
 const { YoutubeHost } = require("./youtube-host.cjs");
+const { RemoteControl } = require("./remote-control.cjs");
 
 
 const ORIGIN = "lumen://app";
@@ -15,10 +16,18 @@ protocol.registerSchemesAsPrivileged([{ scheme: "lumen", privileges: {
   standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true,
 } }]);
 // Keep the historical profile name so upgrades do not discard existing profiles.
-if (process.env.LUMEN_TEST_DATA && !app.isPackaged) app.setPath("userData", process.env.LUMEN_TEST_DATA);
+const smokeTest = !!process.env.LUMEN_TEST_DATA && (!app.isPackaged || process.argv.includes("--smoke-test"));
+if (smokeTest) app.setPath("userData", path.resolve(process.env.LUMEN_TEST_DATA));
 const dataDir = app.getPath("userData");
 const recognition = new Recognition(dataDir);
 const youtubeHost = new YoutubeHost(path.join(__dirname, "www"));
+const remoteControl = new RemoteControl(path.join(__dirname, "www"));
+// O celular não fala com a cabine por IPC — só o processo principal tem
+// acesso à janela. Um comando aprovado (PIN certo, sessão válida, ação da
+// lista) vira um "send" comum, como se fosse um atalho de teclado.
+remoteControl.onComando = (acao) => {
+  if (cabine && !cabine.isDestroyed()) cabine.webContents.send("lumen:remote-command", acao);
+};
 const packageRoot = path.join(dataDir, "packages");
 let testWindow = null;
 async function localMedia(url) {
@@ -90,6 +99,18 @@ function handle(channel, fn) {
     try { return await fn(...args); } catch (error) { reportError(error); throw error; }
   });
 }
+// Para o envio "e esquece" — o estado da cabine, várias vezes por segundo —
+// que não vale o custo de uma Promise a cada troca de slide.
+function onEvent(channel, fn) {
+  ipcMain.on(channel, (event, ...args) => {
+    try {
+      authorized(event);
+      fn(...args);
+    } catch (error) {
+      reportError(error);
+    }
+  });
+}
 function fitCabine() {
   if (!cabine || cabine.isDestroyed()) return;
   const area = screen.getDisplayMatching(cabine.getBounds()).workArea;
@@ -127,7 +148,7 @@ function placeOnExternal(win) {
 function createWindow(route, opts = {}) {
   const area = screen.getPrimaryDisplay().workArea;
   const win = new BrowserWindow({
-    show: !(process.env.LUMEN_TEST_DATA && !app.isPackaged),
+    show: !smokeTest,
     width: Math.min(opts.width || 1280, area.width),
     height: Math.min(opts.height || 800, area.height),
     minWidth: Math.min(opts.kiosk ? 320 : 480, area.width),
@@ -383,6 +404,7 @@ async function restoreBackup() {
 }
 app.on("before-quit", (event) => {
   recognition.cancel();
+  remoteControl.desligar();
   if (quitting || !storage) return;
   event.preventDefault();
   quitting = true;
@@ -399,6 +421,11 @@ handle("lumen:media-reset", (kind) => media.reset(kind));
 handle("lumen:lyrics-suggest", (input) => require("./lyrics.cjs").suggest(input));
 handle("lumen:lyrics-load", (url) => require("./lyrics.cjs").load(url));
 handle("lumen:youtube-host", () => youtubeHost.start());
+handle("lumen:remote-control-start", () => remoteControl.ligar());
+handle("lumen:remote-control-stop", () => remoteControl.desligar());
+handle("lumen:remote-control-status", () => remoteControl.status());
+handle("lumen:remote-control-regenerate-pin", () => remoteControl.regenerarPin());
+onEvent("lumen:remote-control-state", (payload) => remoteControl.atualizarEstado(payload));
 handle("lumen:auto-slide-status", () => recognition.status());
 handle("lumen:auto-slide-install", () => recognition.install());
 handle("lumen:auto-slide-transcribe", (wav) => recognition.transcribe(wav));

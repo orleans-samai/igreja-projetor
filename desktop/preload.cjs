@@ -3,6 +3,16 @@ const { contextBridge, ipcRenderer } = require("electron");
 contextBridge.exposeInMainWorld("lumenDesktop", {
   isDesktop: true,
   youtubeHost: () => ipcRenderer.invoke("lumen:youtube-host"),
+  remoteControlStart: () => ipcRenderer.invoke("lumen:remote-control-start"),
+  remoteControlStop: () => ipcRenderer.invoke("lumen:remote-control-stop"),
+  remoteControlStatus: () => ipcRenderer.invoke("lumen:remote-control-status"),
+  remoteControlRegeneratePin: () => ipcRenderer.invoke("lumen:remote-control-regenerate-pin"),
+  remoteControlPushState: (payload) => ipcRenderer.send("lumen:remote-control-state", payload),
+  onRemoteCommand: (cb) => {
+    const listener = (_event, acao) => cb(acao);
+    ipcRenderer.on("lumen:remote-command", listener);
+    return () => ipcRenderer.removeListener("lumen:remote-command", listener);
+  },
   autoSlideStatus: () => ipcRenderer.invoke("lumen:auto-slide-status"),
   autoSlideInstall: () => ipcRenderer.invoke("lumen:auto-slide-install"),
   autoSlideTranscrever: (wav) => ipcRenderer.invoke("lumen:auto-slide-transcribe", wav),

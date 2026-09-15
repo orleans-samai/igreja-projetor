@@ -54,7 +54,7 @@ async function materialize(url, dir, resolveLocal) {
 function extension(url) {
   if (url.startsWith("data:")) {
     const mime = url.slice(5, url.indexOf(";"));
-    return ({ "image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp", "image/svg+xml": ".svg", "audio/mpeg": ".mp3", "video/mp4": ".mp4" })[mime] ?? ".bin";
+    return ({ "image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp", "image/svg+xml": ".svg", "audio/mpeg": ".mp3", "audio/wav": ".wav", "audio/x-wav": ".wav", "audio/wave": ".wav", "audio/ogg": ".ogg", "audio/flac": ".flac", "audio/mp4": ".m4a", "audio/aac": ".aac", "audio/webm": ".webm", "video/webm": ".webm", "video/ogg": ".ogv", "image/gif": ".gif", "image/avif": ".avif", "image/bmp": ".bmp", "video/mp4": ".mp4" })[mime] ?? ".bin";
   }
   const ext = path.extname(new URL(url, "lumen://app").pathname).toLowerCase();
   return /^\.[a-z0-9]{1,5}$/.test(ext) ? ext : ".bin";

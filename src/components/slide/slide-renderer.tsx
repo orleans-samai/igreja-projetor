@@ -560,13 +560,15 @@ export function SlideStage({
   variant,
   className,
   statusOverride,
+  simulateOutput = false,
 }: {
   frame: LiveFrame;
   variant: "audience" | "stage" | "preview";
   className?: string;
   statusOverride?: OutputStatus;
+  simulateOutput?: boolean;
 }) {
-  const { ref, scale, bar } = useScale(variant === "preview" ? "contain" : frame.settings.fitMode);
+  const { ref, scale, bar } = useScale(variant === "preview" && !simulateOutput ? "contain" : frame.settings.fitMode);
 
   // O vídeo do YouTube cobre o telão enquanto estiver projetado, e fica fora
   // do canvas de 1920×1080: dentro dele o iframe seria rasterizado e depois

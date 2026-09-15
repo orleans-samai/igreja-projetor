@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="pt-BR">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>Lúmen — controle remoto</title>
+<!--
+  Controle remoto pelo celular.
+
+  Fala com o servidor deste mesmo endereço por duas coisas só: /estado, que
+  conta o que está no ar, e /comando, que pede uma troca. Quem decide o que
+  aceitar é o servidor — esta página é só o painel, e trocar de PIN ou
+  desligar o controle remoto na cabine invalida o que está aqui na hora.
+-->
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #141416; --surface: #1a1a1d; --elevated: #232327; --raised: #2c2c31;
+    --border: #2b2b31; --fg: #ecebe8; --muted: #aeada9; --subtle: #8e8d89;
+    --primary: #e9e8e5; --primary-fg: #17171a;
+    --live: #eba63f; --live-fg: #231804;
+    --danger: #d2564c; --danger-fg: #1d0b09;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; min-height: 100%; background: var(--bg); color: var(--fg);
+    font: 15px/1.4 -apple-system, "Segoe UI", Roboto, sans-serif;
+    -webkit-tap-highlight-color: transparent; user-select: none;
+  }
+  body { padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom)); }
+  button { font: inherit; -webkit-tap-highlight-color: transparent; }
+  .tela { display: flex; flex-direction: column; gap: 14px; min-height: calc(100vh - 32px); }
+  [hidden] { display: none !important; }
+
+  .marca { display: flex; align-items: center; gap: 8px; color: var(--subtle); font-size: 13px; font-weight: 600; letter-spacing: .02em; }
+  .marca .ponto { width: 7px; height: 7px; border-radius: 999px; background: var(--subtle); }
+  .marca[data-ligado="true"] .ponto { background: var(--live); box-shadow: 0 0 0 3px color-mix(in oklab, var(--live) 30%, transparent); }
+
+  /* ─ Pareamento ─ */
+  #pareamento { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 18px; text-align: center; }
+  #pareamento h1 { font-size: 20px; margin: 0; }
+  #pareamento p { color: var(--muted); margin: 0; }
+  #pin {
+    font-size: 40px; letter-spacing: .3em; text-align: center; padding: 14px 0 14px .3em;
+    background: var(--elevated); color: var(--fg); border: 1px solid var(--border); border-radius: 12px;
+    font-variant-numeric: tabular-nums;
+  }
+  #pin:focus { outline: 2px solid var(--live); outline-offset: 2px; }
+  .botao {
+    border: 0; border-radius: 10px; padding: 16px; font-size: 16px; font-weight: 600;
+    background: var(--elevated); color: var(--fg); box-shadow: inset 0 0 0 1px var(--border);
+  }
+  .botao:active { transform: scale(.97); }
+  .botao-principal { background: var(--primary); color: var(--primary-fg); }
+  #erroPin { color: var(--danger); min-height: 20px; font-size: 13px; }
+
+  /* ─ Painel ─ */
+  #painel { display: flex; flex-direction: column; gap: 18px; }
+  #titulo { font-size: 19px; font-weight: 650; }
+  #posicao { color: var(--subtle); font-variant-numeric: tabular-nums; }
+  .transporte { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .transporte .botao { padding: 26px 10px; font-size: 17px; }
+  .grade { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .grade .botao { padding: 18px 10px; }
+  #preto.ativo { background: var(--live); color: var(--live-fg); box-shadow: none; }
+  #desparear { color: var(--subtle); background: transparent; box-shadow: none; padding: 10px; font-size: 13px; }
+</style>
+
+<div class="tela">
+  <span class="marca" id="marca"><span class="ponto"></span> Lúmen · controle remoto</span>
+
+  <section id="pareamento">
+    <div>
+      <h1>Digite o PIN da cabine</h1>
+      <p>O número de 6 dígitos está na tela do computador, em Tela → Controle remoto pelo celular.</p>
+    </div>
+    <input id="pin" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="000000" autocomplete="one-time-code">
+    <p id="erroPin"></p>
+    <button class="botao botao-principal" id="entrar">Entrar</button>
+  </section>
+
+  <section id="painel" hidden>
+    <div>
+      <p id="titulo">—</p>
+      <p id="posicao"></p>
+    </div>
+
+    <div class="transporte">
+      <button class="botao" data-acao="anterior">‹ Anterior</button>
+      <button class="botao botao-principal" data-acao="proximo">Próximo ›</button>
+    </div>
+
+    <div class="grade">
+      <button class="botao" id="preto" data-acao="preto">Preto</button>
+      <button class="botao" data-acao="logo">Logo</button>
+      <button class="botao" data-acao="ocultar-letra">Ocultar letra</button>
+      <button class="botao" data-acao="parar">Parar</button>
+      <button class="botao" data-acao="proximo-item" style="grid-column: 1 / -1">Próximo item do culto</button>
+    </div>
+
+    <button id="desparear">Sair deste controle</button>
+  </section>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var CHAVE = "lumen-remote-token";
+  var es = null;
+
+  var telaPareamento = document.getElementById("pareamento");
+  var telaPainel = document.getElementById("painel");
+  var marca = document.getElementById("marca");
+  var campoPin = document.getElementById("pin");
+  var erroPin = document.getElementById("erroPin");
+
+  function mostrarPareamento(msg) {
+    if (es) { es.close(); es = null; }
+    marca.dataset.ligado = "false";
+    telaPainel.hidden = true;
+    telaPareamento.hidden = false;
+    erroPin.textContent = msg || "";
+    campoPin.value = "";
+    campoPin.focus();
+  }
+
+  function mostrarPainel() {
+    marca.dataset.ligado = "true";
+    telaPareamento.hidden = true;
+    telaPainel.hidden = false;
+  }
+
+  function aplicarEstado(d) {
+    document.getElementById("titulo").textContent = d.titulo || "Nada no preview";
+    document.getElementById("posicao").textContent =
+      d.slideTotal > 0 ? "Slide " + d.slideAtual + " de " + d.slideTotal + (d.noAr ? " · no ar" : "") : "";
+    document.getElementById("preto").classList.toggle("ativo", !!d.preto);
+  }
+
+  function conectarEstado(token) {
+    if (es) es.close();
+    var abriu = false;
+    es = new EventSource("/estado?token=" + encodeURIComponent(token));
+    es.onopen = function () { abriu = true; mostrarPainel(); };
+    es.onmessage = function (ev) {
+      try { aplicarEstado(JSON.parse(ev.data)); } catch (e) { /* linha de comentário do SSE */ }
+    };
+    es.onerror = function () {
+      if (!abriu) {
+        localStorage.removeItem(CHAVE);
+        mostrarPareamento("A sessão não é mais válida. Digite o PIN de novo.");
+      }
+      // Depois de conectado, o EventSource tenta sozinho — perder a cabine de
+      // vista por um instante não deve jogar o operador de volta ao PIN.
+    };
+  }
+
+  async function parear(pin) {
+    erroPin.textContent = "";
+    try {
+      var r = await fetch("/parear", { method: "POST", body: JSON.stringify({ pin: pin }) });
+      var d = await r.json();
+      if (!d.ok) { erroPin.textContent = d.erro || "PIN incorreto."; return; }
+      localStorage.setItem(CHAVE, d.token);
+      conectarEstado(d.token);
+    } catch (e) {
+      erroPin.textContent = "Sem conexão com a cabine.";
+    }
+  }
+
+  async function comando(acao) {
+    var token = localStorage.getItem(CHAVE);
+    if (!token) return mostrarPareamento();
+    try {
+      var r = await fetch("/comando", { method: "POST", body: JSON.stringify({ token: token, acao: acao }) });
+      if (r.status === 401) {
+        localStorage.removeItem(CHAVE);
+        mostrarPareamento("A sessão expirou. Digite o PIN de novo.");
+      }
+    } catch (e) { /* sem rede: o próximo toque tenta de novo */ }
+  }
+
+  document.getElementById("entrar").addEventListener("click", function () {
+    if (campoPin.value.length === 6) void parear(campoPin.value);
+  });
+  campoPin.addEventListener("input", function () {
+    campoPin.value = campoPin.value.replace(/\D/g, "").slice(0, 6);
+    if (campoPin.value.length === 6) void parear(campoPin.value);
+  });
+  document.getElementById("desparear").addEventListener("click", function () {
+    localStorage.removeItem(CHAVE);
+    mostrarPareamento();
+  });
+  document.querySelectorAll("[data-acao]").forEach(function (b) {
+    b.addEventListener("click", function () { void comando(b.dataset.acao); });
+  });
+
+  var salvo = localStorage.getItem(CHAVE);
+  if (salvo) conectarEstado(salvo);
+  else mostrarPareamento();
+})();
+</script>
+</html>

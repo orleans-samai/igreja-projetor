@@ -202,6 +202,13 @@ declare global {
         kind: MediaKind,
       ) => Promise<{ ok: boolean; dir?: string; canceled?: boolean }>;
       mediaResetFolder: (kind: MediaKind) => Promise<{ ok: boolean; dir: string }>;
+      youtubeHost: () => Promise<string>;
+      remoteControlStart: () => Promise<import("./remote-control").RemoteStatus>;
+      remoteControlStop: () => Promise<import("./remote-control").RemoteStatus>;
+      remoteControlStatus: () => Promise<import("./remote-control").RemoteStatus>;
+      remoteControlRegeneratePin: () => Promise<import("./remote-control").RemoteStatus>;
+      remoteControlPushState: (payload: import("./remote-control").RemoteStatePayload) => void;
+      onRemoteCommand: (cb: (acao: string) => void) => () => void;
     };
   }
 }

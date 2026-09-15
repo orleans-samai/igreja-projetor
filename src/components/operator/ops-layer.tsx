@@ -24,6 +24,7 @@ import { DRILLS, gradeDrill, type Drill } from "@/lib/training";
 import { useLumenStore } from "@/store/lumen-store";
 import { bindSessionWatch, useOpsStore } from "@/store/ops-store";
 import { PreflightControls } from "@/components/operator/preflight";
+import { OptimizationReview } from "@/components/operator/optimization-review";
 import type { HealthItem } from "@/lib/types";
 
 export function OpsLayer() {
@@ -174,6 +175,7 @@ export function OpsLayer() {
         <p className="sr-only">Backup desta sessão ativo em outra janela</p>
       )}
       <CheckupDialog open={checkupOpen} onOpenChange={setCheckupOpen} />
+      <OptimizationReview />
       <EmergencySheet open={emergencyOpen} onOpenChange={setEmergencyOpen} />
       <HistoryDrawer open={historyOpen} onOpenChange={setHistoryOpen} />
       <StatsDialog open={statsOpen} onOpenChange={setStatsOpen} />

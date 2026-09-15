@@ -19,6 +19,8 @@ import { ThemeRail } from "@/components/operator/theme-rail";
 import { BibleWorkspace } from "@/components/operator/bible-workspace";
 import { OpsLayer } from "@/components/operator/ops-layer";
 import { AutoSlideDialog, AutoSlidePanel } from "@/components/operator/auto-slide";
+import { RemoteControlDialog } from "@/components/operator/remote-control-dialog";
+import { useRemoteControl } from "@/components/operator/use-remote-control";
 import { useAutoSlide } from "@/components/operator/use-auto-slide";
 import { PainelArrastavel, ReorganizeBar } from "@/components/operator/reorganize";
 import { TourBanner } from "@/components/operator/tour";
@@ -60,12 +62,14 @@ export function OperatorApp() {
   const [display, setDisplay] = useState(false);
   const [bibleOpen, setBibleOpen] = useState(false);
   const [autoSlide, setAutoSlide] = useState(false);
+  const [remoteControl, setRemoteControl] = useState(false);
   const [mobileTab, setMobileTab] = useState<"lib" | "preview" | "culto">("preview");
   const liveMode = useOpsStore((s) => s.liveMode);
 
   // O Auto-Slide escuta e pede o slide; quem projeta continua sendo a
   // apresentação de sempre.
   useAutoSlide();
+  useRemoteControl();
 
   // O tutorial aponta para painéis que, em tela estreita, moram em abas.
   const ordemPaineis = useOpsStore((s) => s.ordemPaineis);
@@ -359,6 +363,7 @@ export function OperatorApp() {
           onBible={() => setBibleOpen(true)}
           onDisplay={() => setDisplay(true)}
           onAutoSlide={() => setAutoSlide(true)}
+          onRemoteControl={() => setRemoteControl(true)}
           onOptimize={() => void runOptimize()}
         />
         <WindowsRuntime />
@@ -453,6 +458,7 @@ export function OperatorApp() {
       <HelpDialog open={help} onOpenChange={setHelp} />
       <SettingsDialog open={settings} onOpenChange={setSettings} />
       <AutoSlideDialog open={autoSlide} onOpenChange={setAutoSlide} />
+      <RemoteControlDialog open={remoteControl} onOpenChange={setRemoteControl} />
       <DisplayDialog open={display} onOpenChange={setDisplay} />
       <CountdownDialog open={countdown} onOpenChange={setCountdown} />
       <LyricsSearchDialog

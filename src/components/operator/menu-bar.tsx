@@ -38,6 +38,7 @@ export function MenuBar({
   onBible,
   onDisplay,
   onAutoSlide,
+  onRemoteControl,
   onOptimize,
 }: {
   onNewSong: () => void;
@@ -49,6 +50,7 @@ export function MenuBar({
   onBible: () => void;
   onDisplay: () => void;
   onAutoSlide: () => void;
+  onRemoteControl: () => void;
   onOptimize: () => void;
 }) {
   const church = useLumenStore((s) => s.settings.churchName);
@@ -291,6 +293,7 @@ export function MenuBar({
         { label: "Telão nesta janela", onSelect: () => setFillMode("audience") },
         { label: "Configurações de exibição", onSelect: onDisplay },
         { label: "Reconhecimento de canto", onSelect: onAutoSlide },
+        { label: "Controle remoto pelo celular", onSelect: onRemoteControl },
         { label: "Tema e tipografia", onSelect: onSettings },
         { label: "Próximo tema", onSelect: cycleTheme, shortcut: "Ctrl+T" },
         { label: "Tela preta", onSelect: goBlack, shortcut: "B" },
