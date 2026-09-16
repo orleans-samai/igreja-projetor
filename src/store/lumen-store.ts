@@ -253,6 +253,7 @@ export function buildLiveFrame(s: LiveFrameInput): LiveFrame {
       fitMode: s.settings.fitMode,
       margins: s.settings.margins,
       showWallpaper: s.settings.showWallpaper,
+      showIdleLogo: s.settings.showIdleLogo,
       showClock: s.settings.showClock,
       baseFill: s.settings.baseFill,
       clockPosition: s.settings.clockPosition,

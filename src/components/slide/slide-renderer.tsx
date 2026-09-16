@@ -448,7 +448,12 @@ export function SlideCanvas({
   const showChords =
     variant === "audience" ? frame.settings.chordsOnAudience : frame.settings.chordsOnStage;
   const m = frame.settings.margins;
-  const isLogo = status === "logo" || status === "idle";
+  // "logo" é um botão que o operador aperta na hora; "idle" é antes de
+  // apresentar qualquer coisa — aí quem decide é Configurações de exibição,
+  // porque uma igreja quer o papel de parede limpo à espera, outra quer a
+  // logo. Ausente continua mostrando a logo: quem já usa o app hoje não vê
+  // nada mudar.
+  const isLogo = status === "logo" || (status === "idle" && frame.settings.showIdleLogo !== false);
   const hideText = status === "black" || status === "clear" || isLogo;
   const showWallpaper = frame.settings.showWallpaper !== false && !frame.settings.lowPerformance;
   const baseFill = frame.settings.baseFill ?? "dark";

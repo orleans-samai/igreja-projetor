@@ -133,6 +133,9 @@ export interface Settings {
   margins: { t: number; r: number; b: number; l: number };
   openStageWindow: boolean;
   showWallpaper: boolean;
+  /** Logo por cima do telão antes de apresentar algo. Ausente = ligado —
+   *  quem já usa o app hoje não vê nada mudar. */
+  showIdleLogo?: boolean;
   showClock: boolean;
   baseFill: "dark" | "light";
   clockPosition: ClockPosition;
@@ -230,6 +233,7 @@ export interface LiveFrame {
     | "fitMode"
     | "margins"
     | "showWallpaper"
+    | "showIdleLogo"
     | "showClock"
     | "baseFill"
     | "clockPosition"

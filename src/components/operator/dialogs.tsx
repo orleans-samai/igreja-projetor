@@ -574,6 +574,19 @@ export function DisplayDialog({
             <Settings2 className="size-4 text-subtle" />
           </div>
 
+          <label className="flex items-center gap-2 text-body">
+            <input
+              type="checkbox"
+              checked={settings.showIdleLogo !== false}
+              onChange={(e) => update({ showIdleLogo: e.target.checked })}
+            />
+            Mostrar a logo antes de apresentar
+          </label>
+          <p className="-mt-2 text-secondary text-subtle">
+            Antes do culto começar, o telão abre com a logo por cima. Desmarque para abrir só
+            com o papel de parede — ou com a tela em branco, se ele também estiver desligado.
+          </p>
+
           <label className="block cursor-pointer">
             <div
               className={cn(
