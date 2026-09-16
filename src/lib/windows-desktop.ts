@@ -175,6 +175,31 @@ export interface MediaListing {
   error?: string;
 }
 
+/** O que o seletor de pasta devolveu — ainda sem trocar nada. */
+export interface EscolhaDePasta {
+  ok: boolean;
+  dir?: string;
+  /** A pasta que vale hoje, para a cabine poder dizer de onde sai o material. */
+  anterior?: string;
+  /** Quantas mídias daquele tipo estão na pasta antiga esperando decisão. */
+  pendentes?: number;
+  canceled?: boolean;
+  mesmaPasta?: boolean;
+  error?: string;
+}
+
+/** O resultado de trocar de pasta de verdade. */
+export interface TrocaDePasta {
+  ok: boolean;
+  dir?: string;
+  anterior?: string;
+  movidos?: number;
+  /** Arquivo a arquivo, o que não deu para mover e por quê. */
+  falhas?: { nome: string; erro: string }[];
+  aviso?: string | null;
+  error?: string;
+}
+
 declare global {
   interface Window {
     lumenDesktop?: {
@@ -198,10 +223,15 @@ declare global {
       mediaList: (kind: MediaKind) => Promise<MediaListing>;
       mediaFolders: () => Promise<Record<MediaKind, string>>;
       mediaOpenFolder: (kind: MediaKind) => Promise<{ ok: boolean; dir?: string; error?: string }>;
-      mediaChooseFolder: (
+      mediaChooseFolder: (kind: MediaKind) => Promise<EscolhaDePasta>;
+      mediaApplyFolder: (
         kind: MediaKind,
-      ) => Promise<{ ok: boolean; dir?: string; canceled?: boolean }>;
-      mediaResetFolder: (kind: MediaKind) => Promise<{ ok: boolean; dir: string }>;
+        dir: string,
+        mover: boolean,
+      ) => Promise<TrocaDePasta>;
+      mediaResetFolder: (
+        kind: MediaKind,
+      ) => Promise<{ ok: boolean; dir?: string; error?: string; aviso?: string | null }>;
       youtubeHost: () => Promise<string>;
       remoteControlStart: () => Promise<import("./remote-control").RemoteStatus>;
       remoteControlStop: () => Promise<import("./remote-control").RemoteStatus>;

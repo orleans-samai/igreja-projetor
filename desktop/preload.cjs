@@ -37,6 +37,7 @@ contextBridge.exposeInMainWorld("lumenDesktop", {
   mediaFolders: () => ipcRenderer.invoke("lumen:media-folders"),
   mediaOpenFolder: (kind) => ipcRenderer.invoke("lumen:media-open", kind),
   mediaChooseFolder: (kind) => ipcRenderer.invoke("lumen:media-choose", kind),
+  mediaApplyFolder: (kind, dir, mover) => ipcRenderer.invoke("lumen:media-apply", kind, dir, mover),
   mediaResetFolder: (kind) => ipcRenderer.invoke("lumen:media-reset", kind),
   storageGet: (key) => ipcRenderer.invoke("lumen:storage-get", key),
   storageSet: (key, value) => ipcRenderer.invoke("lumen:storage-set", key, value),

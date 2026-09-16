@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Segmented } from "@/components/ui/segmented";
 import { Input, Label, Textarea } from "@/components/ui/input";
+import { MediaFoldersSection } from "@/components/operator/media-folders-section";
 import { ACCENT_PRESETS } from "@/lib/accent-presets";
 import { importBibleVersion } from "@/lib/bible";
 import { nid } from "@/lib/fold";
@@ -450,6 +451,11 @@ export function SettingsDialog({
             </Button>
           </section>
         </div>
+        <div className="mt-4 space-y-2 border-t border-border pt-4">
+          <p className="text-secondary font-medium text-subtle">Pasta de armazenamento de mídias</p>
+          <MediaFoldersSection />
+        </div>
+
         <div className="mt-4 space-y-2 border-t border-border pt-4">
           <p className="text-secondary font-medium text-subtle">Dados</p>
           <div className="flex flex-wrap gap-2">

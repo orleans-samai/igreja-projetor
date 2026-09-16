@@ -8,6 +8,7 @@ import {
   parseBibleRef,
 } from "@/lib/bible";
 import { bookById } from "@/lib/bible-books";
+import { FONT_SCALE_PASSO, fontScaleDe, limitarFontScale } from "@/lib/font-scale";
 import { fold, nid } from "@/lib/fold";
 import { parseLyrics } from "@/lib/lyrics";
 import { publishLiveFrame } from "@/lib/live-channel";
@@ -198,6 +199,8 @@ export interface LumenState {
   startCountdown: (label: string, seconds: number) => void;
   clearCountdown: () => void;
   updateSettings: (patch: Partial<Settings>) => void;
+  /** A+ / A− do telão: `delta` em passos, positivo aumenta. */
+  bumpFontScale: (delta: number) => void;
   setFillMode: (mode: LumenState["fillMode"]) => void;
   setEditingSlide: (v: boolean) => void;
   addExtraVersion: (id: string, name: string) => void;
@@ -254,6 +257,7 @@ export function buildLiveFrame(s: LiveFrameInput): LiveFrame {
       margins: s.settings.margins,
       showWallpaper: s.settings.showWallpaper,
       showIdleLogo: s.settings.showIdleLogo,
+      fontScale: s.settings.fontScale,
       showClock: s.settings.showClock,
       baseFill: s.settings.baseFill,
       clockPosition: s.settings.clockPosition,
@@ -382,6 +386,7 @@ const empty = (): Omit<
   | "startCountdown"
   | "clearCountdown"
   | "updateSettings"
+  | "bumpFontScale"
   | "setFillMode"
   | "setEditingSlide"
   | "addExtraVersion"
@@ -1065,6 +1070,14 @@ export const useLumenStore = create<LumenState>()(
 
       updateSettings: (patch) =>
         broadcast((s) => ({ ...s, settings: { ...s.settings, ...patch } }), set),
+
+      bumpFontScale: (delta) =>
+        broadcast((s) => {
+          const atual = fontScaleDe(s.settings);
+          const proximo = limitarFontScale(atual + delta * FONT_SCALE_PASSO);
+          if (proximo === atual) return s;
+          return { ...s, settings: { ...s.settings, fontScale: proximo } };
+        }, set),
 
       addExtraVersion: (id, name) =>
         set((s) => ({ extraVersionIds: [...s.extraVersionIds.filter((v) => v.id !== id), { id, name }] })),

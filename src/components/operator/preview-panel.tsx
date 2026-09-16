@@ -3,6 +3,7 @@ import * as Popover from "@radix-ui/react-popover";
 import { Monitor, Pause, Pencil, Play, Repeat, SkipBack, SkipForward, Square, Volume2, VolumeX, Youtube } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { SlideStage } from "@/components/slide/slide-renderer";
+import { FontSizeBar } from "@/components/operator/font-size-bar";
 import { OptimizeBanner, OptimizeButton } from "@/components/operator/optimize-bar";
 import { ThemeThumb } from "@/components/operator/theme-rail";
 import { Button } from "@/components/ui/button";
@@ -185,7 +186,9 @@ export function PreviewPanel({
           </Popover.Portal>
         </Popover.Root>
 
-        <Button size="sm" variant="ghost" className="ml-auto" onClick={onSettings}>
+        <FontSizeBar className="ml-auto" />
+
+        <Button size="sm" variant="ghost" onClick={onSettings}>
           <Monitor /> Exibição
         </Button>
       </div>

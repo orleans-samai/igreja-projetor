@@ -12,6 +12,7 @@ import { addMinutesToTime, plannedMinutesFor } from "@/lib/templates";
 import { startVoice, voiceSupported } from "@/lib/voice";
 import { cn } from "@/lib/cn";
 import type { LiveFrame, PlaylistItem } from "@/lib/types";
+import { FontSizeBar } from "@/components/operator/font-size-bar";
 import { useLumenStore } from "@/store/lumen-store";
 import { useOpsStore } from "@/store/ops-store";
 import { useAutoSlideStore } from "@/store/auto-slide-store";
@@ -243,6 +244,7 @@ export function LiveMode({
             <Mic /> Auto-Slide
           </Button>
         )}
+        <FontSizeBar />
         <Button size="sm" variant="ghost" onClick={() => setLiveMode(false)}>
           Voltar à cabine
         </Button>

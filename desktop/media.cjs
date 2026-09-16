@@ -47,11 +47,70 @@ function dirFor(kind) {
   return pastas[kind] || path.join(dataDir, "midia", PASTA_PADRAO[kind]);
 }
 
+/**
+ * Grava a escolha e diz se conseguiu.
+ *
+ * Antes engolia o erro: o operador trocava a pasta, via a lista nova, fechava
+ * o app e no domingo a pasta era a antiga de novo, sem nada explicando.
+ */
 function save() {
   try {
     fs.writeFileSync(configFile, JSON.stringify(pastas, null, 2));
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: `Não consegui guardar a escolha da pasta: ${error?.message || error}` };
+  }
+}
+
+/**
+ * A pasta serve? Existe, é pasta, dá para ler e dá para escrever.
+ *
+ * O teste de escrita é um arquivo de verdade, criado e apagado: no Windows,
+ * perguntar a permissão de uma pasta responde "pode" para lugares onde
+ * gravar falha na hora — pasta de rede sem credencial, unidade só de leitura.
+ */
+async function validar(dir) {
+  if (typeof dir !== "string" || !dir.trim()) return { ok: false, error: "Caminho de pasta vazio." };
+  let st;
+  try {
+    st = await fsp.stat(dir);
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      try {
+        await fsp.mkdir(dir, { recursive: true });
+        st = await fsp.stat(dir);
+      } catch {
+        return { ok: false, error: `A pasta ${dir} não existe e não consegui criá-la.` };
+      }
+    } else {
+      return { ok: false, error: `Não consegui abrir ${dir}. Ela pode estar desconectada.` };
+    }
+  }
+  if (!st.isDirectory()) return { ok: false, error: `${dir} não é uma pasta.` };
+  try {
+    await fsp.readdir(dir);
   } catch {
-    /* disco cheio ou somente leitura: segue com a pasta em memória */
+    return { ok: false, error: `Sem permissão de leitura em ${dir}.` };
+  }
+  const teste = path.join(dir, `.lumen-teste-${process.pid}-${Date.now()}`);
+  try {
+    await fsp.writeFile(teste, "");
+    await fsp.rm(teste, { force: true });
+  } catch {
+    return { ok: false, error: `Sem permissão de gravação em ${dir}. Escolha outra pasta.` };
+  }
+  return { ok: true };
+}
+
+/** Quantos arquivos daquele tipo moram numa pasta — para saber se vale perguntar. */
+async function contarMidias(dir, kind) {
+  try {
+    const entries = await fsp.readdir(dir, { withFileTypes: true });
+    return entries.filter(
+      (e) => e.isFile() && KINDS[kind].includes(path.extname(e.name).toLowerCase()),
+    ).length;
+  } catch {
+    return 0;
   }
 }
 
@@ -131,27 +190,140 @@ async function open(kind) {
   return problema ? { ok: false, error: problema } : { ok: true, dir };
 }
 
-/** @param {string} kind */
-async function choose(kind) {
-  if (!KINDS[kind]) throw new Error("Tipo de mídia desconhecido.");
-  const escolha = await dialog.showOpenDialog({
-    title: `Pasta de ${kind === "video" ? "vídeos" : kind === "audio" ? "áudios" : "imagens"}`,
+/**
+ * Abre o seletor de pasta e devolve o que foi escolhido — sem aplicar ainda.
+ *
+ * Quem aplica é `apply`, depois de a cabine perguntar o que fazer com o que
+ * já estava na pasta antiga. Assim "Cancelar" naquela pergunta cancela de
+ * verdade, em vez de deixar a pasta trocada pela metade.
+ *
+ * A janela-mãe importa: sem ela o diálogo do Windows não é modal e abre atrás
+ * do telão em tela cheia, que é o motivo de "trocar a pasta não funciona".
+ *
+ * @param {string} kind
+ * @param {import("electron").BrowserWindow | null} janela
+ */
+async function choose(kind, janela) {
+  if (!KINDS[kind]) return { ok: false, error: "Tipo de mídia desconhecido." };
+  const titulo = `Pasta de ${kind === "video" ? "vídeos" : kind === "audio" ? "áudios" : "imagens"}`;
+  const opcoes = {
+    title: titulo,
     defaultPath: dirFor(kind),
     properties: ["openDirectory", "createDirectory"],
-  });
+  };
+  let escolha;
+  try {
+    escolha = janela && !janela.isDestroyed()
+      ? await dialog.showOpenDialog(janela, opcoes)
+      : await dialog.showOpenDialog(opcoes);
+  } catch (error) {
+    return { ok: false, error: `Não consegui abrir o seletor de pastas: ${error?.message || error}` };
+  }
   if (escolha.canceled || !escolha.filePaths[0]) return { ok: false, canceled: true };
-  pastas[kind] = escolha.filePaths[0];
-  save();
-  return { ok: true, dir: pastas[kind] };
+
+  const destino = path.resolve(escolha.filePaths[0]);
+  const atual = path.resolve(dirFor(kind));
+  if (destino === atual) return { ok: false, mesmaPasta: true, dir: atual };
+
+  const teste = await validar(destino);
+  if (!teste.ok) return teste;
+
+  return { ok: true, dir: destino, anterior: atual, pendentes: await contarMidias(atual, kind) };
+}
+
+/**
+ * Move um arquivo para a pasta nova.
+ *
+ * `rename` resolve quando é o mesmo disco; entre discos (um pendrive, uma
+ * pasta de rede) ele falha com EXDEV e aí é copiar e apagar. Nunca sobrescreve
+ * um arquivo que já exista lá: material de igreja não se perde em silêncio.
+ */
+async function moverArquivo(de, para) {
+  try {
+    await fsp.access(para);
+    return { ok: false, erro: "já existe um arquivo com esse nome na pasta nova" };
+  } catch {
+    /* não existe: pode mover */
+  }
+  try {
+    await fsp.rename(de, para);
+    return { ok: true };
+  } catch (error) {
+    if (error?.code !== "EXDEV") return { ok: false, erro: error?.message || String(error) };
+  }
+  try {
+    await fsp.copyFile(de, para);
+    await fsp.rm(de, { force: true });
+    return { ok: true };
+  } catch (error) {
+    await fsp.rm(para, { force: true }).catch(() => {});
+    return { ok: false, erro: error?.message || String(error) };
+  }
+}
+
+/**
+ * Aplica a pasta escolhida, movendo o acervo antigo se for o caso.
+ *
+ * @param {string} kind
+ * @param {string} dir
+ * @param {boolean} mover
+ */
+async function apply(kind, dir, mover) {
+  if (!KINDS[kind]) return { ok: false, error: "Tipo de mídia desconhecido." };
+  const destino = path.resolve(String(dir || ""));
+  const teste = await validar(destino);
+  if (!teste.ok) return teste;
+
+  const anterior = path.resolve(dirFor(kind));
+  let movidos = 0;
+  /** @type {{ nome: string; erro: string }[]} */
+  const falhas = [];
+
+  if (mover && anterior !== destino) {
+    let entries = [];
+    try {
+      entries = await fsp.readdir(anterior, { withFileTypes: true });
+    } catch {
+      entries = [];
+    }
+    for (const entry of entries) {
+      if (!entry.isFile()) continue;
+      if (!KINDS[kind].includes(path.extname(entry.name).toLowerCase())) continue;
+      const r = await moverArquivo(path.join(anterior, entry.name), path.join(destino, entry.name));
+      if (r.ok) movidos += 1;
+      else falhas.push({ nome: entry.name, erro: r.erro });
+    }
+  }
+
+  // A pasta só passa a valer depois de mover: se a gravação da escolha
+  // falhar, os arquivos já estão no lugar novo e a mensagem diz o que houve.
+  pastas[kind] = destino;
+  const gravou = save();
+  return {
+    ok: true,
+    dir: destino,
+    anterior,
+    movidos,
+    falhas,
+    aviso: gravou.ok ? null : gravou.error,
+  };
 }
 
 /** Volta a pasta do tipo para o padrão dentro dos dados do usuário. */
 async function reset(kind) {
-  if (!KINDS[kind]) throw new Error("Tipo de mídia desconhecido.");
+  if (!KINDS[kind]) return { ok: false, error: "Tipo de mídia desconhecido." };
+  const anterior = dirFor(kind);
   delete pastas[kind];
-  save();
-  await fsp.mkdir(dirFor(kind), { recursive: true }).catch(() => {});
-  return { ok: true, dir: dirFor(kind) };
+  const gravou = save();
+  const padrao = dirFor(kind);
+  try {
+    await fsp.mkdir(padrao, { recursive: true });
+  } catch (error) {
+    pastas[kind] = anterior;
+    save();
+    return { ok: false, error: `Não consegui criar a pasta padrão: ${error?.message || error}` };
+  }
+  return { ok: true, dir: padrao, aviso: gravou.ok ? null : gravou.error };
 }
 
 /**
@@ -180,4 +352,4 @@ async function resolveMedia(pathname) {
   }
 }
 
-module.exports = { init, ensure, folders, list, open, choose, reset, resolveMedia, KINDS };
+module.exports = { init, ensure, folders, list, open, choose, apply, reset, resolveMedia, KINDS };

@@ -122,6 +122,12 @@ export interface Settings {
   lowPerformance?: boolean;
   /** Cor de destaque da cabine — ver accent-presets.ts. Ausente = "aco". */
   accentPreset?: import("./accent-presets").AccentId;
+  /**
+   * Multiplica o corpo de letra de todo tema no telão, sem reescrever tema
+   * nenhum: é o A+ / A− da cabine. Ausente = FONT_SCALE_PADRAO, que já é
+   * maior do que o tema pede — projetor é lido de longe.
+   */
+  fontScale?: number;
   churchName: string;
   logoUrl: string;
   maxLines: number;
@@ -234,6 +240,7 @@ export interface LiveFrame {
     | "margins"
     | "showWallpaper"
     | "showIdleLogo"
+    | "fontScale"
     | "showClock"
     | "baseFill"
     | "clockPosition"

@@ -8,9 +8,10 @@
  * preview matches the telão (safe area, type size, outline).
  */
 
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { ChurchLogo } from "@/components/logo";
 import { stripChords } from "@/lib/lyrics";
+import { fontScaleDe } from "@/lib/font-scale";
 import { fadeDurationMs, slideKey } from "@/lib/transition";
 import type { ClockPosition, FitMode, LiveFrame, OutputStatus, Theme } from "@/lib/types";
 import { cn } from "@/lib/cn";
@@ -45,14 +46,14 @@ function useScale(fit: "contain" | "cover") {
   return { ref, scale, bar };
 }
 
-function textStyle(theme: Theme): CSSProperties {
+function textStyle(theme: Theme, escala = 1): CSSProperties {
   const outline = theme.outlineWidth;
   const shadows = theme.shadow
     ? `0 4px 18px ${theme.outlineColor}cc, 0 0 8px ${theme.outlineColor}aa`
     : "none";
   return {
     fontFamily: `${theme.fontFamily === "Fraunces" ? "Fraunces Variable" : theme.fontFamily === "Instrument Sans" ? "Instrument Sans Variable" : theme.fontFamily}, var(--font-display)`,
-    fontSize: theme.fontSize,
+    fontSize: theme.fontSize * escala,
     fontWeight: theme.fontWeight,
     lineHeight: theme.lineHeight,
     color: theme.textColor,
@@ -216,50 +217,131 @@ interface SlideContent {
 }
 
 /** Um slide desenhado; duas camadas destas se dissolvem na troca. */
+/** Altura reservada ao rodapé fixo, no quadro de 1920×1080. */
+const RODAPE_H = 104;
+/** O quanto o texto pode encolher sozinho antes de admitir que não cabe. */
+const ENCOLHE_MIN = 0.45;
+
+/**
+ * Encolhe o texto até caber na caixa.
+ *
+ * O corpo de letra do tema, multiplicado pelo A+ da cabine, é um pedido, não
+ * uma promessa: um versículo longo com letra grande transbordaria o telão e a
+ * igreja leria meia frase. Aqui a fonte cede o necessário — e só o necessário
+ * — para o slide caber inteiro.
+ *
+ * Duas medições bastam: a primeira estima pelo quanto transbordou, a segunda
+ * confere depois de o texto ter quebrado de novo no tamanho novo.
+ */
+function useCabeNaCaixa(chave: string) {
+  const caixa = useRef<HTMLDivElement>(null);
+  const alvo = useRef<HTMLDivElement>(null);
+  const [fator, setFator] = useState(1);
+  const passo = useRef(0);
+
+  useLayoutEffect(() => {
+    passo.current = 0;
+    setFator(1);
+  }, [chave]);
+
+  // Roda a cada encolhida: o texto quebra diferente no tamanho novo, então só
+  // medir de novo responde se já coube. `passo` limita a três medições.
+  useLayoutEffect(() => {
+    if (passo.current >= 3) return;
+    const box = caixa.current;
+    const txt = alvo.current;
+    if (!box || !txt) return;
+    const alturaOk = box.clientHeight;
+    const larguraOk = box.clientWidth;
+    if (alturaOk <= 0 || larguraOk <= 0) return;
+    const alturaReal = txt.scrollHeight;
+    const larguraReal = txt.scrollWidth;
+    // 1px de folga: arredondamento de subpixel não vale um passo de ajuste.
+    if (alturaReal <= alturaOk + 1 && larguraReal <= larguraOk + 1) return;
+    const precisa = Math.min(alturaOk / alturaReal, larguraOk / larguraReal);
+    const proximo = Math.max(ENCOLHE_MIN, fator * precisa * 0.98);
+    if (proximo >= fator - 0.005) return;
+    passo.current += 1;
+    setFator(proximo);
+  }, [fator, chave]);
+
+  return { caixa, alvo, fator };
+}
+
 function SlideBody({
   content,
   paint,
   alignV,
+  escala = 1,
 }: {
   content: SlideContent;
   paint: Theme;
   alignV: Theme["alignV"];
+  escala?: number;
 }) {
+  const rodape = content.reference || content.copyright;
+  const { caixa, alvo, fator } = useCabeNaCaixa(
+    `${content.body}|${content.title}|${paint.id}|${escala}`,
+  );
+
   return (
-    <div
-      className={cn(
-        "flex h-full flex-col",
-        alignV === "top" && "justify-start",
-        alignV === "center" && "justify-center",
-        alignV === "bottom" && "justify-end",
-      )}
-    >
+    <div className="relative flex h-full flex-col">
       {/* Título, referência e copyright herdam a cor do tema, não uma cor
           clara fixa: em tema de fundo claro — Papel, Areia, Alva — o texto
           fixo sumia contra o fundo. */}
       {content.title && (
         <p
-          className="mb-6 font-display text-3xl font-medium tracking-wide"
+          className="mb-6 shrink-0 font-display text-3xl font-medium tracking-wide"
           style={{ color: paint.textColor, opacity: 0.8 }}
         >
           {content.title}
         </p>
       )}
-      <div className="slide-text max-w-full" style={textStyle(paint)}>
-        {content.body}
+
+      {/* A área do texto é o que sobra, e ela recorta: é o que permite medir
+          o transbordo e encolher em vez de deixar a frase sair pela borda. */}
+      <div
+        ref={caixa}
+        className={cn(
+          "flex min-h-0 flex-1 overflow-hidden",
+          alignV === "top" && "items-start",
+          alignV === "center" && "items-center",
+          alignV === "bottom" && "items-end",
+        )}
+        style={rodape ? { paddingBottom: RODAPE_H } : undefined}
+      >
+        <div ref={alvo} className="slide-text max-w-full flex-1" style={textStyle(paint, escala * fator)}>
+          {content.body}
+        </div>
       </div>
-      {content.reference && (
-        <p
-          className="mt-8 font-display text-3xl font-medium"
-          style={{ color: paint.textColor, opacity: 0.78 }}
+
+      {/*
+        Rodapé preso embaixo e centralizado.
+
+        Antes era mais um item da coluna: herdava o alinhamento à esquerda do
+        documento e subia ou descia conforme o tamanho do versículo — a
+        referência dançava pela tela a cada slide. Agora ela tem lugar fixo,
+        e o versículo continua centralizado na área de cima.
+      */}
+      {rodape && (
+        <div
+          className="absolute inset-x-0 bottom-0 flex flex-col items-center justify-end gap-2 text-center"
+          style={{ height: RODAPE_H }}
         >
-          {content.reference}
-        </p>
-      )}
-      {content.copyright && (
-        <p className="mt-6 text-xl" style={{ color: paint.textColor, opacity: 0.5 }}>
-          {content.copyright}
-        </p>
+          {content.reference && (
+            <p
+              className="font-display text-3xl font-medium"
+              style={{ color: paint.textColor, opacity: 0.78 }}
+            >
+              {content.reference}
+            </p>
+          )}
+          {content.copyright && (
+            <p className="text-xl" style={{ color: paint.textColor, opacity: 0.5 }}>
+              {content.copyright}
+            </p>
+          )}
+        </div>
       )}
     </div>
   );
@@ -458,6 +540,7 @@ export function SlideCanvas({
   const showWallpaper = frame.settings.showWallpaper !== false && !frame.settings.lowPerformance;
   const baseFill = frame.settings.baseFill ?? "dark";
   const fitMode = frame.settings.fitMode ?? "contain";
+  const escalaFonte = fontScaleDe(frame.settings);
   const onPaper = !showWallpaper && baseFill === "light";
   const paint = onPaper
     ? { ...theme, textColor: "var(--color-paper-fg)", outlineWidth: 0, shadow: false }
@@ -556,7 +639,7 @@ export function SlideCanvas({
               style={{ animation: `lumen-slide-out ${fadeMs}ms ease forwards` }}
               aria-hidden
             >
-              <SlideBody content={leaving.content} paint={paint} alignV={theme.alignV} />
+              <SlideBody content={leaving.content} paint={paint} alignV={theme.alignV} escala={escalaFonte} />
             </div>
           )}
           <div
@@ -564,7 +647,7 @@ export function SlideCanvas({
             className="absolute inset-0"
             style={fadeMs > 0 ? { animation: `lumen-slide-in ${fadeMs}ms ease forwards` } : undefined}
           >
-            <SlideBody content={content} paint={paint} alignV={theme.alignV} />
+            <SlideBody content={content} paint={paint} alignV={theme.alignV} escala={escalaFonte} />
           </div>
         </div>
       )}

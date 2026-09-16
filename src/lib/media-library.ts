@@ -1,6 +1,12 @@
-import type { MediaFile, MediaKind, MediaListing } from "./windows-desktop";
+import type {
+  EscolhaDePasta,
+  MediaFile,
+  MediaKind,
+  MediaListing,
+  TrocaDePasta,
+} from "./windows-desktop";
 
-export type { MediaFile, MediaKind, MediaListing };
+export type { EscolhaDePasta, MediaFile, MediaKind, MediaListing, TrocaDePasta };
 
 export const MEDIA_KINDS = [
   { value: "video", label: "Vídeo" },
@@ -44,11 +50,47 @@ export async function openMediaFolder(kind: MediaKind): Promise<string | null> {
   return r.ok ? (r.dir ?? null) : null;
 }
 
-export async function chooseMediaFolder(kind: MediaKind): Promise<string | null> {
+/**
+ * Passo 1 de trocar a pasta: perguntar onde, validar e contar o que ficaria
+ * para trás. Não troca nada ainda — quem troca é `applyMediaFolder`, depois de
+ * a cabine decidir o que fazer com o acervo antigo.
+ */
+export async function chooseMediaFolder(kind: MediaKind): Promise<EscolhaDePasta> {
   const desktop = bridge();
-  if (!desktop) return null;
-  const r = await desktop.mediaChooseFolder(kind);
-  return r.ok ? (r.dir ?? null) : null;
+  if (!desktop) {
+    return { ok: false, error: "Pastas de mídia só existem no app do Windows." };
+  }
+  try {
+    return await desktop.mediaChooseFolder(kind);
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Falha ao abrir o seletor." };
+  }
+}
+
+/** Passo 2: aplicar a pasta nova, movendo ou não o que estava na antiga. */
+export async function applyMediaFolder(
+  kind: MediaKind,
+  dir: string,
+  mover: boolean,
+): Promise<TrocaDePasta> {
+  const desktop = bridge();
+  if (!desktop) return { ok: false, error: "Pastas de mídia só existem no app do Windows." };
+  try {
+    return await desktop.mediaApplyFolder(kind, dir, mover);
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Falha ao trocar a pasta." };
+  }
+}
+
+/** Volta ao padrão, dentro dos dados do usuário. */
+export async function resetMediaFolder(kind: MediaKind): Promise<TrocaDePasta> {
+  const desktop = bridge();
+  if (!desktop) return { ok: false, error: "Pastas de mídia só existem no app do Windows." };
+  try {
+    return await desktop.mediaResetFolder(kind);
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Falha ao voltar ao padrão." };
+  }
 }
 
 /** Tamanho legível para a linha de apoio do item. */

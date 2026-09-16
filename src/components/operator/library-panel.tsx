@@ -32,14 +32,17 @@ import { fetchAndImportWebSong } from "@/lib/import-web-song";
 import { suggestSongs } from "@/lib/lyrics-suggestions";
 import type { LyricsHit } from "@/lib/lyrics-web";
 import { isWall, optimizeRawText } from "@/lib/slide-optimize";
+import { MediaFolderDialog } from "@/components/operator/media-folder-dialog";
 import {
   MEDIA_KINDS,
+  applyMediaFolder,
   chooseMediaFolder,
   hasMediaFolders,
   humanSize,
   listMedia,
   mediaKindLabel,
   openMediaFolder,
+  type EscolhaDePasta,
   type MediaKind,
   type MediaListing,
 } from "@/lib/media-library";
@@ -640,6 +643,7 @@ function MediaList() {
   const [kind, setKind] = useState<MediaKind>("video");
   const [listing, setListing] = useState<MediaListing>({ ok: true, items: [] });
   const [busy, setBusy] = useState(false);
+  const [trocaPasta, setTrocaPasta] = useState<EscolhaDePasta | null>(null);
   const naPasta = hasMediaFolders();
 
   const atualizar = useCallback(
@@ -703,6 +707,12 @@ function MediaList() {
 
   return (
     <div className="animate-swap-in">
+      <MediaFolderDialog
+        kind={kind}
+        escolha={trocaPasta}
+        onClose={() => setTrocaPasta(null)}
+        onDone={() => void atualizar(kind)}
+      />
       <div className="space-y-2 px-2 py-2">
         <Segmented
           label="Tipo de mídia"
@@ -746,11 +756,25 @@ function MediaList() {
               aria-label="Escolher outra pasta"
               disabled={!naPasta}
               onClick={async () => {
-                const dir = await chooseMediaFolder(kind);
-                if (dir) {
-                  toast(`Pasta de ${mediaKindLabel(kind).toLowerCase()}: ${dir}`);
-                  void atualizar(kind);
+                const escolha = await chooseMediaFolder(kind);
+                if (escolha.canceled || escolha.mesmaPasta) return;
+                if (!escolha.ok || !escolha.dir) {
+                  toast.error(escolha.error || "Não consegui usar essa pasta.");
+                  return;
                 }
+                // Sem nada na pasta antiga não há o que perguntar: troca direto.
+                if (!escolha.pendentes) {
+                  const r = await applyMediaFolder(kind, escolha.dir, false);
+                  if (!r.ok) {
+                    toast.error(r.error || "Não consegui trocar a pasta.");
+                    return;
+                  }
+                  if (r.aviso) toast.error(r.aviso, { duration: 10000 });
+                  else toast(`Pasta de ${mediaKindLabel(kind).toLowerCase()}: ${r.dir}`);
+                  void atualizar(kind);
+                  return;
+                }
+                setTrocaPasta(escolha);
               }}
             >
               <FolderCog />

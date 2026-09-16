@@ -271,7 +271,7 @@ export function BibleWorkspace({
     <div className="relative flex h-full min-h-0 flex-col bg-bg">
       <div className="flex flex-wrap items-center gap-2 border-b border-border bg-surface px-3 py-2">
         <Button size="sm" variant="secondary" onClick={onBack}>
-          <ArrowLeft className="size-3.5" /> Cabine
+          <ArrowLeft className="size-3.5" /> Voltar
         </Button>
         <p className="text-title font-semibold tracking-tight">
           {meta?.name}: {cursor.chapter}
