@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Segmented } from "@/components/ui/segmented";
 import { Input, Label, Textarea } from "@/components/ui/input";
+import { ACCENT_PRESETS } from "@/lib/accent-presets";
 import { importBibleVersion } from "@/lib/bible";
 import { nid } from "@/lib/fold";
 import { LyricsSearchPanel } from "@/components/operator/lyrics-search-dialog";
@@ -364,6 +365,29 @@ export function SettingsDialog({
               />
               Cifra no projetor público
             </label>
+            <Label>Cor de destaque da cabine</Label>
+            <div className="flex gap-2">
+              {ACCENT_PRESETS.map((p) => {
+                const on = (settings.accentPreset ?? "aco") === p.id;
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    title={p.name}
+                    aria-label={p.name}
+                    aria-pressed={on}
+                    onClick={() => update({ accentPreset: p.id })}
+                    style={{ background: p.bg }}
+                    className={cn(
+                      "size-7 shrink-0 rounded-full",
+                      "transition-transform duration-[var(--motion-fast)] ease-[var(--ease-out)]",
+                      "hover:scale-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+                      on && "ring-2 ring-offset-2 ring-offset-surface ring-fg",
+                    )}
+                  />
+                );
+              })}
+            </div>
           </section>
           <section className="space-y-2">
             <p className="text-secondary font-medium text-subtle">Tema ativo</p>

@@ -28,6 +28,7 @@ import { UpdateBanner } from "@/components/operator/update-banner";
 import { YoutubePanel } from "@/components/operator/youtube-panel";
 import { WindowsRuntime } from "@/components/operator/windows-setup";
 import { toast } from "sonner";
+import { applyAccentPreset } from "@/lib/accent-presets";
 import { runOptimize } from "@/lib/run-optimize";
 import { SlideStage } from "@/components/slide/slide-renderer";
 import { Segmented } from "@/components/ui/segmented";
@@ -52,6 +53,9 @@ export function OperatorApp() {
   useEffect(() => {
     document.documentElement.dataset.lowPerformance = String(!!store.settings.lowPerformance);
   }, [store.settings.lowPerformance]);
+  useEffect(() => {
+    applyAccentPreset(store.settings.accentPreset);
+  }, [store.settings.accentPreset]);
   const bibleRef = useRef<HTMLInputElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const playlistRef = useRef<HTMLDivElement>(null);

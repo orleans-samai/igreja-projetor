@@ -120,6 +120,8 @@ export interface ProjectionLog {
 
 export interface Settings {
   lowPerformance?: boolean;
+  /** Cor de destaque da cabine — ver accent-presets.ts. Ausente = "aco". */
+  accentPreset?: import("./accent-presets").AccentId;
   churchName: string;
   logoUrl: string;
   maxLines: number;
