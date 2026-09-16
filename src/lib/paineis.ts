@@ -10,10 +10,15 @@ export type PainelId = "biblioteca" | "culto" | "preview" | "temas";
 
 export const ORDEM_PADRAO: readonly PainelId[] = ["biblioteca", "culto", "preview", "temas"];
 
+/**
+ * O id `preview` continua sendo `preview` de propósito: ele está gravado na
+ * ordem de painéis que cada igreja salvou. Só o nome à vista mudou — a coluna
+ * mostra o que está no ar.
+ */
 export const NOME_PAINEL: Record<PainelId, string> = {
   biblioteca: "Repertório",
-  culto: "Culto",
-  preview: "Preview",
+  culto: "Programação",
+  preview: "No ar",
   temas: "Temas",
 };
 

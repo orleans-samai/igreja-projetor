@@ -390,8 +390,8 @@ export function OperatorApp() {
               onChange={setMobileTab}
               items={[
                 { value: "lib", label: "Biblioteca" },
-                { value: "preview", label: "Preview" },
-                { value: "culto", label: "Culto" },
+                { value: "preview", label: "No ar" },
+                { value: "culto", label: "Programação" },
               ]}
             />
           </div>

@@ -4,6 +4,7 @@ import { Monitor, Pause, Pencil, Play, Repeat, SkipBack, SkipForward, Square, Vo
 import { useEffect, useMemo, useRef, useState } from "react";
 import { SlideStage } from "@/components/slide/slide-renderer";
 import { FontSizeBar } from "@/components/operator/font-size-bar";
+import { NoArAgora } from "@/components/operator/no-ar-agora";
 import { OptimizeBanner, OptimizeButton } from "@/components/operator/optimize-bar";
 import { ThemeThumb } from "@/components/operator/theme-rail";
 import { Button } from "@/components/ui/button";
@@ -42,6 +43,7 @@ export function PreviewPanel({
   const setSlideEditId = useOpsStore((s) => s.setSlideEditId);
 
   const isLive = status !== "idle" && live?.refId === preview?.refId;
+  const noAr = status !== "idle" && Boolean(live);
   const currentSong = preview?.kind === "song" ? songs.find((s) => s.id === preview.refId) : null;
   const themePinned = Boolean(currentSong?.themeId);
   const activeTheme = themes.find((t) => t.id === songThemeId) ?? themes[0];
@@ -59,7 +61,8 @@ export function PreviewPanel({
       {/* Título → informação → ações, nessa ordem e nessa hierarquia. */}
       <div className="flex items-center gap-2 border-b border-border px-3 py-2">
         <div className="min-w-0 flex-1">
-          <div className="flex min-w-0 items-center gap-2">
+          <NoArAgora />
+          <div className="mt-1 flex min-w-0 items-center gap-2">
             <h2 className="truncate text-title font-semibold tracking-tight">
               {preview?.title ?? "Nada selecionado"}
             </h2>
@@ -100,26 +103,30 @@ export function PreviewPanel({
             if (slide) setSlideEditId(slide.id);
           }}
         >
+          {/*
+            Uma caixa só, mostrando o que a igreja está vendo.
+
+            Antes eram duas imagens disputando a mesma tela — a grande com o
+            que ainda não foi ao ar e uma miniatura no canto com o que estava
+            no ar — e o operador tinha que lembrar qual era qual. Agora, com
+            algo no ar, a caixa grande é o telão; sem nada no ar, ela mostra o
+            que o "Apresentar" vai mandar.
+          */}
           <SlideStage
-            frame={previewFrame}
+            frame={noAr ? outputFrame : previewFrame}
             variant="preview"
-            statusOverride="presenting"
+            statusOverride={noAr ? undefined : "presenting"}
             className="size-full"
           />
-          <span className="absolute left-2 top-2 rounded-sm bg-stage/85 px-1.5 py-0.5 text-caption font-medium text-stage-fg">
-            Preview
+          <span
+            className={cn(
+              "absolute left-2 top-2 flex items-center gap-1 rounded-sm px-1.5 py-0.5",
+              "text-caption font-medium",
+              noAr ? "bg-live/90 text-live-fg" : "bg-stage/85 text-stage-fg",
+            )}
+          >
+            {noAr ? "No ar" : "Vai ao ar"}
           </span>
-          {/* O que a igreja está vendo agora, para comparar sem trocar de tela. */}
-          {status !== "idle" && (
-            <span className="animate-pop-in absolute right-2 top-2 block w-24 overflow-hidden rounded-sm shadow-[var(--shadow-border-hover)]">
-              <span className="block h-14">
-                <SlideStage frame={outputFrame} variant="preview" className="size-full" />
-              </span>
-              <span className="flex items-center justify-center gap-1 bg-stage/90 py-0.5">
-                <Tally state="live" label="No ar" />
-              </span>
-            </span>
-          )}
         </button>
       </div>
 

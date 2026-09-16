@@ -260,7 +260,7 @@ export function LiveMode({
           <div>
             <p className="text-caption text-subtle">No ar agora</p>
             <h2 className="mt-0.5 truncate text-display font-semibold tracking-tight">
-              {nowDeck?.title ?? "Nada no preview"}
+              {nowDeck?.title ?? "Nada no ar"}
             </h2>
             {nowDeck && (
               <p className="tnum mt-0.5 text-body text-muted">

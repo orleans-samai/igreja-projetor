@@ -9,6 +9,7 @@ import { Hint } from "@/components/ui/tooltip";
 import { cn } from "@/lib/cn";
 import { fold, nid } from "@/lib/fold";
 import { escreverMuf, lerMuf } from "@/lib/muf";
+import { importarMusicasJsonDoDisco } from "@/lib/import-songs-json";
 import { openOutputWindow } from "@/lib/live-channel";
 import { openProjectorWindow } from "@/lib/windows-desktop";
 import { useLumenStore } from "@/store/lumen-store";
@@ -249,6 +250,7 @@ export function MenuBar({
         { label: "Importar repertório", onSelect: importRepertoire },
         { label: "Exportar repertório em lote (.muf)", onSelect: () => void exportarMuf() },
         { label: "Importar repertório em lote (.muf)", onSelect: importarMuf },
+        { label: "Importar músicas (.json)", onSelect: importarMusicasJsonDoDisco },
         { label: "Instalar no Windows", onSelect: () => setWindowsSetupOpen(true) },
         { label: "Verificar atualizações", onSelect: () => void verificarAtualizacoes() },
         { label: "Configurações", onSelect: onSettings },

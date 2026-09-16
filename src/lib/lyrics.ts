@@ -9,8 +9,8 @@
  * the operator enables chords on the audience screen.
  */
 
-import { nid } from "./fold";
-import type { Slide } from "./types";
+import { nid } from "./fold.ts";
+import type { Slide } from "./types.ts";
 
 const LABEL_RE =
   /^\s*\[(intro|verso\s*\d*|pre[- ]?coro|pré[- ]?coro|coro\s*\d*|ponte\s*\d*|tag|final|instrumental|bridge|ending|chorus|verse\s*\d*|coda)\]\s*$/i;

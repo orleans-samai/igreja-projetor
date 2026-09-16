@@ -1,4 +1,12 @@
-import { Check, ChevronDown, GripVertical, Plus, SkipForward, Trash2 } from "lucide-react";
+import {
+  Check,
+  ChevronDown,
+  GripVertical,
+  ListOrdered,
+  Plus,
+  SkipForward,
+  Trash2,
+} from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -7,6 +15,7 @@ import { Empty, Tally } from "@/components/ui/panel";
 import { Hint } from "@/components/ui/tooltip";
 import { ThemeThumb } from "@/components/operator/theme-rail";
 import { cn } from "@/lib/cn";
+import { etapaDoItem, type Etapa } from "@/lib/culto-etapas";
 import { useLumenStore } from "@/store/lumen-store";
 
 export function PlaylistPanel({ showThemes = false }: { showThemes?: boolean }) {
@@ -35,6 +44,10 @@ export function PlaylistPanel({ showThemes = false }: { showThemes?: boolean }) 
 
   const pl = playlists.find((p) => p.id === activeId) ?? playlists[0];
   const count = pl?.items.length ?? 0;
+  // Quem está no ar ancora a leitura da lista: o que veio antes está feito,
+  // o de baixo é o próximo. Sem nada no ar, o culto ainda não começou.
+  const indiceNoAr =
+    status !== "idle" && live ? (pl?.items.findIndex((it) => it.refId === live.refId) ?? -1) : -1;
   const now = new Date();
   const prevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
   const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
@@ -84,11 +97,12 @@ export function PlaylistPanel({ showThemes = false }: { showThemes?: boolean }) 
   return (
     <div className="flex h-full min-h-0 flex-col bg-surface" data-tour="culto">
       <div className="panel-head justify-between">
-        <h2>
-          Culto <span className="tnum text-subtle">{count}</span>
+        <h2 className="flex items-center gap-1.5">
+          <ListOrdered className="size-3.5 text-subtle" aria-hidden />
+          Programação do culto <span className="tnum text-subtle">{count}</span>
         </h2>
         <div className="flex items-center gap-0.5">
-          <Hint label="Somar o que está no preview ao culto">
+          <Hint label="Somar o que está selecionado à programação">
             <Button size="iconSm" variant="ghost" aria-label="Adicionar ao culto" onClick={addCurrent}>
               <Plus />
             </Button>
@@ -163,7 +177,8 @@ export function PlaylistPanel({ showThemes = false }: { showThemes?: boolean }) 
 
       <ul className="lumen-scroll min-h-0 flex-1 overflow-y-auto">
         {pl?.items.map((item, i) => {
-          const onAir = status !== "idle" && live?.refId === item.refId;
+          const etapa = etapaDoItem(i, indiceNoAr);
+          const onAir = etapa === "no-ar";
           const selected = preview?.refId === item.refId;
           return (
             <li
@@ -189,6 +204,8 @@ export function PlaylistPanel({ showThemes = false }: { showThemes?: boolean }) 
                 "transition-colors duration-[var(--motion-fast)] ease-[var(--ease-out)]",
                 selected && "bg-elevated",
                 onAir && "bg-live/10",
+                // O que já passou recua um pouco, para o olho cair no que falta.
+                etapa === "concluido" && "opacity-55",
                 dragFrom === i && "opacity-40",
                 dragOver === i && dragFrom !== i && "shadow-[inset_0_2px_0_0_var(--color-accent)]",
               )}
@@ -211,14 +228,14 @@ export function PlaylistPanel({ showThemes = false }: { showThemes?: boolean }) 
                 className="min-w-0 flex-1 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
                 onClick={() => previewItem(i)}
                 onDoubleClick={() => presentItem(i)}
-                title="Um clique põe no preview; dois cliques mandam para o telão"
+                title="Um clique seleciona; dois cliques mandam para o telão"
               >
                 <span className="flex min-w-0 items-baseline gap-1.5">
                   <span className="tnum shrink-0 text-caption text-subtle">{i + 1}</span>
                   <span className="truncate text-body text-fg">{item.title}</span>
                 </span>
                 <span className="mt-0.5 flex items-center gap-1.5">
-                  {onAir && <Tally state="live" label="No ar" />}
+                  <EtapaTag etapa={etapa} />
                   <span className="text-caption text-subtle">{labelType(item.type)}</span>
                 </span>
               </button>
@@ -264,6 +281,25 @@ export function PlaylistPanel({ showThemes = false }: { showThemes?: boolean }) 
       )}
     </div>
   );
+}
+
+function EtapaTag({ etapa }: { etapa: Etapa }) {
+  if (etapa === "no-ar") return <Tally state="live" label="No ar" />;
+  if (etapa === "proximo") {
+    return (
+      <span className="rounded-sm bg-accent/20 px-1.5 text-caption font-medium text-accent">
+        Próximo
+      </span>
+    );
+  }
+  if (etapa === "concluido") {
+    return (
+      <span className="flex items-center gap-1 text-caption text-subtle">
+        <Check className="size-3" aria-hidden /> Concluído
+      </span>
+    );
+  }
+  return <span className="text-caption text-subtle">Pendente</span>;
 }
 
 function labelType(t: string) {

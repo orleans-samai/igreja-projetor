@@ -1,5 +1,6 @@
 import {
   BookOpen,
+  FileJson,
   FolderCog,
   FolderOpen,
   Globe,
@@ -28,6 +29,7 @@ import {
 } from "@/lib/bible";
 import { cn } from "@/lib/cn";
 import { fold, nid } from "@/lib/fold";
+import { importarMusicasJsonDoDisco } from "@/lib/import-songs-json";
 import { fetchAndImportWebSong } from "@/lib/import-web-song";
 import { suggestSongs } from "@/lib/lyrics-suggestions";
 import type { LyricsHit } from "@/lib/lyrics-web";
@@ -115,6 +117,16 @@ export function LibraryPanel({
           <Hint label="Buscar letra na internet" keys="Ctrl+Shift+F">
             <Button size="iconSm" variant="ghost" aria-label="Buscar letra na internet" onClick={onWebLyrics}>
               <Globe />
+            </Button>
+          </Hint>
+          <Hint label="Importar músicas de um arquivo .json">
+            <Button
+              size="iconSm"
+              variant="ghost"
+              aria-label="Importar músicas"
+              onClick={importarMusicasJsonDoDisco}
+            >
+              <FileJson />
             </Button>
           </Hint>
           <Hint label="Nova letra">
@@ -350,9 +362,9 @@ function WebSuggestions({ onCount }: { onCount: (n: number) => void }) {
         title: hit.title,
         subtitle: hit.artist,
       });
-      toast(`“${hit.title}” entrou no culto — confira os slides no preview`);
+      toast(`“${hit.title}” entrou no culto — confira os slides antes de projetar`);
     } else {
-      toast(`“${hit.title}” entrou no repertório — confira os slides no preview`);
+      toast(`“${hit.title}” entrou no repertório — confira os slides antes de projetar`);
     }
   };
 
