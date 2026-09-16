@@ -75,8 +75,17 @@ try {
   const remoteBase = `http://127.0.0.1:${remoteStatus.porta}`;
   const pinErrado = await fetch(`${remoteBase}/parear`, { method: "POST", body: JSON.stringify({ pin: "000001" }) });
   assert.equal(pinErrado.status, 401);
-  const pareado = await fetch(`${remoteBase}/parear`, { method: "POST", body: JSON.stringify({ pin: remoteStatus.pin }) }).then((r) => r.json());
+  const pareado = await fetch(`${remoteBase}/parear`, { method: "POST", body: JSON.stringify({ pin: remoteStatus.pin, nome: "Smoke" }) }).then((r) => r.json());
   assert.equal(pareado.ok, true);
+  // O PIN sozinho não comanda o telão: quem pareia entra como "chat" e a
+  // cabine promove. Aqui isso passa pelo IPC de verdade, como no app.
+  assert.equal(pareado.permissao, "chat");
+  const semPermissao = await fetch(`${remoteBase}/comando`, { method: "POST", body: JSON.stringify({ token: pareado.token, acao: "preto" }) });
+  assert.equal(semPermissao.status, 403);
+  const aparelhos = await page.evaluate(() => window.lumenDesktop.remoteControlDevices());
+  assert.equal(aparelhos.length, 1);
+  assert.equal(aparelhos[0].nome, "Smoke");
+  await page.evaluate((id) => window.lumenDesktop.remoteControlSetPermission(id, "controle"), aparelhos[0].id);
   const statusAtual = () => page.evaluate(() => JSON.parse(localStorage.getItem("lumen-live-frame") ?? "null")?.status);
   assert.notEqual(await statusAtual(), "black");
   const comando = await fetch(`${remoteBase}/comando`, { method: "POST", body: JSON.stringify({ token: pareado.token, acao: "preto" }) }).then((r) => r.json());
