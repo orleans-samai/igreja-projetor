@@ -25,7 +25,10 @@ export type OpsMessage =
       duracao: number;
       estado: "tocando" | "pausado" | "parado" | "carregando" | "fim";
       erro?: string;
-    };
+    }
+  // O vídeo local também toca no telão; sem isto, um vídeo que termina
+  // sozinho (sem repetir) deixaria o botão de Pausar aceso para sempre.
+  | { type: "media-tempo"; estado: "tocando" | "pausado" | "fim" };
 
 let channel: BroadcastChannel | null = null;
 

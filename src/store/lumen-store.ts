@@ -192,6 +192,7 @@ export interface LumenState {
   selectText: (id: string) => void;
   selectMedia: (id: string) => void;
   addMedia: (item: MediaItem) => void;
+  comandarMedia: (patch: Partial<Pick<Deck, "mediaAcao" | "mediaLoop">>) => void;
   setAlert: (text: string, seconds: number, position: "top" | "bottom") => void;
   clearAlert: () => void;
   startCountdown: (label: string, seconds: number) => void;
@@ -374,6 +375,7 @@ const empty = (): Omit<
   | "selectText"
   | "selectMedia"
   | "addMedia"
+  | "comandarMedia"
   | "setAlert"
   | "clearAlert"
   | "startCountdown"
@@ -1004,12 +1006,29 @@ export const useLumenStore = create<LumenState>()(
             slides,
             mediaSrc: item.path,
             mediaType: item.type === "announcement" ? undefined : item.type,
+            // Vídeo toca no telão, com som — por isso entra pausado, do mesmo
+            // jeito que o vídeo do YouTube: quem decide a hora é o operador.
+            mediaAcao: item.type === "video" ? "pausar" : undefined,
+            mediaLoop: false,
           },
           previewIndex: 0,
         });
       },
 
       addMedia: (item) => set((s) => ({ media: [item, ...s.media] })),
+
+      /**
+       * Comanda o vídeo local que está no telão — mesmo desenho do YouTube:
+       * a cabine descreve o que quer, quem toca de verdade é o telão.
+       */
+      comandarMedia: (patch) => {
+        const atual = get().live;
+        if (!atual || atual.mediaType !== "video") return;
+        broadcast(
+          { live: { ...atual, ...patch, mediaSeq: (atual.mediaSeq ?? 0) + 1 } },
+          set,
+        );
+      },
 
       setAlert: (text, seconds, position) =>
         broadcast(

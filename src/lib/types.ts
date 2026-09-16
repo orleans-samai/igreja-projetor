@@ -172,6 +172,14 @@ export interface Deck {
    *  ou o vídeo chegarem ao telão, em vez de só o nome do arquivo. */
   mediaSrc?: string;
   mediaType?: "image" | "video" | "audio";
+  /** Vídeo toca no telão, com som — a cabine só descreve o que quer, do
+   *  mesmo jeito que o vídeo do YouTube (ver YoutubeFrame). */
+  mediaAcao?: "tocar" | "pausar" | "parar";
+  mediaLoop?: boolean;
+  /** Sobe a cada comando: sem isto, pedir "tocar" de novo depois do vídeo
+   *  terminar sozinho seria um quadro idêntico ao anterior, e o telão não
+   *  teria como distinguir do primeiro pedido (ver YoutubeFrame.busca). */
+  mediaSeq?: number;
 }
 
 /** Snapshot sent from the operator to projection/stage windows. */

@@ -15,6 +15,7 @@ import { fadeDurationMs, slideKey } from "@/lib/transition";
 import type { ClockPosition, FitMode, LiveFrame, OutputStatus, Theme } from "@/lib/types";
 import { cn } from "@/lib/cn";
 import { YoutubeStage } from "@/components/projection/youtube-stage";
+import { publishOps } from "@/lib/ops-channel";
 import { capaDoVideo } from "@/lib/youtube";
 
 const VW = 1920;
@@ -321,15 +322,40 @@ function MediaStage({
   title,
   fitMode,
   variant,
+  acao,
+  loop,
+  cmdSeq,
 }: {
   src: string;
   type?: "image" | "video" | "audio";
   title: string;
   fitMode: FitMode;
   variant: "audience" | "stage" | "preview";
+  /** Comando de reprodução do vídeo — ver `Deck.mediaAcao`. */
+  acao?: "tocar" | "pausar" | "parar";
+  loop?: boolean;
+  cmdSeq?: number;
 }) {
   const [erro, setErro] = useState(false);
   const fit = fitMode === "cover" ? "object-cover" : "object-contain";
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  // Comando → player. Sem `acao` (sessão salva antes deste recurso existir),
+  // cai no autoplay de sempre em vez de travar num vídeo que nunca começa.
+  useEffect(() => {
+    const el = videoRef.current;
+    if (!el || type !== "video" || acao === undefined) return;
+    if (acao === "tocar") {
+      // Terminado sem repetir, currentTime fica preso no fim: sem isto,
+      // Tocar de novo pediria play e nada aconteceria.
+      if (el.ended) el.currentTime = 0;
+      void el.play().catch(() => undefined);
+    } else if (acao === "pausar") el.pause();
+    else {
+      el.pause();
+      el.currentTime = 0;
+    }
+  }, [acao, type, cmdSeq]);
 
   if (erro) {
     return (
@@ -358,11 +384,18 @@ function MediaStage({
     return (
       <video
         key={src}
+        ref={videoRef}
         src={src}
-        autoPlay
+        autoPlay={acao === undefined}
+        loop={loop}
         playsInline
         muted={variant !== "audience"}
         onError={() => setErro(true)}
+        // Só a janela do público relata: se o preview da cabine e o retorno
+        // de palco também contassem, o mesmo aviso chegaria três vezes.
+        onPlay={() => variant === "audience" && publishOps({ type: "media-tempo", estado: "tocando" })}
+        onPause={() => variant === "audience" && publishOps({ type: "media-tempo", estado: "pausado" })}
+        onEnded={() => variant === "audience" && publishOps({ type: "media-tempo", estado: "fim" })}
         className={cn("absolute inset-0 z-10 size-full", fit)}
       />
     );
@@ -492,6 +525,9 @@ export function SlideCanvas({
           title={frame.deck.title}
           fitMode={fitMode}
           variant={variant}
+          acao={frame.deck.mediaAcao}
+          loop={frame.deck.mediaLoop}
+          cmdSeq={frame.deck.mediaSeq}
         />
       )}
 

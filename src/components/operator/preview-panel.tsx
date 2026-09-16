@@ -1,7 +1,7 @@
 import { toast } from "sonner";
 import * as Popover from "@radix-ui/react-popover";
-import { Monitor, Pause, Pencil, Play, SkipBack, SkipForward, Square, Volume2, VolumeX, Youtube } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { Monitor, Pause, Pencil, Play, Repeat, SkipBack, SkipForward, Square, Volume2, VolumeX, Youtube } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { SlideStage } from "@/components/slide/slide-renderer";
 import { OptimizeBanner, OptimizeButton } from "@/components/operator/optimize-bar";
 import { ThemeThumb } from "@/components/operator/theme-rail";
@@ -10,6 +10,7 @@ import { Tally } from "@/components/ui/panel";
 import { Hint } from "@/components/ui/tooltip";
 import { themeSwatch } from "@/lib/theme-swatch";
 import { cn } from "@/lib/cn";
+import { subscribeOps } from "@/lib/ops-channel";
 import type { LiveFrame } from "@/lib/types";
 import { useLumenStore } from "@/store/lumen-store";
 import { useOpsStore } from "@/store/ops-store";
@@ -122,6 +123,7 @@ export function PreviewPanel({
       </div>
 
       <YoutubeTransporte />
+      <MediaVideoTransporte />
 
       <div className="flex flex-wrap items-center gap-3 border-t border-border px-3 py-2">
         <label className="flex select-none items-center gap-2 text-secondary text-muted">
@@ -252,6 +254,71 @@ function YoutubeTransporte() {
           Tirar do telão
         </Button>
       </span>
+    </div>
+  );
+}
+
+/**
+ * Transporte do vídeo local, junto ao preview.
+ *
+ * O vídeo toca no telão, com som — a cabine só descreve o que quer, do
+ * mesmo jeito que o transporte do YouTube logo acima. Sem isto, um vídeo
+ * da pasta de mídia só sabia fazer uma coisa: tocar sozinho do início ao
+ * fim, sem ninguém poder pausar para um aviso ou repetir de propósito.
+ */
+function MediaVideoTransporte() {
+  const live = useLumenStore((s) => s.live);
+  const comandar = useLumenStore((s) => s.comandarMedia);
+  const [estado, setEstado] = useState<"tocando" | "pausado" | "fim">("pausado");
+
+  useEffect(() => {
+    return subscribeOps((msg) => {
+      if (msg.type !== "media-tempo") return;
+      setEstado(msg.estado);
+    });
+  }, []);
+
+  // Cronômetro zerado a cada vídeo novo: senão o botão herdaria o estado
+  // de quem tocou antes dele.
+  const src = live?.mediaSrc;
+  useEffect(() => setEstado("pausado"), [src]);
+
+  if (!live || live.kind !== "media" || live.mediaType !== "video") return null;
+  const tocando = estado === "tocando";
+
+  return (
+    <div className="animate-swap-in flex flex-wrap items-center gap-2 border-t border-border bg-elevated px-3 py-1.5">
+      <Hint label={tocando ? "Pausar no telão" : "Tocar no telão"}>
+        <Button
+          size="sm"
+          variant={tocando ? "secondary" : "default"}
+          onClick={() => comandar({ mediaAcao: tocando ? "pausar" : "tocar" })}
+        >
+          {tocando ? <Pause /> : <Play />}
+          {tocando ? "Pausar" : "Tocar"}
+        </Button>
+      </Hint>
+      <Hint label="Parar e voltar ao início">
+        <Button size="iconSm" variant="ghost" aria-label="Parar vídeo" onClick={() => comandar({ mediaAcao: "parar" })}>
+          <Square />
+        </Button>
+      </Hint>
+      {!tocando && estado !== "fim" && (
+        <span className="text-caption text-subtle">Telão parado até você tocar</span>
+      )}
+      {estado === "fim" && <span className="text-caption text-subtle">Vídeo terminou</span>}
+      <label className="ml-auto flex select-none items-center gap-2 text-caption text-muted">
+        <Repeat className="size-3.5 text-subtle" aria-hidden />
+        <button
+          type="button"
+          role="switch"
+          aria-checked={!!live.mediaLoop}
+          data-on={!!live.mediaLoop}
+          className="lumen-switch"
+          onClick={() => comandar({ mediaLoop: !live.mediaLoop })}
+        />
+        Repetir
+      </label>
     </div>
   );
 }
