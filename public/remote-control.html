@@ -194,8 +194,19 @@
     b.addEventListener("click", function () { void comando(b.dataset.acao); });
   });
 
+  // O QR code carrega o PIN na própria URL, para parear com uma câmera só —
+  // sem isto, apontar a câmera adiantaria só o endereço, e o PIN ainda
+  // precisaria ser digitado à mão.
+  var pinDaUrl = new URLSearchParams(location.search).get("pin");
+  if (pinDaUrl) {
+    // Some da URL assim que lido: um PIN não devia sobreviver no histórico
+    // do navegador depois de já ter servido para parear.
+    history.replaceState(null, "", location.pathname);
+  }
+
   var salvo = localStorage.getItem(CHAVE);
   if (salvo) conectarEstado(salvo);
+  else if (pinDaUrl && /^\d{6}$/.test(pinDaUrl)) void parear(pinDaUrl);
   else mostrarPareamento();
 })();
 </script>

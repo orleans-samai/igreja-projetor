@@ -1,4 +1,5 @@
 import { Power, RefreshCw, Smartphone } from "lucide-react";
+import QRCode from "qrcode";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
@@ -30,6 +31,7 @@ export function RemoteControlDialog({
 }) {
   const [status, setStatus] = useState<RemoteStatus>(VAZIO);
   const [ocupado, setOcupado] = useState(false);
+  const [qr, setQr] = useState<string | null>(null);
   const suportado = typeof window !== "undefined" && window.lumenDesktop?.isDesktop;
 
   useEffect(() => {
@@ -76,6 +78,29 @@ export function RemoteControlDialog({
   };
 
   const enderecos = enderecosDeAcesso(status);
+  const enderecoPrincipal = enderecos[0] ?? null;
+
+  // O QR carrega o PIN junto no endereço: aponta a câmera e o celular já
+  // pareia sozinho, sem digitar nada. Só existe enquanto o servidor estiver
+  // de pé — gerar um QR para um PIN que já morreu seria um convite que não
+  // funciona.
+  useEffect(() => {
+    if (!enderecoPrincipal || !status.pin) {
+      setQr(null);
+      return;
+    }
+    let vivo = true;
+    QRCode.toDataURL(`${enderecoPrincipal}/?pin=${status.pin}`, {
+      margin: 1,
+      width: 176,
+      color: { dark: "#17171a", light: "#e9e8e5" },
+    })
+      .then((url) => vivo && setQr(url))
+      .catch(() => vivo && setQr(null));
+    return () => {
+      vivo = false;
+    };
+  }, [enderecoPrincipal, status.pin]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -99,13 +124,22 @@ export function RemoteControlDialog({
               </Button>
             ) : (
               <>
-                <div className="rounded-lg bg-elevated p-4 text-center">
-                  <p className="text-caption font-medium uppercase tracking-wide text-subtle">
-                    PIN para parear
-                  </p>
-                  <p className="tnum mt-1 text-display-sm font-semibold tracking-[0.2em] text-fg">
-                    {status.pin}
-                  </p>
+                <div className="flex items-center gap-3 rounded-lg bg-elevated p-4">
+                  {qr && (
+                    <img
+                      src={qr}
+                      alt="QR code para parear o celular"
+                      className="size-24 shrink-0 rounded-md"
+                    />
+                  )}
+                  <div className="min-w-0 flex-1 text-center">
+                    <p className="text-caption font-medium uppercase tracking-wide text-subtle">
+                      {qr ? "Aponte a câmera, ou digite o PIN" : "PIN para parear"}
+                    </p>
+                    <p className="tnum mt-1 text-display-sm font-semibold tracking-[0.2em] text-fg">
+                      {status.pin}
+                    </p>
+                  </div>
                 </div>
 
                 <div>
