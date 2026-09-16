@@ -3,7 +3,103 @@ import QRCode from "qrcode";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { enderecosDeAcesso, type RemoteStatus } from "@/lib/remote-control";
+import { cn } from "@/lib/cn";
+import {
+  AJUDA_PERMISSAO,
+  ROTULO_PERMISSAO,
+  enderecosDeAcesso,
+  type DispositivoRemoto,
+  type PermissaoRemota,
+  type RemoteStatus,
+} from "@/lib/remote-control";
+
+const PERMISSOES_UI: PermissaoRemota[] = ["chat", "editor", "controle"];
+
+/**
+ * Quem está conectado, o que cada um pode, e como tirar alguém.
+ *
+ * É a resposta para "quem mexeu no telão?": a lista tem nome, permissão e
+ * quando o aparelho deu notícia pela última vez. Desconectar vale só para
+ * aquele aparelho — os outros continuam trabalhando.
+ */
+function Dispositivos({
+  status,
+  aoMudar,
+}: {
+  status: RemoteStatus;
+  aoMudar: (s: RemoteStatus) => void;
+}) {
+  const lista = status.dispositivos ?? [];
+
+  if (lista.length === 0) {
+    return (
+      <p className="flex items-center gap-1.5 text-caption text-subtle">
+        <Smartphone className="size-3" aria-hidden />
+        Nenhum aparelho pareado ainda
+      </p>
+    );
+  }
+
+  return (
+    <div>
+      <p className="text-caption font-medium uppercase tracking-wide text-subtle">
+        Aparelhos conectados
+      </p>
+      <ul className="mt-1 space-y-1.5">
+        {lista.map((d: DispositivoRemoto) => (
+          <li key={d.id} className="rounded-md bg-elevated p-2">
+            <div className="flex items-center gap-1.5">
+              <span
+                aria-hidden
+                className={cn("size-1.5 shrink-0 rounded-full", d.online ? "bg-ok" : "bg-subtle")}
+              />
+              <p className="min-w-0 flex-1 truncate text-body font-medium text-fg">{d.nome}</p>
+              <span className="shrink-0 text-caption text-subtle">
+                {d.online ? "conectado" : "sem sinal"}
+              </span>
+              <Button
+                size="iconSm"
+                variant="ghost"
+                aria-label={`Desconectar ${d.nome}`}
+                className="hover:text-danger"
+                onClick={async () => {
+                  const bridge = window.lumenDesktop;
+                  if (bridge) aoMudar(await bridge.remoteControlDisconnect(d.id));
+                }}
+              >
+                <Power />
+              </Button>
+            </div>
+            <div className="mt-1 flex flex-wrap gap-1">
+              {PERMISSOES_UI.map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  title={AJUDA_PERMISSAO[p]}
+                  aria-pressed={d.permissao === p}
+                  onClick={async () => {
+                    const bridge = window.lumenDesktop;
+                    if (bridge) aoMudar(await bridge.remoteControlSetPermission(d.id, p));
+                  }}
+                  className={cn(
+                    "rounded-md px-2 py-0.5 text-caption font-medium",
+                    "transition-colors duration-[var(--motion-fast)] ease-[var(--ease-out)]",
+                    "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring",
+                    d.permissao === p
+                      ? "bg-primary text-primary-fg"
+                      : "bg-raised text-muted hover:text-fg",
+                  )}
+                >
+                  {ROTULO_PERMISSAO[p]}
+                </button>
+              ))}
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
 
 const VAZIO: RemoteStatus = {
   ligado: false,
@@ -161,12 +257,40 @@ export function RemoteControlDialog({
                   )}
                 </div>
 
-                <p className="flex items-center gap-1.5 text-caption text-subtle">
-                  <Smartphone className="size-3" aria-hidden />
-                  {status.sessoesAtivas === 0
-                    ? "Nenhum aparelho pareado ainda"
-                    : `${status.sessoesAtivas} aparelho${status.sessoesAtivas > 1 ? "s" : ""} pareado${status.sessoesAtivas > 1 ? "s" : ""}`}
-                </p>
+                <Dispositivos status={status} aoMudar={setStatus} />
+
+                <div>
+                  <p className="text-caption font-medium uppercase tracking-wide text-subtle">
+                    Ao parear, o aparelho entra como
+                  </p>
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    {PERMISSOES_UI.map((p) => (
+                      <button
+                        key={p}
+                        type="button"
+                        aria-pressed={(status.permissaoPadrao ?? "chat") === p}
+                        onClick={async () => {
+                          const d = window.lumenDesktop;
+                          if (d) setStatus(await d.remoteControlSetDefaultPermission(p));
+                        }}
+                        className={cn(
+                          "rounded-md px-2 py-1 text-caption font-medium",
+                          "transition-colors duration-[var(--motion-fast)] ease-[var(--ease-out)]",
+                          "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring",
+                          (status.permissaoPadrao ?? "chat") === p
+                            ? "bg-primary text-primary-fg"
+                            : "bg-elevated text-muted hover:text-fg",
+                        )}
+                      >
+                        {ROTULO_PERMISSAO[p]}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="mt-1 text-caption text-subtle">
+                    O PIN prova que a pessoa está na sala, não que ela deve comandar o telão.
+                    Por isso o padrão é entrar só no chat e a cabine liberar o resto.
+                  </p>
+                </div>
 
                 <div className="flex flex-wrap gap-2 border-t border-border pt-3">
                   <Button size="sm" variant="secondary" onClick={() => void gerarNovoPin()} loading={ocupado}>

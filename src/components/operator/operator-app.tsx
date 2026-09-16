@@ -1,5 +1,6 @@
 import { Group, Panel, Separator } from "react-resizable-panels";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { ChatAviso, ChatPanel } from "@/components/operator/chat-panel";
 import { ControlBar } from "@/components/operator/control-bar";
 import {
   CountdownDialog,
@@ -40,6 +41,7 @@ import type { LiveFrame } from "@/lib/types";
 import { buildLiveFrame, useLumenStore } from "@/store/lumen-store";
 import { useAutoSlideStore } from "@/store/auto-slide-store";
 import { useYoutubeStore } from "@/store/youtube-store";
+import { useChatStore } from "@/store/chat-store";
 import { useOpsStore } from "@/store/ops-store";
 
 function isTypingTarget(el: EventTarget | null) {
@@ -70,6 +72,7 @@ export function OperatorApp() {
   const [remoteControl, setRemoteControl] = useState(false);
   const [mobileTab, setMobileTab] = useState<"lib" | "preview" | "culto">("preview");
   const liveMode = useOpsStore((s) => s.liveMode);
+  const chatPosicao = useChatStore((s) => s.posicao);
 
   // O Auto-Slide escuta e pede o slide; quem projeta continua sendo a
   // apresentação de sempre.
@@ -397,7 +400,22 @@ export function OperatorApp() {
           </div>
         )}
 
-        <div className="min-h-0 flex-1">
+        <ChatAviso />
+
+        {/*
+          O chat vive ao lado do trabalho, não sobre ele.
+
+          Lateral esquerda ou direita entra como coluna irmã — o conteúdo
+          encolhe, nada fica coberto. Flutuante é o único que sobrepõe, e
+          mesmo assim no canto de baixo, longe da barra de controles.
+        */}
+        <div className="relative flex min-h-0 flex-1">
+          {chatPosicao === "esquerda" && (
+            <div className="hidden w-72 shrink-0 md:block">
+              <ChatPanel />
+            </div>
+          )}
+          <div className="min-h-0 flex-1">
           {bibleOpen ? (
             <BibleWorkspace previewFrame={previewFrame} onBack={() => setBibleOpen(false)} />
           ) : (
@@ -449,9 +467,17 @@ export function OperatorApp() {
           </div>
             </>
           )}
+          </div>
+          {chatPosicao === "direita" && (
+            <div className="hidden w-72 shrink-0 md:block">
+              <ChatPanel />
+            </div>
+          )}
+          {chatPosicao === "flutuante" && <ChatPanel />}
         </div>
 
         {!bibleOpen && <SlideGrid />}
+
         <ControlBar outputFrame={outputFrame} />
       </div>
 

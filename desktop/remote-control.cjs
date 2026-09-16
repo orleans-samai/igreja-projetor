@@ -18,15 +18,29 @@ const fsp = require("node:fs/promises");
  * novo a cada clique, e desligar ou regenerar o PIN invalida todas as sessões
  * de uma vez, inclusive as que ninguém está mais olhando.
  *
- * Só os comandos de transporte existem aqui: próximo, anterior, preto, logo,
- * ocultar letra, parar, próximo item. Nada que decida o que vai ao ar sem
- * confirmação — trocar de música ou apagar o repertório continuam exigindo
- * a cabine.
+ * O PIN prova presença, não intenção. Por isso ele sozinho não dá o telão:
+ * quem pareia entra como "chat", e é a cabine que promove o aparelho a
+ * editor ou a controle, vendo o nome dele na lista. Um celular esquecido
+ * pareado na semana passada não avança slide no meio da pregação.
+ *
+ * O que trafega:
+ *
+ *   /parear      seis dígitos viram um token de sessão
+ *   /estado      SSE: o que está no ar, o chat e a permissão do aparelho
+ *   /comando     transporte do telão                        (permissão: controle)
+ *   /repertorio  lista de músicas                           (permissão: editor)
+ *   /musica      ler e salvar uma letra                     (permissão: editor)
+ *   /chat        recado para a cabine                       (permissão: chat)
  */
 
 const MAX_BODY = 4 * 1024;
+/** Letra de música é maior que um comando: um hino comprido passa de 4 KB. */
+const MAX_BODY_MUSICA = 256 * 1024;
 const JANELA_TENTATIVAS_MS = 3 * 60 * 1000;
 const LIMITE_TENTATIVAS = 5;
+/** O aparelho que não dá notícia há tanto tempo aparece como desconectado. */
+const SUMIU_MS = 30 * 1000;
+const MAX_CHAT = 200;
 
 const ACOES_VALIDAS = new Set([
   "proximo",
@@ -36,7 +50,20 @@ const ACOES_VALIDAS = new Set([
   "ocultar-letra",
   "parar",
   "proximo-item",
+  // Transporte de mídia: o vídeo local que está no telão.
+  "tocar",
+  "pausar",
+  "parar-midia",
 ]);
+
+/** Da mais fraca para a mais forte: quem pode X também pode o que vem antes. */
+const PERMISSOES = ["chat", "editor", "controle"];
+
+function podeFazer(permissao, minima) {
+  const tem = PERMISSOES.indexOf(permissao);
+  const precisa = PERMISSOES.indexOf(minima);
+  return tem >= 0 && precisa >= 0 && tem >= precisa;
+}
 
 function enderecosLan() {
   const saida = [];
@@ -52,22 +79,75 @@ function gerarPin() {
   return String(nodeCrypto.randomInt(0, 1_000_000)).padStart(6, "0");
 }
 
+/**
+ * Tira caracteres de controle de texto que veio do celular.
+ *
+ * Nome de aparelho e recado de chat são desenhados na tela da cabine e
+ * viajam pelo SSE, cujo quadro é delimitado por quebras de linha. O JSON já
+ * escapa o que importa, mas texto de controle não tem uso legítimo aqui e
+ * atravessa log, terminal e interface sem ser visto — some antes de entrar.
+ *
+ * @param {string} bruto
+ * @param {boolean} manterQuebras tabulação e quebra de linha sobrevivem
+ */
+function semControle(bruto, manterQuebras = false) {
+  let saida = "";
+  for (const ch of String(bruto || "")) {
+    const c = ch.codePointAt(0);
+    const permitido = manterQuebras && (c === 9 || c === 10);
+    if (!permitido && (c < 32 || c === 127)) continue;
+    saida += ch;
+  }
+  return saida;
+}
+
+/** Nome que o aparelho mandou, limpo — vai aparecer na tela da cabine. */
+function nomeLimpo(bruto, padrao) {
+  const s = semControle(bruto).trim();
+  return s ? s.slice(0, 32) : padrao;
+}
+
 class RemoteControl {
   constructor(wwwRoot) {
     this.wwwRoot = wwwRoot;
     this.server = null;
     this.porta = null;
     this.pin = null;
-    this.sessoes = new Set();
+    /** token → dispositivo. Substitui o Set de tokens: agora cada aparelho
+     *  tem nome, permissão e histórico, que é o que a cabine precisa ver. */
+    this.dispositivos = new Map();
     this.tentativas = new Map();
-    this.assinantes = new Set();
+    /** res do SSE → token, para saber de quem é cada conexão aberta. */
+    this.assinantes = new Map();
     this.ultimoEstado = null;
-    /** Ligado pelo processo principal: o que fazer quando um comando chega. */
+    this.repertorio = [];
+    this.chat = [];
+    /** Permissão de quem acabou de parear. A cabine pode afrouxar isto. */
+    this.permissaoPadrao = "chat";
+    /** Ligados pelo processo principal. */
     this.onComando = null;
+    this.onEvento = null;
   }
 
   ligado() {
     return !!this.server;
+  }
+
+  _online(disp) {
+    return Date.now() - disp.ultimoVisto < SUMIU_MS;
+  }
+
+  listarDispositivos() {
+    return [...this.dispositivos.values()]
+      .map((d) => ({
+        id: d.id,
+        nome: d.nome,
+        permissao: d.permissao,
+        criadoEm: d.criadoEm,
+        ultimoVisto: d.ultimoVisto,
+        online: this._online(d),
+      }))
+      .sort((a, b) => b.ultimoVisto - a.ultimoVisto);
   }
 
   status() {
@@ -76,15 +156,18 @@ class RemoteControl {
       porta: this.porta,
       pin: this.pin,
       enderecos: this.ligado() ? enderecosLan() : [],
-      sessoesAtivas: this.sessoes.size,
+      sessoesAtivas: [...this.dispositivos.values()].filter((d) => this._online(d)).length,
+      dispositivos: this.listarDispositivos(),
+      permissaoPadrao: this.permissaoPadrao,
     };
   }
 
   async ligar() {
     if (this.ligado()) return this.status();
     this.pin = gerarPin();
-    this.sessoes.clear();
+    this.dispositivos.clear();
     this.tentativas.clear();
+    this.chat = [];
     await new Promise((resolve, reject) => {
       const server = http.createServer((req, res) => {
         void this._rota(req, res);
@@ -103,7 +186,10 @@ class RemoteControl {
 
   desligar() {
     if (!this.server) return this.status();
-    for (const res of this.assinantes) {
+    // Avisa antes de fechar: o celular mostra "conexão encerrada" em vez de
+    // ficar tentando reconectar com um servidor que não existe mais.
+    this._transmitir({ tipo: "encerrado" });
+    for (const res of this.assinantes.keys()) {
       try {
         res.end();
       } catch {
@@ -111,9 +197,14 @@ class RemoteControl {
       }
     }
     this.assinantes.clear();
-    this.sessoes.clear();
+    this.dispositivos.clear();
     this.ultimoEstado = null;
+    this.chat = [];
     this.server.close();
+    // O SSE é uma conexão que fica aberta de propósito. `close()` só para de
+    // aceitar novas e espera as antigas terminarem — sem isto, fechar o
+    // Lúmen com um celular conectado deixaria o processo pendurado.
+    this.server.closeAllConnections?.();
     this.server = null;
     this.porta = null;
     this.pin = null;
@@ -124,8 +215,9 @@ class RemoteControl {
   regenerarPin() {
     if (!this.ligado()) return this.status();
     this.pin = gerarPin();
-    this.sessoes.clear();
-    for (const res of this.assinantes) {
+    this.dispositivos.clear();
+    this._transmitir({ tipo: "desconectado" });
+    for (const res of this.assinantes.keys()) {
       try {
         res.end();
       } catch {
@@ -136,11 +228,93 @@ class RemoteControl {
     return this.status();
   }
 
+  /** Tira um aparelho do controle sem mexer nos outros. */
+  desconectar(id) {
+    for (const [token, d] of this.dispositivos) {
+      if (d.id !== id) continue;
+      this.dispositivos.delete(token);
+      for (const [res, t] of this.assinantes) {
+        if (t !== token) continue;
+        try {
+          res.write(`data: ${JSON.stringify({ tipo: "desconectado" })}\n\n`);
+          res.end();
+        } catch {
+          /* já fechado */
+        }
+        this.assinantes.delete(res);
+      }
+      break;
+    }
+    return this.status();
+  }
+
+  definirPermissao(id, permissao) {
+    if (!PERMISSOES.includes(permissao)) return this.status();
+    for (const [token, d] of this.dispositivos) {
+      if (d.id !== id) continue;
+      d.permissao = permissao;
+      this._paraToken(token, { tipo: "permissao", permissao });
+      break;
+    }
+    return this.status();
+  }
+
+  definirPermissaoPadrao(permissao) {
+    if (PERMISSOES.includes(permissao)) this.permissaoPadrao = permissao;
+    return this.status();
+  }
+
   /** O que a cabine está fazendo agora, para o aparelho mostrar. */
   atualizarEstado(payload) {
     this.ultimoEstado = payload;
+    this._transmitir({ tipo: "estado", estado: payload });
+  }
+
+  /** A lista de músicas que o celular pode abrir para editar. */
+  atualizarRepertorio(lista) {
+    this.repertorio = Array.isArray(lista) ? lista : [];
+  }
+
+  /** Recado escrito na cabine, para aparecer nos celulares. */
+  mensagemDaCabine(texto, autor) {
+    return this._registrarChat({
+      de: nomeLimpo(autor, "Cabine"),
+      texto: String(texto || "").slice(0, 500),
+      daCabine: true,
+    });
+  }
+
+  _registrarChat({ de, texto, daCabine }) {
+    const limpo = semControle(texto, true).trim();
+    if (!limpo) return null;
+    const msg = {
+      id: nodeCrypto.randomUUID(),
+      de,
+      texto: limpo.slice(0, 500),
+      em: Date.now(),
+      daCabine: !!daCabine,
+    };
+    this.chat.push(msg);
+    if (this.chat.length > MAX_CHAT) this.chat.splice(0, this.chat.length - MAX_CHAT);
+    this._transmitir({ tipo: "chat", mensagem: msg });
+    return msg;
+  }
+
+  _transmitir(payload) {
     const linha = `data: ${JSON.stringify(payload)}\n\n`;
-    for (const res of this.assinantes) {
+    for (const res of [...this.assinantes.keys()]) {
+      try {
+        res.write(linha);
+      } catch {
+        this.assinantes.delete(res);
+      }
+    }
+  }
+
+  _paraToken(token, payload) {
+    const linha = `data: ${JSON.stringify(payload)}\n\n`;
+    for (const [res, t] of this.assinantes) {
+      if (t !== token) continue;
       try {
         res.write(linha);
       } catch {
@@ -165,13 +339,13 @@ class RemoteControl {
     this.tentativas.set(ip, t);
   }
 
-  async _lerCorpo(req) {
+  async _lerCorpo(req, limite = MAX_BODY) {
     return new Promise((resolve, reject) => {
       let total = 0;
       const partes = [];
       req.on("data", (c) => {
         total += c.length;
-        if (total > MAX_BODY) {
+        if (total > limite) {
           reject(new Error("corpo grande demais"));
           req.destroy();
           return;
@@ -180,6 +354,29 @@ class RemoteControl {
       });
       req.on("end", () => resolve(Buffer.concat(partes).toString("utf8")));
       req.on("error", reject);
+    });
+  }
+
+  /** Quem está falando, se é que está — e marca que o aparelho deu notícia. */
+  _sessao(token) {
+    const d = this.dispositivos.get(String(token || ""));
+    if (!d) return null;
+    d.ultimoVisto = Date.now();
+    return d;
+  }
+
+  _json(res, codigo, corpo) {
+    res.writeHead(codigo, { "content-type": "application/json; charset=utf-8" });
+    res.end(JSON.stringify(corpo));
+  }
+
+  _semPermissao(res, precisa) {
+    this._json(res, 403, {
+      ok: false,
+      erro:
+        precisa === "controle"
+          ? "Este aparelho ainda não tem permissão para comandar o telão. Peça na cabine."
+          : "Este aparelho ainda não tem permissão para editar letras. Peça na cabine.",
     });
   }
 
@@ -193,17 +390,21 @@ class RemoteControl {
       return;
     }
     try {
-      if (req.method === "GET" && url.pathname === "/") return await this._servirPagina(res);
-      if (req.method === "GET" && url.pathname === "/estado") return this._sse(req, res, url);
-      if (req.method === "POST" && url.pathname === "/parear") return await this._parear(req, res);
-      if (req.method === "POST" && url.pathname === "/comando") return await this._comando(req, res);
+      const m = req.method;
+      const p = url.pathname;
+      if (m === "GET" && p === "/") return await this._servirPagina(res);
+      if (m === "GET" && p === "/estado") return this._sse(req, res, url);
+      if (m === "POST" && p === "/parear") return await this._parear(req, res);
+      if (m === "POST" && p === "/comando") return await this._comando(req, res);
+      if (m === "GET" && p === "/repertorio") return this._repertorio(res, url);
+      if (m === "GET" && p === "/musica") return this._musica(res, url);
+      if (m === "POST" && p === "/musica") return await this._salvarMusica(req, res);
+      if (m === "POST" && p === "/chat") return await this._chat(req, res);
     } catch {
-      res.writeHead(500, { "content-type": "text/plain; charset=utf-8" });
-      res.end("Erro interno");
+      this._json(res, 500, { ok: false, erro: "Erro interno" });
       return;
     }
-    res.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
-    res.end("Não encontrado");
+    this._json(res, 404, { ok: false, erro: "Não encontrado" });
   }
 
   async _servirPagina(res) {
@@ -223,27 +424,59 @@ class RemoteControl {
 
   _sse(req, res, url) {
     const token = url.searchParams.get("token") || "";
-    if (!token || !this.sessoes.has(token)) {
-      res.writeHead(401, { "content-type": "application/json" });
-      res.end(JSON.stringify({ ok: false, erro: "Sessão expirada. Pareie novamente." }));
+    const disp = this._sessao(token);
+    if (!disp) {
+      this._json(res, 401, { ok: false, erro: "Sessão expirada. Pareie novamente." });
       return;
     }
     res.writeHead(200, {
       "content-type": "text/event-stream; charset=utf-8",
       "cache-control": "no-store",
       connection: "keep-alive",
+      // Sem isto, um proxy no caminho pode segurar o fluxo em buffer e o
+      // celular só receber o slide depois que a igreja já cantou.
+      "x-accel-buffering": "no",
     });
     res.write(":ok\n\n");
-    if (this.ultimoEstado) res.write(`data: ${JSON.stringify(this.ultimoEstado)}\n\n`);
-    this.assinantes.add(res);
-    req.on("close", () => this.assinantes.delete(res));
+    // O aparelho que acabou de conectar precisa do retrato inteiro, não só
+    // das mudanças daqui para a frente.
+    res.write(
+      `data: ${JSON.stringify({
+        tipo: "inicio",
+        estado: this.ultimoEstado,
+        permissao: disp.permissao,
+        nome: disp.nome,
+        chat: this.chat.slice(-30),
+      })}\n\n`,
+    );
+    this.assinantes.set(res, token);
+
+    // Um ping regular mantém a conexão de pé e mantém `ultimoVisto` fresco,
+    // que é como a cabine sabe quem ainda está por perto.
+    const ping = setInterval(() => {
+      try {
+        res.write(":ping\n\n");
+        const d = this.dispositivos.get(token);
+        if (d) d.ultimoVisto = Date.now();
+      } catch {
+        clearInterval(ping);
+      }
+    }, 15000);
+
+    const encerrar = () => {
+      clearInterval(ping);
+      this.assinantes.delete(res);
+      this.onEvento?.({ tipo: "dispositivos" });
+    };
+    req.on("close", encerrar);
+    req.on("error", encerrar);
+    this.onEvento?.({ tipo: "dispositivos" });
   }
 
   async _parear(req, res) {
     const ip = req.socket.remoteAddress || "?";
     if (this._limitado(ip)) {
-      res.writeHead(429, { "content-type": "application/json" });
-      res.end(JSON.stringify({ ok: false, erro: "Muitas tentativas. Aguarde alguns minutos." }));
+      this._json(res, 429, { ok: false, erro: "Muitas tentativas. Aguarde alguns minutos." });
       return;
     }
     let corpo;
@@ -255,14 +488,26 @@ class RemoteControl {
     const digitado = String(corpo.pin || "").trim();
     if (!this.pin || digitado !== this.pin) {
       this._registrarFalha(ip);
-      res.writeHead(401, { "content-type": "application/json" });
-      res.end(JSON.stringify({ ok: false, erro: "PIN incorreto." }));
+      this._json(res, 401, { ok: false, erro: "PIN incorreto." });
       return;
     }
     const token = nodeCrypto.randomUUID();
-    this.sessoes.add(token);
-    res.writeHead(200, { "content-type": "application/json" });
-    res.end(JSON.stringify({ ok: true, token }));
+    const agora = Date.now();
+    const disp = {
+      id: nodeCrypto.randomUUID(),
+      nome: nomeLimpo(corpo.nome, "Celular"),
+      permissao: this.permissaoPadrao,
+      criadoEm: agora,
+      ultimoVisto: agora,
+    };
+    this.dispositivos.set(token, disp);
+    this.onEvento?.({ tipo: "dispositivos", novo: disp.nome });
+    this._json(res, 200, {
+      ok: true,
+      token,
+      permissao: disp.permissao,
+      nome: disp.nome,
+    });
   }
 
   async _comando(req, res) {
@@ -272,22 +517,107 @@ class RemoteControl {
     } catch {
       corpo = {};
     }
-    const token = String(corpo.token || "");
-    if (!this.sessoes.has(token)) {
-      res.writeHead(401, { "content-type": "application/json" });
-      res.end(JSON.stringify({ ok: false, erro: "Sessão expirada. Pareie novamente." }));
+    const disp = this._sessao(corpo.token);
+    if (!disp) {
+      this._json(res, 401, { ok: false, erro: "Sessão expirada. Pareie novamente." });
       return;
     }
+    if (!podeFazer(disp.permissao, "controle")) return this._semPermissao(res, "controle");
+
     const acao = String(corpo.acao || "");
     if (!ACOES_VALIDAS.has(acao)) {
-      res.writeHead(400, { "content-type": "application/json" });
-      res.end(JSON.stringify({ ok: false, erro: "Comando desconhecido." }));
+      this._json(res, 400, { ok: false, erro: "Comando desconhecido." });
       return;
     }
     this.onComando?.(acao);
-    res.writeHead(200, { "content-type": "application/json" });
-    res.end(JSON.stringify({ ok: true }));
+    this._json(res, 200, { ok: true });
+  }
+
+  _repertorio(res, url) {
+    const disp = this._sessao(url.searchParams.get("token"));
+    if (!disp) {
+      this._json(res, 401, { ok: false, erro: "Sessão expirada. Pareie novamente." });
+      return;
+    }
+    if (!podeFazer(disp.permissao, "editor")) return this._semPermissao(res, "editor");
+    this._json(res, 200, {
+      ok: true,
+      musicas: this.repertorio.map((m) => ({ id: m.id, titulo: m.titulo, artista: m.artista })),
+    });
+  }
+
+  _musica(res, url) {
+    const disp = this._sessao(url.searchParams.get("token"));
+    if (!disp) {
+      this._json(res, 401, { ok: false, erro: "Sessão expirada. Pareie novamente." });
+      return;
+    }
+    if (!podeFazer(disp.permissao, "editor")) return this._semPermissao(res, "editor");
+    const id = String(url.searchParams.get("id") || "");
+    const musica = this.repertorio.find((m) => m.id === id);
+    if (!musica) {
+      this._json(res, 404, { ok: false, erro: "Música não encontrada." });
+      return;
+    }
+    this._json(res, 200, { ok: true, musica });
+  }
+
+  async _salvarMusica(req, res) {
+    let corpo;
+    try {
+      corpo = JSON.parse(await this._lerCorpo(req, MAX_BODY_MUSICA));
+    } catch {
+      this._json(res, 400, { ok: false, erro: "A letra é grande demais ou chegou incompleta." });
+      return;
+    }
+    const disp = this._sessao(corpo.token);
+    if (!disp) {
+      this._json(res, 401, { ok: false, erro: "Sessão expirada. Pareie novamente." });
+      return;
+    }
+    if (!podeFazer(disp.permissao, "editor")) return this._semPermissao(res, "editor");
+
+    const titulo = String(corpo.titulo || "").trim();
+    const letra = String(corpo.letra || "");
+    if (!titulo) {
+      this._json(res, 400, { ok: false, erro: "A música precisa de um título." });
+      return;
+    }
+    if (!letra.trim()) {
+      this._json(res, 400, { ok: false, erro: "A música precisa de uma letra." });
+      return;
+    }
+    const musica = {
+      id: String(corpo.id || "") || null,
+      titulo: titulo.slice(0, 120),
+      artista: String(corpo.artista || "").trim().slice(0, 120),
+      letra,
+    };
+    // Quem guarda o repertório é a cabine; aqui só se entrega o pedido.
+    this.onEvento?.({ tipo: "musica", musica, de: disp.nome });
+    this._json(res, 200, { ok: true });
+  }
+
+  async _chat(req, res) {
+    let corpo;
+    try {
+      corpo = JSON.parse(await this._lerCorpo(req));
+    } catch {
+      corpo = {};
+    }
+    const disp = this._sessao(corpo.token);
+    if (!disp) {
+      this._json(res, 401, { ok: false, erro: "Sessão expirada. Pareie novamente." });
+      return;
+    }
+    const msg = this._registrarChat({ de: disp.nome, texto: corpo.texto, daCabine: false });
+    if (!msg) {
+      this._json(res, 400, { ok: false, erro: "Mensagem vazia." });
+      return;
+    }
+    this.onEvento?.({ tipo: "chat", mensagem: msg });
+    this._json(res, 200, { ok: true, mensagem: msg });
   }
 }
 
-module.exports = { RemoteControl, ACOES_VALIDAS };
+module.exports = { RemoteControl, ACOES_VALIDAS, PERMISSOES, podeFazer };

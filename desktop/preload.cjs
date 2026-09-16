@@ -22,6 +22,19 @@ contextBridge.exposeInMainWorld("lumenDesktop", {
     ipcRenderer.on("lumen:remote-command", listener);
     return () => ipcRenderer.removeListener("lumen:remote-command", listener);
   },
+  remoteControlPushRepertoire: (lista) => ipcRenderer.send("lumen:remote-control-repertoire", lista),
+  remoteControlDevices: () => ipcRenderer.invoke("lumen:remote-control-devices"),
+  remoteControlSetPermission: (id, permissao) =>
+    ipcRenderer.invoke("lumen:remote-control-permission", id, permissao),
+  remoteControlSetDefaultPermission: (permissao) =>
+    ipcRenderer.invoke("lumen:remote-control-default-permission", permissao),
+  remoteControlDisconnect: (id) => ipcRenderer.invoke("lumen:remote-control-disconnect", id),
+  remoteControlChat: (texto, autor) => ipcRenderer.invoke("lumen:remote-control-chat", texto, autor),
+  onRemoteEvent: (cb) => {
+    const listener = (_event, evento) => cb(evento);
+    ipcRenderer.on("lumen:remote-event", listener);
+    return () => ipcRenderer.removeListener("lumen:remote-event", listener);
+  },
   autoSlideStatus: () => ipcRenderer.invoke("lumen:auto-slide-status"),
   autoSlideInstall: () => ipcRenderer.invoke("lumen:auto-slide-install"),
   autoSlideTranscrever: (wav) => ipcRenderer.invoke("lumen:auto-slide-transcribe", wav),

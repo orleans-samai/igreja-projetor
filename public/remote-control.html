@@ -2,14 +2,27 @@
 <html lang="pt-BR">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#141416">
 <title>Lúmen — controle remoto</title>
 <!--
-  Controle remoto pelo celular.
+  O Lúmen no celular.
 
-  Fala com o servidor deste mesmo endereço por duas coisas só: /estado, que
-  conta o que está no ar, e /comando, que pede uma troca. Quem decide o que
-  aceitar é o servidor — esta página é só o painel, e trocar de PIN ou
-  desligar o controle remoto na cabine invalida o que está aqui na hora.
+  Não é a cabine encolhida: é outra interface, feita para uma mão só, no
+  escuro, durante o culto. Três abas — comandar o telão, mexer na letra,
+  falar com a cabine — e botões grandes o bastante para não errar o toque.
+
+  Fala com o servidor deste mesmo endereço:
+
+    /parear      seis dígitos viram sessão
+    /estado      SSE: o que está no ar, chat e permissão
+    /comando     transporte do telão
+    /repertorio  lista de músicas
+    /musica      ler e salvar uma letra
+    /chat        recado para a cabine
+
+  Quem decide o que aceitar é o servidor. Esta página é o painel: trocar o
+  PIN, mudar a permissão ou desligar o controle remoto na cabine invalida o
+  que está aqui na hora.
 -->
 <style>
   :root {
@@ -18,185 +31,650 @@
     --border: #2b2b31; --fg: #ecebe8; --muted: #aeada9; --subtle: #8e8d89;
     --primary: #e9e8e5; --primary-fg: #17171a;
     --live: #eba63f; --live-fg: #231804;
+    --accent: #7d9bb8; --accent-fg: #0f161c;
     --danger: #d2564c; --danger-fg: #1d0b09;
+    --ok: #6f9e78;
   }
   * { box-sizing: border-box; }
   html, body {
     margin: 0; min-height: 100%; background: var(--bg); color: var(--fg);
     font: 15px/1.4 -apple-system, "Segoe UI", Roboto, sans-serif;
     -webkit-tap-highlight-color: transparent; user-select: none;
+    overscroll-behavior: none;
   }
-  body { padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom)); }
-  button { font: inherit; -webkit-tap-highlight-color: transparent; }
-  .tela { display: flex; flex-direction: column; gap: 14px; min-height: calc(100vh - 32px); }
+  button, input, textarea { font: inherit; -webkit-tap-highlight-color: transparent; }
   [hidden] { display: none !important; }
 
-  .marca { display: flex; align-items: center; gap: 8px; color: var(--subtle); font-size: 13px; font-weight: 600; letter-spacing: .02em; }
-  .marca .ponto { width: 7px; height: 7px; border-radius: 999px; background: var(--subtle); }
-  .marca[data-ligado="true"] .ponto { background: var(--live); box-shadow: 0 0 0 3px color-mix(in oklab, var(--live) 30%, transparent); }
-
-  /* ─ Pareamento ─ */
-  #pareamento { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 18px; text-align: center; }
-  #pareamento h1 { font-size: 20px; margin: 0; }
-  #pareamento p { color: var(--muted); margin: 0; }
-  #pin {
-    font-size: 40px; letter-spacing: .3em; text-align: center; padding: 14px 0 14px .3em;
-    background: var(--elevated); color: var(--fg); border: 1px solid var(--border); border-radius: 12px;
-    font-variant-numeric: tabular-nums;
+  .app {
+    display: flex; flex-direction: column;
+    min-height: 100dvh;
+    padding: max(10px, env(safe-area-inset-top)) 12px max(10px, env(safe-area-inset-bottom));
+    gap: 10px;
   }
-  #pin:focus { outline: 2px solid var(--live); outline-offset: 2px; }
+
+  /* ─ Barra de cima: o que está no ar + estado da conexão ─ */
+  .topo { display: flex; align-items: center; gap: 8px; }
+  .ponto { width: 8px; height: 8px; border-radius: 999px; background: var(--subtle); flex: none; }
+  .topo[data-conexao="on"] .ponto { background: var(--ok); }
+  .topo[data-conexao="off"] .ponto { background: var(--danger); }
+  .topo .quem { font-size: 12px; color: var(--subtle); font-weight: 600; letter-spacing: .02em; }
+  .topo .conexao { margin-left: auto; font-size: 12px; color: var(--subtle); }
+  .topo[data-conexao="off"] .conexao { color: var(--danger); }
+
+  .noar {
+    background: var(--surface); border-radius: 12px; padding: 12px 14px;
+    box-shadow: inset 0 0 0 1px var(--border);
+  }
+  .noar .rotulo {
+    font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--live);
+  }
+  .noar[data-vazio="true"] .rotulo { color: var(--subtle); }
+  .noar .titulo { font-size: 19px; font-weight: 650; margin-top: 2px; word-break: break-word; }
+  .noar .posicao { color: var(--subtle); font-variant-numeric: tabular-nums; font-size: 13px; }
+  .noar .depois { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+  .noar .depois .rotulo { color: var(--subtle); }
+  .noar .depois .texto { color: var(--muted); font-size: 15px; word-break: break-word; }
+
+  /* ─ Abas ─ */
+  .abas { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .abas button {
+    border: 0; border-radius: 10px; padding: 10px 6px; font-size: 13px; font-weight: 600;
+    background: var(--elevated); color: var(--muted);
+  }
+  .abas button[aria-selected="true"] { background: var(--raised); color: var(--fg); }
+  .abas button .selo {
+    display: inline-block; min-width: 18px; margin-left: 4px; padding: 0 5px;
+    border-radius: 999px; background: var(--live); color: var(--live-fg);
+    font-size: 11px; font-weight: 700;
+  }
+
+  .painel { flex: 1; display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+
+  /* ─ Botões ─ */
   .botao {
-    border: 0; border-radius: 10px; padding: 16px; font-size: 16px; font-weight: 600;
+    border: 0; border-radius: 12px; padding: 16px; font-size: 16px; font-weight: 600;
     background: var(--elevated); color: var(--fg); box-shadow: inset 0 0 0 1px var(--border);
   }
   .botao:active { transform: scale(.97); }
-  .botao-principal { background: var(--primary); color: var(--primary-fg); }
+  .botao:disabled { opacity: .4; }
+  .botao-principal { background: var(--primary); color: var(--primary-fg); box-shadow: none; }
+  .botao-perigo { color: var(--danger); }
+  .transporte { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .transporte .botao { padding: 30px 10px; font-size: 18px; }
+  .grade { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .grade .botao { padding: 16px 10px; font-size: 15px; }
+  .larga { grid-column: 1 / -1; }
+  #preto.ativo { background: var(--live); color: var(--live-fg); box-shadow: none; }
+
+  .aviso {
+    border-radius: 10px; padding: 12px 14px; font-size: 14px;
+    background: color-mix(in oklab, var(--accent) 16%, transparent);
+    color: var(--fg); box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--accent) 35%, transparent);
+  }
+
+  /* ─ Pareamento ─ */
+  #pareamento { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 16px; text-align: center; }
+  #pareamento h1 { font-size: 20px; margin: 0; }
+  #pareamento p { color: var(--muted); margin: 0; }
+  #pin, .campo {
+    width: 100%; background: var(--elevated); color: var(--fg);
+    border: 1px solid var(--border); border-radius: 12px; padding: 14px;
+  }
+  #pin { font-size: 38px; letter-spacing: .3em; text-align: center; padding-left: .3em; font-variant-numeric: tabular-nums; }
+  #pin:focus, .campo:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
   #erroPin { color: var(--danger); min-height: 20px; font-size: 13px; }
 
-  /* ─ Painel ─ */
-  #painel { display: flex; flex-direction: column; gap: 18px; }
-  #titulo { font-size: 19px; font-weight: 650; }
-  #posicao { color: var(--subtle); font-variant-numeric: tabular-nums; }
-  .transporte { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-  .transporte .botao { padding: 26px 10px; font-size: 17px; }
-  .grade { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
-  .grade .botao { padding: 18px 10px; }
-  #preto.ativo { background: var(--live); color: var(--live-fg); box-shadow: none; }
-  #desparear { color: var(--subtle); background: transparent; box-shadow: none; padding: 10px; font-size: 13px; }
+  /* ─ Letras ─ */
+  .lista { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; overflow-y: auto; }
+  .lista button {
+    width: 100%; text-align: left; border: 0; border-radius: 10px; padding: 14px;
+    background: var(--elevated); color: var(--fg); box-shadow: inset 0 0 0 1px var(--border);
+  }
+  .lista .autor { display: block; color: var(--subtle); font-size: 13px; margin-top: 2px; }
+  textarea.campo { min-height: 46dvh; font-family: ui-monospace, monospace; font-size: 14px; user-select: text; resize: vertical; }
+  .linha { display: flex; gap: 8px; }
+  .linha .botao { flex: 1; }
+  .dica { color: var(--subtle); font-size: 12px; }
+
+  /* ─ Chat ─ */
+  #chatLista { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-bottom: 4px; }
+  .msg { border-radius: 10px; padding: 10px 12px; background: var(--elevated); max-width: 88%; }
+  .msg.minha { align-self: flex-end; background: var(--raised); }
+  .msg.cabine { align-self: flex-start; box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--accent) 35%, transparent); }
+  .msg .de { font-size: 12px; color: var(--subtle); font-weight: 600; }
+  .msg .texto { white-space: pre-wrap; word-break: break-word; user-select: text; }
+  .msg .hora { font-size: 11px; color: var(--subtle); }
+  #chatForm { display: flex; gap: 8px; align-items: flex-end; }
+  #chatTexto { flex: 1; min-height: 46px; max-height: 30dvh; resize: none; }
 </style>
 
-<div class="tela">
-  <span class="marca" id="marca"><span class="ponto"></span> Lúmen · controle remoto</span>
-
+<div class="app">
+  <!-- ─ Entrar ─ -->
   <section id="pareamento">
     <div>
-      <h1>Digite o PIN da cabine</h1>
-      <p>O número de 6 dígitos está na tela do computador, em Tela → Controle remoto pelo celular.</p>
+      <h1>Entrar no Lúmen</h1>
+      <p>Digite o PIN de 6 dígitos que está na tela do computador, em Tela → Controle remoto pelo celular.</p>
     </div>
     <input id="pin" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="000000" autocomplete="one-time-code">
+    <input id="nome" class="campo" maxlength="32" placeholder="Seu nome (aparece na cabine)" autocomplete="name">
     <p id="erroPin"></p>
     <button class="botao botao-principal" id="entrar">Entrar</button>
   </section>
 
-  <section id="painel" hidden>
-    <div>
-      <p id="titulo">—</p>
-      <p id="posicao"></p>
+  <!-- ─ Conectado ─ -->
+  <div id="conectado" hidden style="display:flex;flex-direction:column;gap:10px;flex:1;min-height:0">
+    <div class="topo" id="topo" data-conexao="off">
+      <span class="ponto"></span>
+      <span class="quem" id="quem">Lúmen</span>
+      <span class="conexao" id="conexao">conectando…</span>
     </div>
 
-    <div class="transporte">
-      <button class="botao" data-acao="anterior">‹ Anterior</button>
-      <button class="botao botao-principal" data-acao="proximo">Próximo ›</button>
+    <div class="noar" id="noar" data-vazio="true">
+      <p class="rotulo" id="noarRotulo">Nada no ar</p>
+      <p class="titulo" id="noarTitulo">—</p>
+      <p class="posicao" id="noarPosicao"></p>
+      <div class="depois" id="depois" hidden>
+        <p class="rotulo">Próximo</p>
+        <p class="texto" id="depoisTexto"></p>
+      </div>
     </div>
 
-    <div class="grade">
-      <button class="botao" id="preto" data-acao="preto">Preto</button>
-      <button class="botao" data-acao="logo">Logo</button>
-      <button class="botao" data-acao="ocultar-letra">Ocultar letra</button>
-      <button class="botao" data-acao="parar">Parar</button>
-      <button class="botao" data-acao="proximo-item" style="grid-column: 1 / -1">Próximo item do culto</button>
+    <div class="abas" role="tablist">
+      <button role="tab" id="abaControle" aria-selected="true">Controle</button>
+      <button role="tab" id="abaLetras" aria-selected="false">Letras</button>
+      <button role="tab" id="abaChat" aria-selected="false">Chat<span class="selo" id="seloChat" hidden>0</span></button>
     </div>
 
-    <button id="desparear">Sair deste controle</button>
-  </section>
+    <!-- Controle -->
+    <section class="painel" id="painelControle">
+      <p class="aviso" id="semControle" hidden>
+        Este aparelho ainda não comanda o telão. Peça na cabine para liberar o controle.
+      </p>
+      <div class="transporte">
+        <button class="botao" data-acao="anterior">‹ Anterior</button>
+        <button class="botao botao-principal" data-acao="proximo">Próximo ›</button>
+      </div>
+      <div class="grade">
+        <button class="botao" id="preto" data-acao="preto">Preto</button>
+        <button class="botao" data-acao="logo">Logo</button>
+        <button class="botao" data-acao="ocultar-letra">Ocultar letra</button>
+        <button class="botao" data-acao="parar">Parar</button>
+        <button class="botao larga" data-acao="proximo-item">Próximo item do culto</button>
+      </div>
+      <p class="dica">Vídeo no telão</p>
+      <div class="grade">
+        <button class="botao" data-acao="tocar">▶ Tocar</button>
+        <button class="botao" data-acao="pausar">❚❚ Pausar</button>
+        <button class="botao larga" data-acao="parar-midia">■ Parar vídeo</button>
+      </div>
+      <button class="botao botao-perigo" id="sair">Sair deste controle</button>
+    </section>
+
+    <!-- Letras -->
+    <section class="painel" id="painelLetras" hidden>
+      <p class="aviso" id="semEditor" hidden>
+        Este aparelho ainda não edita letras. Peça na cabine para liberar.
+      </p>
+      <div id="letrasLista" style="display:flex;flex-direction:column;gap:10px;min-height:0;flex:1">
+        <button class="botao botao-principal" id="novaMusica">+ Nova música</button>
+        <ul class="lista" id="musicas"></ul>
+      </div>
+      <div id="letrasEditor" hidden style="display:flex;flex-direction:column;gap:8px;flex:1;min-height:0">
+        <input id="edTitulo" class="campo" maxlength="120" placeholder="Título">
+        <input id="edArtista" class="campo" maxlength="120" placeholder="Autor (opcional)">
+        <textarea id="edLetra" class="campo" placeholder="Letra — linha em branco separa slide. Use [Coro], [Verso 1]…"></textarea>
+        <p class="dica" id="edEstado"></p>
+        <div class="linha">
+          <button class="botao" id="edVoltar">Voltar</button>
+          <button class="botao botao-principal" id="edSalvar">Salvar</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Chat -->
+    <section class="painel" id="painelChat" hidden>
+      <div id="chatLista"></div>
+      <form id="chatForm">
+        <textarea id="chatTexto" class="campo" maxlength="500" placeholder="Mensagem para a cabine" rows="1"></textarea>
+        <button class="botao botao-principal" type="submit" id="chatEnviar">Enviar</button>
+      </form>
+    </section>
+  </div>
 </div>
 
 <script>
 (function () {
   "use strict";
   var CHAVE = "lumen-remote-token";
-  var es = null;
+  var CHAVE_NOME = "lumen-remote-nome";
+  var CHAVE_RASCUNHO = "lumen-remote-rascunho";
 
-  var telaPareamento = document.getElementById("pareamento");
-  var telaPainel = document.getElementById("painel");
-  var marca = document.getElementById("marca");
-  var campoPin = document.getElementById("pin");
-  var erroPin = document.getElementById("erroPin");
+  var es = null;
+  var token = null;
+  var permissao = "chat";
+  var reconectarEm = null;
+  var tentativas = 0;
+  var naoLidas = 0;
+  var abaAtual = "controle";
+  var musicaAberta = null;
+
+  var $ = function (id) { return document.getElementById(id); };
+
+  // ─────────────────────────────────────────── conexão
 
   function mostrarPareamento(msg) {
-    if (es) { es.close(); es = null; }
-    marca.dataset.ligado = "false";
-    telaPainel.hidden = true;
-    telaPareamento.hidden = false;
-    erroPin.textContent = msg || "";
-    campoPin.value = "";
-    campoPin.focus();
+    fecharFluxo();
+    $("conectado").hidden = true;
+    $("pareamento").hidden = false;
+    $("erroPin").textContent = msg || "";
+    $("pin").value = "";
   }
 
   function mostrarPainel() {
-    marca.dataset.ligado = "true";
-    telaPareamento.hidden = true;
-    telaPainel.hidden = false;
+    $("pareamento").hidden = true;
+    $("conectado").hidden = false;
   }
 
-  function aplicarEstado(d) {
-    document.getElementById("titulo").textContent = d.titulo || "Nada no preview";
-    document.getElementById("posicao").textContent =
-      d.slideTotal > 0 ? "Slide " + d.slideAtual + " de " + d.slideTotal + (d.noAr ? " · no ar" : "") : "";
-    document.getElementById("preto").classList.toggle("ativo", !!d.preto);
+  function fecharFluxo() {
+    if (es) { es.close(); es = null; }
+    if (reconectarEm) { clearTimeout(reconectarEm); reconectarEm = null; }
   }
 
-  function conectarEstado(token) {
-    if (es) es.close();
-    var abriu = false;
+  function conexao(estado, texto) {
+    $("topo").dataset.conexao = estado;
+    $("conexao").textContent = texto;
+  }
+
+  /**
+   * Reconexão com espera crescente.
+   *
+   * Wi-Fi de igreja cai. O celular tenta de novo sozinho, mas sem martelar o
+   * servidor: 1s, 2s, 4s… até 15s. E nada de refazer comando antigo ao
+   * voltar — o estado chega inteiro do servidor, e o que passou, passou.
+   */
+  function agendarReconexao() {
+    if (reconectarEm) return;
+    tentativas += 1;
+    var espera = Math.min(15000, 1000 * Math.pow(2, Math.min(tentativas - 1, 4)));
+    conexao("off", "sem conexão · tentando de novo");
+    reconectarEm = setTimeout(function () {
+      reconectarEm = null;
+      conectar();
+    }, espera);
+  }
+
+  function conectar() {
+    if (!token) return mostrarPareamento();
+    fecharFluxo();
+    conexao("off", "conectando…");
     es = new EventSource("/estado?token=" + encodeURIComponent(token));
-    es.onopen = function () { abriu = true; mostrarPainel(); };
-    es.onmessage = function (ev) {
-      try { aplicarEstado(JSON.parse(ev.data)); } catch (e) { /* linha de comentário do SSE */ }
+    var abriu = false;
+
+    es.onopen = function () {
+      abriu = true;
+      tentativas = 0;
+      conexao("on", "conectado");
+      mostrarPainel();
     };
+
+    es.onmessage = function (ev) {
+      try { aplicar(JSON.parse(ev.data)); } catch (e) { /* comentário do SSE */ }
+    };
+
     es.onerror = function () {
       if (!abriu) {
-        localStorage.removeItem(CHAVE);
-        mostrarPareamento("A sessão não é mais válida. Digite o PIN de novo.");
+        // Nunca abriu: ou o token morreu, ou o servidor sumiu. Confirmar com
+        // uma chamada curta evita jogar o operador de volta ao PIN à toa.
+        fetch("/estado?token=" + encodeURIComponent(token), { method: "GET" })
+          .then(function (r) {
+            if (r.status === 401) {
+              localStorage.removeItem(CHAVE);
+              token = null;
+              mostrarPareamento("A sessão não é mais válida. Digite o PIN de novo.");
+            } else {
+              agendarReconexao();
+            }
+          })
+          .catch(agendarReconexao);
+        return;
       }
-      // Depois de conectado, o EventSource tenta sozinho — perder a cabine de
-      // vista por um instante não deve jogar o operador de volta ao PIN.
+      agendarReconexao();
     };
   }
 
-  async function parear(pin) {
-    erroPin.textContent = "";
-    try {
-      var r = await fetch("/parear", { method: "POST", body: JSON.stringify({ pin: pin }) });
-      var d = await r.json();
-      if (!d.ok) { erroPin.textContent = d.erro || "PIN incorreto."; return; }
-      localStorage.setItem(CHAVE, d.token);
-      conectarEstado(d.token);
-    } catch (e) {
-      erroPin.textContent = "Sem conexão com a cabine.";
+  function aplicar(d) {
+    if (!d || !d.tipo) return;
+    if (d.tipo === "inicio") {
+      if (d.nome) $("quem").textContent = d.nome;
+      definirPermissao(d.permissao);
+      aplicarEstado(d.estado);
+      $("chatLista").innerHTML = "";
+      (d.chat || []).forEach(function (m) { desenharMensagem(m, true); });
+      rolarChat();
+      return;
+    }
+    if (d.tipo === "estado") return aplicarEstado(d.estado);
+    if (d.tipo === "permissao") return definirPermissao(d.permissao);
+    if (d.tipo === "chat") return receberChat(d.mensagem);
+    if (d.tipo === "desconectado") {
+      localStorage.removeItem(CHAVE);
+      token = null;
+      mostrarPareamento("A cabine encerrou o acesso deste aparelho.");
+      return;
+    }
+    if (d.tipo === "encerrado") {
+      fecharFluxo();
+      conexao("off", "o Lúmen encerrou o controle remoto");
+      return;
     }
   }
 
-  async function comando(acao) {
-    var token = localStorage.getItem(CHAVE);
-    if (!token) return mostrarPareamento();
-    try {
-      var r = await fetch("/comando", { method: "POST", body: JSON.stringify({ token: token, acao: acao }) });
-      if (r.status === 401) {
-        localStorage.removeItem(CHAVE);
-        mostrarPareamento("A sessão expirou. Digite o PIN de novo.");
-      }
-    } catch (e) { /* sem rede: o próximo toque tenta de novo */ }
+  function definirPermissao(p) {
+    permissao = p || "chat";
+    var podeControlar = permissao === "controle";
+    var podeEditar = permissao === "controle" || permissao === "editor";
+    $("semControle").hidden = podeControlar;
+    $("semEditor").hidden = podeEditar;
+    document.querySelectorAll("[data-acao]").forEach(function (b) { b.disabled = !podeControlar; });
+    $("novaMusica").disabled = !podeEditar;
+    $("edSalvar").disabled = !podeEditar;
+    if (podeEditar && abaAtual === "letras" && !musicaAberta) carregarRepertorio();
   }
 
-  document.getElementById("entrar").addEventListener("click", function () {
-    if (campoPin.value.length === 6) void parear(campoPin.value);
+  function aplicarEstado(e) {
+    if (!e) return;
+    var vazio = !e.noAr && !e.titulo;
+    $("noar").dataset.vazio = vazio ? "true" : "false";
+    $("noarRotulo").textContent = e.preto ? "Tela preta" : (e.noAr ? "No ar" : "Nada no ar");
+    $("noarTitulo").textContent = e.titulo || "—";
+    $("noarPosicao").textContent =
+      e.slideTotal > 0 ? "Slide " + e.slideAtual + " de " + e.slideTotal : "";
+    var temProximo = e.slideTotal > 0 && e.slideAtual < e.slideTotal;
+    $("depois").hidden = !temProximo;
+    $("depoisTexto").textContent = temProximo
+      ? "Slide " + (e.slideAtual + 1) + " de " + e.slideTotal
+      : "";
+    $("preto").classList.toggle("ativo", !!e.preto);
+  }
+
+  // ─────────────────────────────────────────── ações
+
+  function pedir(caminho, corpo) {
+    return fetch(caminho, { method: "POST", body: JSON.stringify(Object.assign({ token: token }, corpo)) })
+      .then(function (r) {
+        return r.json().then(function (d) { return { status: r.status, corpo: d }; });
+      })
+      .then(function (r) {
+        if (r.status === 401) {
+          localStorage.removeItem(CHAVE);
+          token = null;
+          mostrarPareamento("A sessão expirou. Digite o PIN de novo.");
+          throw new Error("sessao");
+        }
+        if (!r.corpo || r.corpo.ok === false) throw new Error(r.corpo && r.corpo.erro || "Falhou");
+        return r.corpo;
+      });
+  }
+
+  function parear(pin) {
+    $("erroPin").textContent = "";
+    var nome = $("nome").value.trim();
+    return fetch("/parear", { method: "POST", body: JSON.stringify({ pin: pin, nome: nome }) })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d.ok) { $("erroPin").textContent = d.erro || "PIN incorreto."; return; }
+        token = d.token;
+        localStorage.setItem(CHAVE, d.token);
+        if (nome) localStorage.setItem(CHAVE_NOME, nome);
+        definirPermissao(d.permissao);
+        tentativas = 0;
+        conectar();
+      })
+      .catch(function () { $("erroPin").textContent = "Sem conexão com a cabine."; });
+  }
+
+  // ─────────────────────────────────────────── abas
+
+  function trocarAba(nome) {
+    abaAtual = nome;
+    var mapa = { controle: "painelControle", letras: "painelLetras", chat: "painelChat" };
+    var abas = { controle: "abaControle", letras: "abaLetras", chat: "abaChat" };
+    Object.keys(mapa).forEach(function (k) {
+      $(mapa[k]).hidden = k !== nome;
+      $(abas[k]).setAttribute("aria-selected", String(k === nome));
+    });
+    if (nome === "chat") {
+      naoLidas = 0;
+      $("seloChat").hidden = true;
+      rolarChat();
+    }
+    if (nome === "letras" && !musicaAberta) carregarRepertorio();
+  }
+
+  // ─────────────────────────────────────────── letras
+
+  function carregarRepertorio() {
+    if (permissao !== "editor" && permissao !== "controle") return;
+    fetch("/repertorio?token=" + encodeURIComponent(token))
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d.ok) return;
+        var ul = $("musicas");
+        ul.innerHTML = "";
+        d.musicas.forEach(function (m) {
+          var li = document.createElement("li");
+          var b = document.createElement("button");
+          b.textContent = m.titulo;
+          if (m.artista) {
+            var s = document.createElement("span");
+            s.className = "autor";
+            s.textContent = m.artista;
+            b.appendChild(s);
+          }
+          b.onclick = function () { abrirMusica(m.id); };
+          li.appendChild(b);
+          ul.appendChild(li);
+        });
+      })
+      .catch(function () { /* offline: a lista de antes continua na tela */ });
+  }
+
+  function abrirEditor(musica) {
+    musicaAberta = musica;
+    $("letrasLista").hidden = true;
+    $("letrasEditor").hidden = false;
+    $("edTitulo").value = musica.titulo || "";
+    $("edArtista").value = musica.artista || "";
+    $("edLetra").value = musica.letra || "";
+    $("edEstado").textContent = "";
+  }
+
+  function abrirMusica(id) {
+    fetch("/musica?token=" + encodeURIComponent(token) + "&id=" + encodeURIComponent(id))
+      .then(function (r) { return r.json(); })
+      .then(function (d) { if (d.ok) abrirEditor(d.musica); })
+      .catch(function () { $("edEstado").textContent = "Sem conexão com a cabine."; });
+  }
+
+  /**
+   * Rascunho no próprio aparelho.
+   *
+   * Se o Wi-Fi cair no meio de uma edição, o que foi digitado continua aqui
+   * quando a página voltar — perder a letra por causa da rede seria o pior
+   * jeito de descobrir que a rede caiu.
+   */
+  function guardarRascunho() {
+    if (!musicaAberta) return;
+    try {
+      localStorage.setItem(CHAVE_RASCUNHO, JSON.stringify({
+        id: musicaAberta.id || null,
+        titulo: $("edTitulo").value,
+        artista: $("edArtista").value,
+        letra: $("edLetra").value,
+        em: Date.now(),
+      }));
+    } catch (e) { /* armazenamento cheio */ }
+  }
+
+  function limparRascunho() {
+    try { localStorage.removeItem(CHAVE_RASCUNHO); } catch (e) { /* nada a fazer */ }
+  }
+
+  function recuperarRascunho() {
+    try {
+      var cru = localStorage.getItem(CHAVE_RASCUNHO);
+      if (!cru) return;
+      var r = JSON.parse(cru);
+      if (!r || !r.letra) return;
+      abrirEditor({ id: r.id, titulo: r.titulo, artista: r.artista, letra: r.letra });
+      $("edEstado").textContent = "Recuperado do rascunho deste aparelho.";
+      trocarAba("letras");
+    } catch (e) { /* rascunho ilegível */ }
+  }
+
+  function salvarMusica() {
+    var titulo = $("edTitulo").value.trim();
+    var letra = $("edLetra").value;
+    if (!titulo) { $("edEstado").textContent = "Falta o título."; return; }
+    if (!letra.trim()) { $("edEstado").textContent = "Falta a letra."; return; }
+    $("edSalvar").disabled = true;
+    $("edEstado").textContent = "Salvando…";
+    pedir("/musica", {
+      id: musicaAberta && musicaAberta.id ? musicaAberta.id : null,
+      titulo: titulo,
+      artista: $("edArtista").value.trim(),
+      letra: letra,
+    })
+      .then(function () {
+        $("edEstado").textContent = "Salvo na cabine.";
+        limparRascunho();
+        setTimeout(function () {
+          musicaAberta = null;
+          $("letrasEditor").hidden = true;
+          $("letrasLista").hidden = false;
+          carregarRepertorio();
+        }, 700);
+      })
+      .catch(function (e) {
+        // O rascunho fica: a pessoa tenta de novo sem redigitar nada.
+        $("edEstado").textContent = e.message === "sessao" ? "" : "Não salvou: " + e.message;
+      })
+      .finally(function () { $("edSalvar").disabled = false; });
+  }
+
+  // ─────────────────────────────────────────── chat
+
+  function hora(ms) {
+    try {
+      return new Date(ms).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+    } catch (e) { return ""; }
+  }
+
+  function desenharMensagem(m, silencioso) {
+    var div = document.createElement("div");
+    div.className = "msg" + (m.daCabine ? " cabine" : " minha");
+    var de = document.createElement("p");
+    de.className = "de";
+    de.textContent = m.de + " · " + hora(m.em);
+    var txt = document.createElement("p");
+    txt.className = "texto";
+    txt.textContent = m.texto;
+    div.appendChild(de);
+    div.appendChild(txt);
+    $("chatLista").appendChild(div);
+    if (!silencioso) rolarChat();
+  }
+
+  function rolarChat() {
+    var l = $("chatLista");
+    l.scrollTop = l.scrollHeight;
+  }
+
+  function receberChat(m) {
+    if (!m) return;
+    desenharMensagem(m);
+    if (abaAtual !== "chat") {
+      naoLidas += 1;
+      $("seloChat").hidden = false;
+      $("seloChat").textContent = String(naoLidas);
+    }
+  }
+
+  // ─────────────────────────────────────────── ligações
+
+  $("entrar").addEventListener("click", function () {
+    if ($("pin").value.length === 6) void parear($("pin").value);
   });
-  campoPin.addEventListener("input", function () {
-    campoPin.value = campoPin.value.replace(/\D/g, "").slice(0, 6);
-    if (campoPin.value.length === 6) void parear(campoPin.value);
+  $("pin").addEventListener("input", function () {
+    var v = $("pin");
+    v.value = v.value.replace(/\D/g, "").slice(0, 6);
+    if (v.value.length === 6) void parear(v.value);
   });
-  document.getElementById("desparear").addEventListener("click", function () {
+  $("sair").addEventListener("click", function () {
     localStorage.removeItem(CHAVE);
+    token = null;
     mostrarPareamento();
   });
+
+  $("abaControle").addEventListener("click", function () { trocarAba("controle"); });
+  $("abaLetras").addEventListener("click", function () { trocarAba("letras"); });
+  $("abaChat").addEventListener("click", function () { trocarAba("chat"); });
+
   document.querySelectorAll("[data-acao]").forEach(function (b) {
-    b.addEventListener("click", function () { void comando(b.dataset.acao); });
+    b.addEventListener("click", function () {
+      pedir("/comando", { acao: b.dataset.acao }).catch(function (e) {
+        if (e.message !== "sessao") conexao("off", e.message);
+      });
+    });
   });
 
-  // O QR code carrega o PIN na própria URL, para parear com uma câmera só —
-  // sem isto, apontar a câmera adiantaria só o endereço, e o PIN ainda
-  // precisaria ser digitado à mão.
+  $("novaMusica").addEventListener("click", function () {
+    abrirEditor({ id: null, titulo: "", artista: "", letra: "" });
+  });
+  $("edVoltar").addEventListener("click", function () {
+    musicaAberta = null;
+    limparRascunho();
+    $("letrasEditor").hidden = true;
+    $("letrasLista").hidden = false;
+  });
+  $("edSalvar").addEventListener("click", salvarMusica);
+  ["edTitulo", "edArtista", "edLetra"].forEach(function (id) {
+    $(id).addEventListener("input", guardarRascunho);
+  });
+
+  $("chatForm").addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    var texto = $("chatTexto").value.trim();
+    if (!texto) return;
+    $("chatEnviar").disabled = true;
+    pedir("/chat", { texto: texto })
+      .then(function () { $("chatTexto").value = ""; })
+      .catch(function (e) { if (e.message !== "sessao") conexao("off", e.message); })
+      .finally(function () { $("chatEnviar").disabled = false; });
+  });
+  $("chatTexto").addEventListener("keydown", function (ev) {
+    // Enter envia; Shift+Enter quebra linha, como em qualquer mensageiro.
+    if (ev.key === "Enter" && !ev.shiftKey) {
+      ev.preventDefault();
+      $("chatForm").requestSubmit();
+    }
+  });
+
+  // A tela volta do bolso: se a conexão morreu enquanto estava guardada,
+  // tenta agora em vez de esperar o próximo toque.
+  document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState !== "visible" || !token) return;
+    if (!es || es.readyState === 2) conectar();
+  });
+  window.addEventListener("online", function () { if (token) conectar(); });
+
+  // ─────────────────────────────────────────── início
+
+  var nomeSalvo = localStorage.getItem(CHAVE_NOME);
+  if (nomeSalvo) $("nome").value = nomeSalvo;
+
+  // O QR code carrega o PIN na própria URL, para parear com uma câmera só.
   var pinDaUrl = new URLSearchParams(location.search).get("pin");
   if (pinDaUrl) {
     // Some da URL assim que lido: um PIN não devia sobreviver no histórico
@@ -204,10 +682,15 @@
     history.replaceState(null, "", location.pathname);
   }
 
-  var salvo = localStorage.getItem(CHAVE);
-  if (salvo) conectarEstado(salvo);
-  else if (pinDaUrl && /^\d{6}$/.test(pinDaUrl)) void parear(pinDaUrl);
-  else mostrarPareamento();
+  token = localStorage.getItem(CHAVE);
+  if (token) {
+    conectar();
+    recuperarRascunho();
+  } else if (pinDaUrl && /^\d{6}$/.test(pinDaUrl)) {
+    void parear(pinDaUrl);
+  } else {
+    mostrarPareamento();
+  }
 })();
 </script>
 </html>

@@ -9,6 +9,7 @@ import { Hint } from "@/components/ui/tooltip";
 import { cn } from "@/lib/cn";
 import { fold, nid } from "@/lib/fold";
 import { escreverMuf, lerMuf } from "@/lib/muf";
+import { ChatButton } from "@/components/operator/chat-panel";
 import { importarMusicasJsonDoDisco } from "@/lib/import-songs-json";
 import { openOutputWindow } from "@/lib/live-channel";
 import { openProjectorWindow } from "@/lib/windows-desktop";
@@ -523,6 +524,8 @@ export function MenuBar({
             <Square />
           </Button>
         </Hint>
+
+        <ChatButton />
 
         <Hint label="Tutorial guiado da cabine, para quem está começando">
           <Button size="sm" variant="secondary" onClick={() => setTourOpen(true)}>

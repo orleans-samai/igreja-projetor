@@ -237,6 +237,25 @@ declare global {
       remoteControlStop: () => Promise<import("./remote-control").RemoteStatus>;
       remoteControlStatus: () => Promise<import("./remote-control").RemoteStatus>;
       remoteControlRegeneratePin: () => Promise<import("./remote-control").RemoteStatus>;
+      remoteControlPushRepertoire: (
+        lista: { id: string; titulo: string; artista: string; letra: string }[],
+      ) => void;
+      remoteControlDevices: () => Promise<import("./remote-control").DispositivoRemoto[]>;
+      remoteControlSetPermission: (
+        id: string,
+        permissao: import("./remote-control").PermissaoRemota,
+      ) => Promise<import("./remote-control").RemoteStatus>;
+      remoteControlSetDefaultPermission: (
+        permissao: import("./remote-control").PermissaoRemota,
+      ) => Promise<import("./remote-control").RemoteStatus>;
+      remoteControlDisconnect: (
+        id: string,
+      ) => Promise<import("./remote-control").RemoteStatus>;
+      remoteControlChat: (
+        texto: string,
+        autor: string,
+      ) => Promise<import("./remote-control").MensagemChat | null>;
+      onRemoteEvent: (cb: (evento: import("./remote-control").EventoRemoto) => void) => () => void;
       remoteControlPushState: (payload: import("./remote-control").RemoteStatePayload) => void;
       onRemoteCommand: (cb: (acao: string) => void) => () => void;
       updateCheck: () => Promise<{ ok: boolean; erro?: string }>;

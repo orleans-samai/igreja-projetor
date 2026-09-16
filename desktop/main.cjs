@@ -29,6 +29,12 @@ const remoteControl = new RemoteControl(path.join(__dirname, "www"));
 remoteControl.onComando = (acao) => {
   if (cabine && !cabine.isDestroyed()) cabine.webContents.send("lumen:remote-command", acao);
 };
+// O mesmo caminho para o que não é transporte: recado do chat, letra
+// editada no celular, aparelho que entrou ou saiu. A cabine é quem guarda o
+// repertório e quem decide o que fazer com cada pedido.
+remoteControl.onEvento = (evento) => {
+  if (cabine && !cabine.isDestroyed()) cabine.webContents.send("lumen:remote-event", evento);
+};
 const packageRoot = path.join(dataDir, "packages");
 let testWindow = null;
 async function localMedia(url) {
@@ -436,6 +442,12 @@ handle("lumen:remote-control-stop", () => remoteControl.desligar());
 handle("lumen:remote-control-status", () => remoteControl.status());
 handle("lumen:remote-control-regenerate-pin", () => remoteControl.regenerarPin());
 onEvent("lumen:remote-control-state", (payload) => remoteControl.atualizarEstado(payload));
+onEvent("lumen:remote-control-repertoire", (lista) => remoteControl.atualizarRepertorio(lista));
+handle("lumen:remote-control-devices", () => remoteControl.listarDispositivos());
+handle("lumen:remote-control-permission", (id, permissao) => remoteControl.definirPermissao(id, permissao));
+handle("lumen:remote-control-default-permission", (permissao) => remoteControl.definirPermissaoPadrao(permissao));
+handle("lumen:remote-control-disconnect", (id) => remoteControl.desconectar(id));
+handle("lumen:remote-control-chat", (texto, autor) => remoteControl.mensagemDaCabine(texto, autor));
 handle("lumen:auto-slide-status", () => recognition.status());
 handle("lumen:auto-slide-install", () => recognition.install());
 handle("lumen:auto-slide-transcribe", (wav) => recognition.transcribe(wav));

@@ -14,6 +14,7 @@ import { formatImportedLyrics, parseLyrics } from "@/lib/lyrics";
 import { OptimizeHint } from "@/components/operator/optimize-bar";
 import { cn } from "@/lib/cn";
 import { isWall, optimizeRawText } from "@/lib/slide-optimize";
+import { useChatStore, POSICOES_CHAT } from "@/store/chat-store";
 import { useLumenStore } from "@/store/lumen-store";
 import type { ClockPosition, Song, Theme } from "@/lib/types";
 
@@ -276,6 +277,8 @@ export function SettingsDialog({
 }) {
   const settings = useLumenStore((s) => s.settings);
   const update = useLumenStore((s) => s.updateSettings);
+  const chatPosicao = useChatStore((s) => s.posicao);
+  const setChatPosicao = useChatStore((s) => s.setPosicao);
   const exportLibrary = useLumenStore((s) => s.exportLibrary);
   const importLibrary = useLumenStore((s) => s.importLibrary);
   const resetDemo = useLumenStore((s) => s.resetDemo);
@@ -451,6 +454,20 @@ export function SettingsDialog({
             </Button>
           </section>
         </div>
+        <div className="mt-4 space-y-2 border-t border-border pt-4">
+          <p className="text-secondary font-medium text-subtle">Posição do Chat</p>
+          <Segmented
+            label="Posição do Chat"
+            value={chatPosicao}
+            onChange={setChatPosicao}
+            items={POSICOES_CHAT}
+          />
+          <p className="text-secondary text-subtle">
+            Lateral entra como uma coluna ao lado, sem cobrir nada. Flutuante fica no canto de
+            baixo. Oculto some com o botão também.
+          </p>
+        </div>
+
         <div className="mt-4 space-y-2 border-t border-border pt-4">
           <p className="text-secondary font-medium text-subtle">Pasta de armazenamento de mídias</p>
           <MediaFoldersSection />

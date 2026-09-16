@@ -15,7 +15,59 @@ export type AcaoRemota =
   | "logo"
   | "ocultar-letra"
   | "parar"
-  | "proximo-item";
+  | "proximo-item"
+  // Transporte do vídeo local que está no telão.
+  | "tocar"
+  | "pausar"
+  | "parar-midia";
+
+/**
+ * O que cada aparelho pode fazer.
+ *
+ * Em ordem: quem pode editar também conversa, quem controla também edita. O
+ * PIN prova que a pessoa está na sala; a permissão é o que a cabine concede
+ * depois de ver o nome do aparelho na lista.
+ */
+export type PermissaoRemota = "chat" | "editor" | "controle";
+
+export interface DispositivoRemoto {
+  id: string;
+  nome: string;
+  permissao: PermissaoRemota;
+  criadoEm: number;
+  ultimoVisto: number;
+  online: boolean;
+}
+
+export interface MensagemChat {
+  id: string;
+  de: string;
+  texto: string;
+  em: number;
+  daCabine: boolean;
+}
+
+/** O que chega do celular pelo processo principal, fora o transporte. */
+export type EventoRemoto =
+  | { tipo: "dispositivos"; novo?: string }
+  | { tipo: "chat"; mensagem: MensagemChat }
+  | {
+      tipo: "musica";
+      de: string;
+      musica: { id: string | null; titulo: string; artista: string; letra: string };
+    };
+
+export const ROTULO_PERMISSAO: Record<PermissaoRemota, string> = {
+  controle: "Controle completo",
+  editor: "Editor",
+  chat: "Só chat",
+};
+
+export const AJUDA_PERMISSAO: Record<PermissaoRemota, string> = {
+  controle: "Muda slides e comanda a projeção",
+  editor: "Cria e edita músicas",
+  chat: "Só envia mensagens",
+};
 
 export interface RemoteStatus {
   ligado: boolean;
@@ -23,6 +75,8 @@ export interface RemoteStatus {
   pin: string | null;
   enderecos: string[];
   sessoesAtivas: number;
+  dispositivos?: DispositivoRemoto[];
+  permissaoPadrao?: PermissaoRemota;
 }
 
 /** O que a cabine publica a cada troca de slide, para o aparelho mostrar. */
