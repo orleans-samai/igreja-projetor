@@ -12,6 +12,9 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperti
 import { ChurchLogo } from "@/components/logo";
 import { stripChords } from "@/lib/lyrics";
 import { fontScaleDe } from "@/lib/font-scale";
+import { relatarLocal } from "@/lib/media-local";
+import { carregadoAte } from "@/lib/media-player";
+import { legendaDoRodape } from "@/lib/slide-rodape";
 import { fadeDurationMs, slideKey } from "@/lib/transition";
 import type { ClockPosition, FitMode, LiveFrame, OutputStatus, Theme } from "@/lib/types";
 import { cn } from "@/lib/cn";
@@ -279,25 +282,25 @@ function SlideBody({
   alignV: Theme["alignV"];
   escala?: number;
 }) {
-  const rodape = content.reference || content.copyright;
+  /*
+    Título e referência dividem a mesma linha, e essa linha mora no rodapé.
+
+    O título ficava no alto, à esquerda: a igreja lia "Efésios 6" pendurado
+    num canto enquanto a letra corria no meio da tela. Texto fixo só tem um
+    endereço no telão — embaixo, centralizado — e agora é o único.
+
+    Na prática os dois nunca chegam juntos (título é de música, referência é
+    de versículo); quando chegam, dividem a linha em vez de roubar mais uma
+    altura do versículo.
+  */
+  const legenda = legendaDoRodape(content.title, content.reference);
+  const rodape = legenda || content.copyright;
   const { caixa, alvo, fator } = useCabeNaCaixa(
-    `${content.body}|${content.title}|${paint.id}|${escala}`,
+    `${content.body}|${legenda}|${paint.id}|${escala}`,
   );
 
   return (
     <div className="relative flex h-full flex-col">
-      {/* Título, referência e copyright herdam a cor do tema, não uma cor
-          clara fixa: em tema de fundo claro — Papel, Areia, Alva — o texto
-          fixo sumia contra o fundo. */}
-      {content.title && (
-        <p
-          className="mb-6 shrink-0 font-display text-3xl font-medium tracking-wide"
-          style={{ color: paint.textColor, opacity: 0.8 }}
-        >
-          {content.title}
-        </p>
-      )}
-
       {/* A área do texto é o que sobra, e ela recorta: é o que permite medir
           o transbordo e encolher em vez de deixar a frase sair pela borda. */}
       <div
@@ -328,12 +331,15 @@ function SlideBody({
           className="absolute inset-x-0 bottom-0 flex flex-col items-center justify-end gap-2 text-center"
           style={{ height: RODAPE_H }}
         >
-          {content.reference && (
+          {/* Legenda e copyright herdam a cor do tema, não uma cor clara
+              fixa: em tema de fundo claro — Papel, Areia, Alva — o texto
+              fixo sumia contra o fundo. */}
+          {legenda && (
             <p
               className="font-display text-3xl font-medium"
               style={{ color: paint.textColor, opacity: 0.78 }}
             >
-              {content.reference}
+              {legenda}
             </p>
           )}
           {content.copyright && (
@@ -407,6 +413,9 @@ function MediaStage({
   acao,
   loop,
   cmdSeq,
+  tempo,
+  busca,
+  velocidade,
 }: {
   src: string;
   type?: "image" | "video" | "audio";
@@ -417,10 +426,36 @@ function MediaStage({
   acao?: "tocar" | "pausar" | "parar";
   loop?: boolean;
   cmdSeq?: number;
+  /** Para onde ir — só aplicado quando `busca` muda. */
+  tempo?: number;
+  busca?: number;
+  velocidade?: number;
 }) {
   const [erro, setErro] = useState(false);
   const fit = fitMode === "cover" ? "object-cover" : "object-contain";
   const videoRef = useRef<HTMLVideoElement>(null);
+
+  /**
+   * Ir para um ponto do vídeo.
+   *
+   * Separado do comando de tocar/pausar de propósito: buscar não deve ligar
+   * nem desligar o vídeo, e tocar não deve rebobinar. O contador é o que
+   * distingue "buscar de novo para o mesmo segundo" de um quadro repetido.
+   */
+  const buscaFeita = useRef(busca);
+  useEffect(() => {
+    const el = videoRef.current;
+    if (!el || type !== "video") return;
+    if (busca === undefined || busca === buscaFeita.current) return;
+    buscaFeita.current = busca;
+    if (typeof tempo === "number" && Number.isFinite(tempo)) el.currentTime = Math.max(0, tempo);
+  }, [busca, tempo, type]);
+
+  useEffect(() => {
+    const el = videoRef.current;
+    if (!el || type !== "video") return;
+    el.playbackRate = velocidade && velocidade > 0 ? velocidade : 1;
+  }, [velocidade, type]);
 
   // Comando → player. Sem `acao` (sessão salva antes deste recurso existir),
   // cai no autoplay de sempre em vez de travar num vídeo que nunca começa.
@@ -448,6 +483,39 @@ function MediaStage({
       el.currentTime = 0;
     }
   }, [acao, type, cmdSeq]);
+
+  /**
+   * O que a cabine precisa para desenhar a barra: onde está, quanto dura e
+   * até onde já carregou.
+   *
+   * `timeupdate` dispara umas quatro vezes por segundo por conta própria,
+   * mas `progress` em arquivo grande é bem mais tagarela — e cada aviso
+   * atravessa o BroadcastChannel e redesenha a cabine. Um freio de 250ms
+   * mantém a barra fluida sem transformar o culto em fila de mensagens.
+   */
+  const ultimoRelato = useRef(0);
+  const relatar = (el: HTMLVideoElement, estado: "tocando" | "pausado" | "fim") => {
+    // O retorno de palco não relata: ele é mais uma cópia do mesmo arquivo,
+    // e três janelas contando a mesma coisa só gera ruído.
+    if (variant === "stage") return;
+    ultimoRelato.current = Date.now();
+    const dados = {
+      estado,
+      tempo: el.currentTime,
+      duracao: Number.isFinite(el.duration) ? el.duration : 0,
+      carregado: carregadoAte(el.buffered, el.currentTime),
+    };
+    // O telão fala com a cabine pelo canal de operação; o preview mora na
+    // mesma janela e usa o canal interno, porque o BroadcastChannel não
+    // entrega mensagem para quem a publicou.
+    if (variant === "audience") publishOps({ type: "media-tempo", ...dados });
+    else relatarLocal(dados);
+  };
+  const relatarAndando = (el: HTMLVideoElement) => {
+    if (variant === "stage") return;
+    if (Date.now() - ultimoRelato.current < 250) return;
+    relatar(el, el.ended ? "fim" : el.paused ? "pausado" : "tocando");
+  };
 
   if (erro) {
     return (
@@ -485,9 +553,13 @@ function MediaStage({
         onError={() => setErro(true)}
         // Só a janela do público relata: se o preview da cabine e o retorno
         // de palco também contassem, o mesmo aviso chegaria três vezes.
-        onPlay={() => variant === "audience" && publishOps({ type: "media-tempo", estado: "tocando" })}
-        onPause={() => variant === "audience" && publishOps({ type: "media-tempo", estado: "pausado" })}
-        onEnded={() => variant === "audience" && publishOps({ type: "media-tempo", estado: "fim" })}
+        onPlay={(e) => relatar(e.currentTarget, "tocando")}
+        onPause={(e) => relatar(e.currentTarget, "pausado")}
+        onEnded={(e) => relatar(e.currentTarget, "fim")}
+        onTimeUpdate={(e) => relatarAndando(e.currentTarget)}
+        onProgress={(e) => relatarAndando(e.currentTarget)}
+        onLoadedMetadata={(e) => relatar(e.currentTarget, e.currentTarget.paused ? "pausado" : "tocando")}
+        onSeeked={(e) => relatar(e.currentTarget, e.currentTarget.paused ? "pausado" : "tocando")}
         className={cn("absolute inset-0 z-10 size-full", fit)}
       />
     );
@@ -626,6 +698,9 @@ export function SlideCanvas({
           acao={frame.deck.mediaAcao}
           loop={frame.deck.mediaLoop}
           cmdSeq={frame.deck.mediaSeq}
+          tempo={frame.deck.mediaTempo}
+          busca={frame.deck.mediaBusca}
+          velocidade={frame.deck.mediaVelocidade}
         />
       )}
 

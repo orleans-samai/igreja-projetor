@@ -92,14 +92,10 @@ export function mensagemDeErro(codigo: number): string {
 }
 
 /** Tempo em mm:ss, ou h:mm:ss quando passa da hora. */
-export function relogio(segundos: number): string {
-  const s = Math.max(0, Math.floor(segundos || 0));
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  const r = s % 60;
-  const dois = (n: number) => String(n).padStart(2, "0");
-  return h > 0 ? `${h}:${dois(m)}:${dois(r)}` : `${m}:${dois(r)}`;
-}
+// O relógio do player mora em media-player.ts, junto com o resto das contas
+// de tempo; fica reexportado aqui porque a barra do YouTube já o chamava
+// daqui muito antes de existir player de mídia local.
+export { relogio } from "./media-player.ts";
 
 export interface DadosDoVideo {
   titulo: string;

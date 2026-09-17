@@ -259,7 +259,7 @@ export function PlaylistPanel({ showThemes = false }: { showThemes?: boolean }) 
         {(!pl || pl.items.length === 0) && (
           <Empty
             title="O culto ainda está vazio."
-            hint="Dê dois cliques num item da biblioteca para trazê-lo para cá, ou use o + acima."
+            hint="No repertório, o + de cada linha traz o item para cá. Dois cliques lá projetam na hora."
           />
         )}
       </ul>

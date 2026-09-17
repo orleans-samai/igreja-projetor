@@ -67,6 +67,33 @@ export function SlideGrid() {
   const [dragFrom, setDragFrom] = useState<number | null>(null);
   const pista = useRef<HTMLDivElement>(null);
 
+  /*
+    Vídeo do YouTube no telão recolhe a faixa de letras na hora.
+
+    Cartão de letra não tem o que dizer enquanto um vídeo toca, e come a
+    altura que o operador quer justamente para acompanhar o vídeo. Recolhe
+    sozinho ao projetar e volta sozinho quando o vídeo sai.
+
+    Só reage à virada — nunca ao estado. Se reagisse ao estado, o operador
+    que reabrisse a faixa no meio do vídeo a veria fechar de novo na cara
+    dele. E só reabre se foi ela quem fechou: faixa que o operador já tinha
+    fechado continua fechada.
+  */
+  const temYoutube = useLumenStore((s) => Boolean(s.youtube));
+  const tinhaYoutube = useRef(temYoutube);
+  const recolhiEu = useRef(false);
+  useEffect(() => {
+    if (temYoutube === tinhaYoutube.current) return;
+    tinhaYoutube.current = temYoutube;
+    if (temYoutube) {
+      recolhiEu.current = useOpsStore.getState().gridOpen;
+      if (recolhiEu.current) setAberta(false);
+    } else if (recolhiEu.current) {
+      recolhiEu.current = false;
+      setAberta(true);
+    }
+  }, [temYoutube, setAberta]);
+
   const passo = PASSOS[Math.max(0, Math.min(PASSOS.length - 1, zoom))] ?? PASSOS[1];
   const largura = passo.largura;
 

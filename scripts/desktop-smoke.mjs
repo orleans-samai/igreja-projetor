@@ -16,6 +16,12 @@ try {
     app = await electron.launch({ ...(executablePath ? { executablePath } : {}), args: [ ...(executablePath ? ["--smoke-test"] : [root]), "--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream"], env: { ...process.env, LUMEN_TEST_DATA: profile }, timeout: 60000 });
     const page = await app.firstWindow();
     page.on("pageerror", (error) => errors.push(error.message));
+    // Sem um tratador nosso, o Playwright dispensa o diálogo sozinho e às
+    // vezes chega tarde — e o erro dele derruba o teste inteiro. "beforeunload"
+    // é aceito porque recarregar a página é justamente o que queremos.
+    page.on("dialog", (d) => {
+      void (d.type() === "beforeunload" ? d.accept() : d.dismiss()).catch(() => {});
+    });
     await page.waitForFunction(() => document.querySelectorAll("button").length > 10);
     await page.waitForFunction(async () => !!(await window.lumenDesktop.storageGet("lumen-v2")));
     return page;
@@ -184,9 +190,22 @@ try {
   const restored = await page.evaluate(async () => JSON.parse(await window.lumenDesktop.storageGet("lumen-v2")));
   assert.equal(restored.state.settings.churchName, "Persistência Windows");
   assert.equal(restored.state.songs.length, saved);
+
+  // O tema "Infantil" é o único do acervo que escreve o título da música no
+  // telão — é com ele que dá para provar onde o texto fixo mora.
+  await page.evaluate(async () => {
+    const guardado = JSON.parse(await window.lumenDesktop.storageGet("lumen-v2"));
+    guardado.state.songThemeId = "theme-infantil";
+    await window.lumenDesktop.storageSet("lumen-v2", JSON.stringify(guardado));
+  });
+  await page.reload();
+  await page.waitForFunction(() => document.querySelectorAll("button").length > 10);
   const windowEvent = app.waitForEvent("window");
   await page.evaluate(() => window.lumenDesktop.openProjector());
   const projector = await windowEvent;
+  projector.on("dialog", (d) => {
+    void (d.type() === "beforeunload" ? d.accept() : d.dismiss()).catch(() => {});
+  });
   await projector.waitForLoadState("domcontentloaded");
   assert.ok(projector.url().includes("/projetor"));
   const received = projector.evaluate(() => new Promise((resolve) => {
@@ -198,13 +217,109 @@ try {
   await page.waitForFunction(() => localStorage.getItem("lumen-smoke-ready") === "yes");
   await page.evaluate(() => { const channel = new BroadcastChannel("lumen-smoke"); channel.postMessage("ok"); channel.close(); });
   assert.equal(await received, true);
+
+  // ---- Dois cliques no repertório mandam para o telão ----
+  const doisCliques = await page.evaluate(async () => {
+    const esperar = (ms) => new Promise((r) => setTimeout(r, ms));
+    const clicar = (txt) => {
+      const alvo = [...document.querySelectorAll("button,[role=tab]")].find(
+        (b) => (b.textContent || "").trim() === txt,
+      );
+      alvo?.click();
+      return Boolean(alvo);
+    };
+    clicar("Biblioteca");
+    await esperar(300);
+    clicar("Letras");
+    await esperar(500);
+    const linhas = [...document.querySelectorAll('li > button[title^="Um clique seleciona"]')];
+    if (linhas.length === 0) return { erro: "nenhuma linha de música no repertório" };
+    const titulo = (linhas[0].querySelector("p")?.textContent ?? "").trim();
+    linhas[0].dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+    await esperar(900);
+    return { titulo };
+  });
+  assert.ok(!doisCliques.erro, doisCliques.erro);
+  assert.ok(doisCliques.titulo.length > 0, "a linha do repertório não tinha nome");
+
+  // ---- Texto fixo do telão: sempre e apenas no rodapé ----
+  // O título da música já foi desenhado no alto, à esquerda: a igreja lia o
+  // nome pendurado num canto enquanto a letra corria no meio da tela.
+  const noTelao = await projector.evaluate(async (titulo) => {
+    const esperar = (ms) => new Promise((r) => setTimeout(r, ms));
+    const palcoDe = () => document.querySelector(".origin-top-left");
+    for (let i = 0; i < 60; i += 1) {
+      const p = palcoDe();
+      if (p && (p.textContent || "").includes(titulo)) break;
+      await esperar(100);
+    }
+    const palco = palcoDe();
+    if (!palco) return { erro: "o telão não desenhou slide nenhum" };
+    if (!(palco.textContent || "").includes(titulo)) return { erro: "o telão não recebeu " + titulo };
+    const caixa = palco.getBoundingClientRect();
+    if (caixa.height <= 0) return { erro: "o telão mediu altura zero" };
+    const fixos = [...palco.querySelectorAll("p")].filter(
+      (el) => (el.textContent || "").trim() === titulo,
+    );
+    const altura = (el) => {
+      const r = el.getBoundingClientRect();
+      return Math.round(((r.top + r.height / 2 - caixa.top) / caixa.height) * 100);
+    };
+    const corpo = palco.querySelector(".slide-text");
+    return {
+      vezes: fixos.length,
+      alturas: fixos.map(altura),
+      letra: corpo ? altura(corpo) : null,
+    };
+  }, doisCliques.titulo);
+  assert.ok(!noTelao.erro, noTelao.erro);
+  assert.equal(noTelao.vezes, 1, `"${doisCliques.titulo}" apareceu ${noTelao.vezes}x no telão; o certo é 1`);
+  // O rodapé fica no fim da área com margem, não no fim da tela crua: por isso
+  // 84% já é "colado embaixo". O que prova a correção é a ordem — o texto fixo
+  // abaixo da letra, e não pendurado num canto de cima, onde ele já esteve.
+  assert.ok(
+    noTelao.alturas[0] >= 70,
+    `texto fixo a ${noTelao.alturas[0]}% da altura do telão; no rodapé ele passa de 70%`,
+  );
+  assert.ok(
+    noTelao.letra !== null && noTelao.alturas[0] > noTelao.letra,
+    `texto fixo a ${noTelao.alturas[0]}% e a letra a ${noTelao.letra}%: o fixo tem que ficar abaixo`,
+  );
+
+  // ---- Vídeo do YouTube recolhe a faixa de letras ----
+  // Cartão de letra não tem o que dizer enquanto um vídeo toca, e come a
+  // altura que o operador quer para acompanhar o próprio vídeo.
+  const faixaDeLetras = () =>
+    page.locator('button[aria-expanded]').filter({ hasText: /^Letras / }).first();
+  if ((await faixaDeLetras().getAttribute("aria-expanded")) !== "true") {
+    await faixaDeLetras().click();
+  }
+  assert.equal(await faixaDeLetras().getAttribute("aria-expanded"), "true");
+  await page.getByRole("button", { name: "Mais", exact: true }).click();
+  await page.getByRole("menuitem", { name: "YouTube", exact: true }).click();
+  await page.getByPlaceholder("Cole o link do YouTube").fill("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
+  await page.getByPlaceholder("Cole o link do YouTube").press("Enter");
+  // O nome do vídeo depende de haver internet nesta máquina: com rede vem o
+  // título do YouTube, sem rede vem "Vídeo do YouTube". O teste não depende
+  // de qual dos dois — só de haver um item na fila para projetar.
+  const projetarVideo = page.getByRole("button", { name: /^Projetar / }).first();
+  await projetarVideo.waitFor({ state: "visible", timeout: 15000 });
+  await projetarVideo.click();
+  await page.waitForFunction(
+    () =>
+      [...document.querySelectorAll("button[aria-expanded]")]
+        .find((b) => /^Letras /.test((b.textContent || "").trim()))
+        ?.getAttribute("aria-expanded") === "false",
+    null,
+    { timeout: 10000 },
+  );
   await page.screenshot({ animations: "disabled", path: path.join(evidence, "operator.png") });
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => w.webContents.getURL() === "lumen://app/")?.setSize(800, 600));
   await page.screenshot({ animations: "disabled", path: path.join(evidence, "operator-800x600.png") });
   assert.deepEqual(errors, []);
   const disk = JSON.parse(await readFile(path.join(profile, "data", "library.json"), "utf8"));
   assert.ok(disk.values["lumen-v2"]);
-  console.log(`PASS: offline, fonts, Bible, restart persistence, projector, media ranges, preflight, Auto-Slide, remote control (LAN + PIN), update check, review before apply, 1366×768 at 100/125/150% and 800×600. Evidence: ${evidence}`);
+  console.log(`PASS: offline, fonts, Bible, restart persistence, projector, media ranges, preflight, Auto-Slide, remote control (LAN + PIN), update check, review before apply, 1366×768 at 100/125/150% and 800×600, double-click to project, fixed text only in the footer, YouTube collapses the lyrics strip. Evidence: ${evidence}`);
 } finally {
   if (app) await app.close();
   console.log(`Isolated test profile: ${profile}`);

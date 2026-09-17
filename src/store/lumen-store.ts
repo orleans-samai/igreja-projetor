@@ -9,6 +9,7 @@ import {
 } from "@/lib/bible";
 import { bookById } from "@/lib/bible-books";
 import { FONT_SCALE_PASSO, fontScaleDe, limitarFontScale } from "@/lib/font-scale";
+import { indiceNaProgramacao } from "@/lib/culto-etapas";
 import { fold, nid } from "@/lib/fold";
 import { parseLyrics } from "@/lib/lyrics";
 import { publishLiveFrame } from "@/lib/live-channel";
@@ -40,6 +41,7 @@ import type {
   Service,
   Settings,
   Slide,
+  SlideKind,
   Song,
   SongGroup,
   Theme,
@@ -163,6 +165,7 @@ export interface LumenState {
   prev: () => void;
   goLiveIndex: (i: number) => void;
   presentPlaylistItem: (index: number) => void;
+  projetarDaBiblioteca: (type: SlideKind, refId: string) => void;
   previewPlaylistItem: (index: number) => void;
   nextPlaylistItem: () => void;
   setThemeForKind: (kind: "songs" | "bible" | "stage", themeId: string) => void;
@@ -193,7 +196,11 @@ export interface LumenState {
   selectText: (id: string) => void;
   selectMedia: (id: string) => void;
   addMedia: (item: MediaItem) => void;
-  comandarMedia: (patch: Partial<Pick<Deck, "mediaAcao" | "mediaLoop">>) => void;
+  comandarMedia: (
+    patch: Partial<Pick<Deck, "mediaAcao" | "mediaLoop" | "mediaVelocidade">>,
+  ) => void;
+  /** Ir para um ponto do vídeo no telão, em segundos. */
+  buscarMedia: (tempo: number) => void;
   setAlert: (text: string, seconds: number, position: "top" | "bottom") => void;
   clearAlert: () => void;
   startCountdown: (label: string, seconds: number) => void;
@@ -264,6 +271,32 @@ export function buildLiveFrame(s: LiveFrameInput): LiveFrame {
     },
     updatedAt: Date.now(),
   };
+}
+
+/**
+ * Aplica um comando de mídia no baralho no ar e no selecionado.
+ *
+ * Os dois precisam concordar: a cabine desenha o quadro do telão e o da
+ * seleção, cada um monta o seu `<video>`, e com o comando em só um deles os
+ * dois elementos recebem ordens contrárias — um toca e o outro pausa no
+ * mesmo instante, e o vídeo parece travar sozinho.
+ */
+function aplicarNaMidia(
+  s: LumenState,
+  patch: Partial<Deck>,
+  set: (fn: (st: LumenState) => LumenState) => void,
+) {
+  const atual = s.live;
+  if (!atual || atual.mediaType !== "video") return;
+  const seq = (atual.mediaSeq ?? 0) + 1;
+  const mesmoItem = s.preview && s.preview.refId === atual.refId;
+  broadcast(
+    {
+      live: { ...atual, ...patch, mediaSeq: seq },
+      preview: mesmoItem ? { ...s.preview!, ...patch, mediaSeq: seq } : s.preview,
+    },
+    set,
+  );
 }
 
 function broadcast(partial: Partial<LumenState> | ((s: LumenState) => LumenState), set: (fn: (s: LumenState) => LumenState) => void) {
@@ -350,6 +383,7 @@ const empty = (): Omit<
   | "prev"
   | "goLiveIndex"
   | "presentPlaylistItem"
+  | "projetarDaBiblioteca"
   | "previewPlaylistItem"
   | "nextPlaylistItem"
   | "setThemeForKind"
@@ -381,6 +415,7 @@ const empty = (): Omit<
   | "selectMedia"
   | "addMedia"
   | "comandarMedia"
+  | "buscarMedia"
   | "setAlert"
   | "clearAlert"
   | "startCountdown"
@@ -706,6 +741,31 @@ export const useLumenStore = create<LumenState>()(
         queueMicrotask(() => get().presentPreview());
       },
 
+      /**
+       * Dois cliques no repertório põem o item no telão agora.
+       *
+       * Se ele já estava planejado para o culto, o culto anda a partir dali —
+       * projetar por fora deixaria a programação apontando para outro ponto, e
+       * o próximo avanço voltaria para o lugar errado no meio do louvor.
+       *
+       * Se não estava, projeta assim mesmo: o operador pediu isto, e o culto
+       * raramente sai igual ao que foi planejado.
+       */
+      projetarDaBiblioteca: (type, refId) => {
+        const s = get();
+        const pl = s.playlists.find((p) => p.id === s.activePlaylistId);
+        const idx = pl ? indiceNaProgramacao(pl.items, type, refId) : -1;
+        if (idx >= 0) {
+          get().presentPlaylistItem(idx);
+          return;
+        }
+        if (type === "song") get().selectSong(refId);
+        else if (type === "text") get().selectText(refId);
+        else if (type === "media") get().selectMedia(refId);
+        else return;
+        queueMicrotask(() => get().presentPreview());
+      },
+
       previewPlaylistItem: (index) => {
         loadPlaylistItem(get, index);
       },
@@ -1021,6 +1081,8 @@ export const useLumenStore = create<LumenState>()(
             // Pausar e parar continuam a um clique, no transporte.
             mediaAcao: item.type === "video" ? "tocar" : undefined,
             mediaLoop: false,
+            mediaVelocidade: 1,
+            mediaBusca: 0,
           },
           previewIndex: 0,
         });
@@ -1042,15 +1104,25 @@ export const useLumenStore = create<LumenState>()(
        * outro pausava no mesmo instante, e o vídeo parecia travar sozinho
        * depois de um segundo.
        */
-      comandarMedia: (patch) => {
+      comandarMedia: (patch) => aplicarNaMidia(get(), patch, set),
+
+      /**
+       * Ir para um ponto do vídeo.
+       *
+       * O contador sobe a cada pedido: arrastar duas vezes para o mesmo
+       * segundo geraria dois quadros idênticos, e o telão não teria como
+       * distinguir o segundo pedido de um quadro repetido.
+       */
+      buscarMedia: (tempo) => {
         const s = get();
         const atual = s.live;
         if (!atual || atual.mediaType !== "video") return;
-        const seq = (atual.mediaSeq ?? 0) + 1;
-        const live = { ...atual, ...patch, mediaSeq: seq };
-        const mesmoItem = s.preview && s.preview.refId === atual.refId;
-        broadcast(
-          { live, preview: mesmoItem ? { ...s.preview!, ...patch, mediaSeq: seq } : s.preview },
+        aplicarNaMidia(
+          s,
+          {
+            mediaTempo: Math.max(0, tempo),
+            mediaBusca: (atual.mediaBusca ?? 0) + 1,
+          },
           set,
         );
       },

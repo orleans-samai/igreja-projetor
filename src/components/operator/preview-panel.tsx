@@ -1,9 +1,9 @@
 import { toast } from "sonner";
 import * as Popover from "@radix-ui/react-popover";
-import { Monitor, Pause, Pencil, Play, Repeat, SkipBack, SkipForward, Square, Volume2, VolumeX, Youtube } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Monitor, Pause, Pencil, Play, Square, Volume2, VolumeX, Youtube } from "lucide-react";
 import { SlideStage } from "@/components/slide/slide-renderer";
 import { FontSizeBar } from "@/components/operator/font-size-bar";
+import { MediaPlayer } from "@/components/operator/media-player";
 import { NoArAgora } from "@/components/operator/no-ar-agora";
 import { OptimizeBanner, OptimizeButton } from "@/components/operator/optimize-bar";
 import { ThemeThumb } from "@/components/operator/theme-rail";
@@ -12,7 +12,6 @@ import { Tally } from "@/components/ui/panel";
 import { Hint } from "@/components/ui/tooltip";
 import { themeSwatch } from "@/lib/theme-swatch";
 import { cn } from "@/lib/cn";
-import { subscribeOps } from "@/lib/ops-channel";
 import type { LiveFrame } from "@/lib/types";
 import { useLumenStore } from "@/store/lumen-store";
 import { useOpsStore } from "@/store/ops-store";
@@ -83,7 +82,7 @@ export function PreviewPanel({
         </Hint>
       </div>
 
-      <PlayerStrip />
+      <MediaPlayer />
       <OptimizeBanner />
 
       <div className="preview-well min-h-0 flex-1 p-3" data-tour="preview">
@@ -131,7 +130,6 @@ export function PreviewPanel({
       </div>
 
       <YoutubeTransporte />
-      <MediaVideoTransporte />
 
       <div className="flex flex-wrap items-center gap-3 border-t border-border px-3 py-2">
         <label className="flex select-none items-center gap-2 text-secondary text-muted">
@@ -268,195 +266,4 @@ function YoutubeTransporte() {
   );
 }
 
-/**
- * Transporte do vídeo local, junto ao preview.
- *
- * O vídeo toca no telão, com som — a cabine só descreve o que quer, do
- * mesmo jeito que o transporte do YouTube logo acima. Sem isto, um vídeo
- * da pasta de mídia só sabia fazer uma coisa: tocar sozinho do início ao
- * fim, sem ninguém poder pausar para um aviso ou repetir de propósito.
- */
-function MediaVideoTransporte() {
-  const live = useLumenStore((s) => s.live);
-  const comandar = useLumenStore((s) => s.comandarMedia);
-  /**
-   * O telão só avisa quando o vídeo acaba sozinho.
-   *
-   * O resto do tempo quem sabe se está tocando é a própria cabine, porque foi
-   * ela que mandou. Antes o botão dependia do relato de volta da janela de
-   * projeção: com ela fechada — ou no instante antes do relato chegar — ele
-   * ficava escrito "Tocar" com o vídeo já tocando, e o operador apertava de
-   * novo achando que não tinha funcionado.
-   */
-  const [terminou, setTerminou] = useState(false);
 
-  useEffect(() => {
-    return subscribeOps((msg) => {
-      if (msg.type !== "media-tempo") return;
-      setTerminou(msg.estado === "fim");
-    });
-  }, []);
-
-  // Vídeo novo, ou comando novo, apagam o "terminou" de antes.
-  const src = live?.mediaSrc;
-  const seq = live?.mediaSeq;
-  useEffect(() => setTerminou(false), [src, seq]);
-
-  if (!live || live.kind !== "media" || live.mediaType !== "video") return null;
-  const tocando = !terminou && (live.mediaAcao ?? "tocar") === "tocar";
-
-  return (
-    <div className="animate-swap-in flex flex-wrap items-center gap-2 border-t border-border bg-elevated px-3 py-1.5">
-      <Hint label={tocando ? "Pausar no telão" : "Tocar no telão"}>
-        <Button
-          size="sm"
-          variant={tocando ? "secondary" : "default"}
-          onClick={() => comandar({ mediaAcao: tocando ? "pausar" : "tocar" })}
-        >
-          {tocando ? <Pause /> : <Play />}
-          {tocando ? "Pausar" : "Tocar"}
-        </Button>
-      </Hint>
-      <Hint label="Parar e voltar ao início">
-        <Button size="iconSm" variant="ghost" aria-label="Parar vídeo" onClick={() => comandar({ mediaAcao: "parar" })}>
-          <Square />
-        </Button>
-      </Hint>
-      {!tocando && !terminou && (
-        <span className="text-caption text-subtle">Pausado</span>
-      )}
-      {terminou && <span className="text-caption text-subtle">Vídeo terminou</span>}
-      <label className="ml-auto flex select-none items-center gap-2 text-caption text-muted">
-        <Repeat className="size-3.5 text-subtle" aria-hidden />
-        <button
-          type="button"
-          role="switch"
-          aria-checked={!!live.mediaLoop}
-          data-on={!!live.mediaLoop}
-          className="lumen-switch"
-          onClick={() => comandar({ mediaLoop: !live.mediaLoop })}
-        />
-        Repetir
-      </label>
-    </div>
-  );
-}
-
-/**
- * Player de mídia.
- *
- * Só existe quando há áudio ou vídeo selecionado. Antes ficava sempre na
- * tela, com cronômetro zerado e controles que não faziam nada — uma faixa
- * inteira do console ocupada por nada.
- */
-function PlayerStrip() {
-  const preview = useLumenStore((s) => s.preview);
-  const media = useLumenStore((s) => s.media);
-  const item = preview?.kind === "media" ? media.find((m) => m.id === preview.refId) : null;
-  const audioRef = useRef<HTMLAudioElement>(null);
-  const [playing, setPlaying] = useState(false);
-  const [time, setTime] = useState(0);
-  const [dur, setDur] = useState(0);
-  const [vol, setVol] = useState(0.85);
-
-  const stamp = useMemo(() => {
-    const fmt = (n: number) => {
-      const s = Math.max(0, Math.floor(n));
-      const mm = String(Math.floor(s / 60)).padStart(2, "0");
-      const ss = String(s % 60).padStart(2, "0");
-      return `${mm}:${ss}`;
-    };
-    return `${fmt(time)} / ${fmt(dur)}`;
-  }, [time, dur]);
-
-  // Só áudio: o vídeo agora toca no telão, com som. Se a cabine também
-  // tocasse, o mesmo trecho sairia duas vezes na caixa.
-  if (!item || item.type !== "audio") return null;
-
-  const seek = (delta: number) => {
-    const el = audioRef.current;
-    if (!el) return;
-    el.currentTime = Math.max(0, Math.min(dur || el.duration || 0, el.currentTime + delta));
-  };
-
-  return (
-    <div className="animate-swap-in flex items-center gap-2 border-b border-border bg-elevated px-3 py-1.5">
-      <audio
-        ref={audioRef}
-        src={item.path}
-        onTimeUpdate={(e) => setTime(e.currentTarget.currentTime)}
-        onLoadedMetadata={(e) => setDur(e.currentTarget.duration || 0)}
-        onPlay={() => setPlaying(true)}
-        onPause={() => setPlaying(false)}
-        onEnded={() => setPlaying(false)}
-      />
-      <Button
-        size="iconSm"
-        variant="ghost"
-        aria-label={playing ? "Pausar" : "Tocar"}
-        onClick={() => {
-          const el = audioRef.current;
-          if (!el) return;
-          if (el.paused) void el.play();
-          else el.pause();
-        }}
-      >
-        {playing ? <Pause /> : <Play />}
-      </Button>
-      <Button
-        size="iconSm"
-        variant="ghost"
-        aria-label="Parar"
-        onClick={() => {
-          const el = audioRef.current;
-          if (!el) return;
-          el.pause();
-          el.currentTime = 0;
-        }}
-      >
-        <Square />
-      </Button>
-      <Hint label="Voltar 10 segundos">
-        <Button size="iconSm" variant="ghost" aria-label="Voltar 10 segundos" onClick={() => seek(-10)}>
-          <SkipBack />
-        </Button>
-      </Hint>
-      <Hint label="Avançar 10 segundos">
-        <Button size="iconSm" variant="ghost" aria-label="Avançar 10 segundos" onClick={() => seek(10)}>
-          <SkipForward />
-        </Button>
-      </Hint>
-      <span className="tnum shrink-0 font-mono text-caption text-muted">{stamp}</span>
-      <input
-        type="range"
-        min={0}
-        max={dur || 1}
-        step={0.1}
-        value={time}
-        onChange={(e) => {
-          const el = audioRef.current;
-          const v = Number(e.target.value);
-          if (el) el.currentTime = v;
-          setTime(v);
-        }}
-        className="h-1 min-w-16 flex-1 accent-accent"
-        aria-label="Posição"
-      />
-      <Volume2 className="size-3.5 shrink-0 text-subtle" aria-hidden />
-      <input
-        type="range"
-        min={0}
-        max={1}
-        step={0.01}
-        value={vol}
-        onChange={(e) => {
-          const v = Number(e.target.value);
-          setVol(v);
-          if (audioRef.current) audioRef.current.volume = v;
-        }}
-        className="h-1 w-16 accent-accent"
-        aria-label="Volume"
-      />
-    </div>
-  );
-}

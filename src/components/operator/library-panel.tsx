@@ -58,16 +58,57 @@ const TABS = [
   { value: "bible", label: "Bíblia" },
 ] as const satisfies readonly { value: LibraryTab; label: string }[];
 
+/**
+ * O + que põe o item no culto, sem tirar a mão do mouse.
+ *
+ * Dois cliques passaram a projetar — é o que o operador faz mais vezes e o
+ * que precisa ser mais rápido. Planejar continua a um clique, só que num
+ * alvo explícito em vez de um gesto escondido.
+ */
+function PorNoCulto({
+  label,
+  grupo,
+  direita = "right-2",
+  onClick,
+}: {
+  label: string;
+  grupo: string;
+  direita?: string;
+  onClick: () => void;
+}) {
+  return (
+    <Hint label="Pôr no culto">
+      <button
+        type="button"
+        aria-label={label}
+        onClick={onClick}
+        className={cn(
+          "absolute top-1/2 -translate-y-1/2 rounded-md p-1 text-subtle opacity-0",
+          "transition-[color,opacity,transform] duration-[var(--motion-fast)] ease-[var(--ease-out)]",
+          "hover:text-fg active:scale-90 focus-visible:opacity-100",
+          "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring",
+          direita,
+          grupo,
+        )}
+      >
+        <Plus className="size-3.5" />
+      </button>
+    </Hint>
+  );
+}
+
 /** Item de lista da biblioteca: mesma altura, mesma marca de seleção, em toda aba. */
 function LibraryRow({
   selected,
   onClick,
   onDoubleClick,
+  title,
   children,
 }: {
   selected: boolean;
   onClick: () => void;
   onDoubleClick?: () => void;
+  title?: string;
   children: React.ReactNode;
 }) {
   return (
@@ -75,6 +116,7 @@ function LibraryRow({
       type="button"
       onClick={onClick}
       onDoubleClick={onDoubleClick}
+      title={title}
       data-on={selected}
       className={cn(
         "relative flex w-full items-start gap-2 px-3 py-1.5 text-left",
@@ -189,6 +231,7 @@ function SongsList({
   const setGroup = useLumenStore((s) => s.setGroup);
   const selectSong = useLumenStore((s) => s.selectSong);
   const addToPlaylist = useLumenStore((s) => s.addToPlaylist);
+  const projetarDaBiblioteca = useLumenStore((s) => s.projetarDaBiblioteca);
 
   const [sugestoes, setSugestoes] = useState(0);
 
@@ -241,20 +284,12 @@ function SongsList({
               .filter(Boolean)
               .join(" · ");
             return (
-              <li key={song.id}>
+              <li key={song.id} className="group/song relative">
                 <LibraryRow
                   selected={selected === song.id}
                   onClick={() => selectSong(song.id)}
-                  onDoubleClick={() => {
-                    addToPlaylist({
-                      type: "song",
-                      refId: song.id,
-                      notes: "",
-                      title: song.title,
-                      subtitle: song.artist,
-                    });
-                    toast("Adicionada ao culto");
-                  }}
+                  onDoubleClick={() => projetarDaBiblioteca("song", song.id)}
+                  title="Um clique seleciona; dois cliques mandam para o telão"
                 >
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-body font-medium text-fg">{song.title}</p>
@@ -264,7 +299,22 @@ function SongsList({
                   {groupId === "all" && (
                     <Badge>{groups.find((g) => g.id === song.groupId)?.name}</Badge>
                   )}
+                  <span className="w-7 shrink-0" aria-hidden />
                 </LibraryRow>
+                <PorNoCulto
+                  label={`Pôr ${song.title} no culto`}
+                  grupo="group-hover/song:opacity-100"
+                  onClick={() => {
+                    addToPlaylist({
+                      type: "song",
+                      refId: song.id,
+                      notes: "",
+                      title: song.title,
+                      subtitle: song.artist,
+                    });
+                    toast("Adicionada ao culto");
+                  }}
+                />
               </li>
             );
           })}
@@ -646,6 +696,7 @@ function MediaList() {
   const selectMedia = useLumenStore((s) => s.selectMedia);
   const addMedia = useLumenStore((s) => s.addMedia);
   const addToPlaylist = useLumenStore((s) => s.addToPlaylist);
+  const projetarDaBiblioteca = useLumenStore((s) => s.projetarDaBiblioteca);
   const preview = useLumenStore((s) => s.preview);
   const sessionMedia = useLumenStore((s) => s.media);
   const favoriteMedia = useLumenStore((s) => s.favoriteMedia);
@@ -868,7 +919,29 @@ function MediaList() {
                     }
                     selectMedia(m.id);
                   }}
-                  onDoubleClick={() =>
+                  onDoubleClick={() => {
+                    // Mídia de disco só existe na store depois de tocada uma
+                    // vez; sem isto, projetar acharia um id que não existe.
+                    if (!sessionMedia.some((x) => x.id === m.id)) {
+                      addMedia({ id: m.id, type: kind, title: m.title, path: m.path });
+                    }
+                    projetarDaBiblioteca("media", m.id);
+                  }}
+                  title="Um clique seleciona; dois cliques mandam para o telão"
+                >
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-body text-fg">{m.title}</span>
+                    {m.detalhe && (
+                      <span className="block truncate text-caption text-subtle">{m.detalhe}</span>
+                    )}
+                  </span>
+                  <span className="w-14 shrink-0" aria-hidden />
+                </LibraryRow>
+                <PorNoCulto
+                  label={`Pôr ${m.title} no culto`}
+                  grupo="group-hover/midia:opacity-100"
+                  direita="right-9"
+                  onClick={() =>
                     addToPlaylist({
                       type: "media",
                       refId: m.id,
@@ -877,15 +950,7 @@ function MediaList() {
                       subtitle: mediaKindLabel(kind),
                     })
                   }
-                >
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-body text-fg">{m.title}</span>
-                    {m.detalhe && (
-                      <span className="block truncate text-caption text-subtle">{m.detalhe}</span>
-                    )}
-                  </span>
-                  <span className="w-7 shrink-0" aria-hidden />
-                </LibraryRow>
+                />
                 <button
                   type="button"
                   aria-label={favorita ? `Tirar ${m.title} dos favoritos` : `Favoritar ${m.title}`}
@@ -917,6 +982,7 @@ function TextsList() {
   const selectText = useLumenStore((s) => s.selectText);
   const saveText = useLumenStore((s) => s.saveText);
   const addToPlaylist = useLumenStore((s) => s.addToPlaylist);
+  const projetarDaBiblioteca = useLumenStore((s) => s.projetarDaBiblioteca);
   const preview = useLumenStore((s) => s.preview);
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
@@ -998,19 +1064,26 @@ function TextsList() {
       ) : (
         <ul>
           {list.map((t) => (
-            <li key={t.id}>
+            <li key={t.id} className="group/aviso relative">
               <LibraryRow
                 selected={preview?.refId === t.id}
                 onClick={() => selectText(t.id)}
-                onDoubleClick={() =>
-                  addToPlaylist({ type: "text", refId: t.id, notes: "", title: t.title })
-                }
+                onDoubleClick={() => projetarDaBiblioteca("text", t.id)}
+                title="Um clique seleciona; dois cliques mandam para o telão"
               >
-                <span className="min-w-0">
+                <span className="min-w-0 flex-1">
                   <span className="block truncate text-body font-medium text-fg">{t.title}</span>
                   <span className="line-clamp-2 block text-secondary text-muted">{t.body}</span>
                 </span>
+                <span className="w-7 shrink-0" aria-hidden />
               </LibraryRow>
+              <PorNoCulto
+                label={`Pôr ${t.title} no culto`}
+                grupo="group-hover/aviso:opacity-100"
+                onClick={() =>
+                  addToPlaylist({ type: "text", refId: t.id, notes: "", title: t.title })
+                }
+              />
             </li>
           ))}
         </ul>

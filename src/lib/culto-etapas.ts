@@ -18,3 +18,22 @@ export function etapaDoItem(indice: number, indiceNoAr: number): Etapa {
   if (indice === indiceNoAr + 1) return "proximo";
   return "pendente";
 }
+
+/**
+ * Onde este item da biblioteca está na programação do culto — ou -1.
+ *
+ * Dois cliques no repertório projetam na hora. Se a música já foi planejada
+ * para o culto, projetar "solta" seria pior que não projetar: a programação
+ * continuaria apontando para outro ponto, e o próximo avanço pularia de
+ * volta para o lugar errado. Achando o item aqui, o culto anda a partir dele.
+ *
+ * O tipo entra na conta porque os ids são únicos por acervo, não entre
+ * acervos: um aviso e uma música podem carregar o mesmo id.
+ */
+export function indiceNaProgramacao(
+  itens: readonly { type: string; refId: string }[],
+  type: string,
+  refId: string,
+): number {
+  return itens.findIndex((i) => i.type === type && i.refId === refId);
+}

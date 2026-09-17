@@ -187,6 +187,14 @@ export interface Deck {
    *  mesmo jeito que o vídeo do YouTube (ver YoutubeFrame). */
   mediaAcao?: "tocar" | "pausar" | "parar";
   mediaLoop?: boolean;
+  /** Para onde ir, em segundos. Só vale quando `mediaBusca` muda. */
+  mediaTempo?: number;
+  /** Contador de buscas: sem ele, pedir o mesmo segundo duas vezes seria um
+   *  quadro idêntico, e o telão não saberia que houve um segundo pedido
+   *  (mesmo desenho de YoutubeFrame.busca). */
+  mediaBusca?: number;
+  /** 1, 1.25, 1.5 ou 2 — vira playbackRate no elemento que toca. */
+  mediaVelocidade?: number;
   /** Sobe a cada comando: sem isto, pedir "tocar" de novo depois do vídeo
    *  terminar sozinho seria um quadro idêntico ao anterior, e o telão não
    *  teria como distinguir do primeiro pedido (ver YoutubeFrame.busca). */

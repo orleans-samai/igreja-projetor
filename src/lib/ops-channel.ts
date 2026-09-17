@@ -26,9 +26,17 @@ export type OpsMessage =
       estado: "tocando" | "pausado" | "parado" | "carregando" | "fim";
       erro?: string;
     }
-  // O vídeo local também toca no telão; sem isto, um vídeo que termina
-  // sozinho (sem repetir) deixaria o botão de Pausar aceso para sempre.
-  | { type: "media-tempo"; estado: "tocando" | "pausado" | "fim" };
+  // O vídeo local toca no telão, então é de lá que vem tudo que a barra de
+  // progresso da cabine mostra: onde está, quanto dura e quanto já carregou.
+  // Sem isto o botão de Pausar ficaria aceso para sempre depois de um vídeo
+  // terminar sozinho, e não haveria barra nenhuma.
+  | {
+      type: "media-tempo";
+      estado: "tocando" | "pausado" | "fim";
+      tempo: number;
+      duracao: number;
+      carregado: number;
+    };
 
 let channel: BroadcastChannel | null = null;
 
