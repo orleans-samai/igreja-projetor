@@ -1,4 +1,4 @@
-import { Power, RefreshCw, Smartphone } from "lucide-react";
+import { Copy, Power, RefreshCw, Smartphone } from "lucide-react";
 import QRCode from "qrcode";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -175,6 +175,7 @@ export function RemoteControlDialog({
 
   const enderecos = enderecosDeAcesso(status);
   const enderecoPrincipal = enderecos[0] ?? null;
+  const [copiado, setCopiado] = useState(false);
 
   // O QR carrega o PIN junto no endereço: aponta a câmera e o celular já
   // pareia sozinho, sem digitar nada. Só existe enquanto o servidor estiver
@@ -255,7 +256,39 @@ export function RemoteControlDialog({
                       ))}
                     </ul>
                   )}
+                  {/* O endereço deixou de envelhecer: porta e PIN são os
+                      mesmos toda vez, e quem já pareou entra sem PIN. Dizer
+                      isto aqui é o que dá ao operador coragem de mandar o
+                      endereço no grupo da igreja durante a semana. */}
+                  {enderecos.length > 0 && (
+                    <p className="mt-1.5 text-secondary text-muted">
+                      Este endereço e este PIN não mudam quando o Lúmen fecha e abre. Quem já
+                      pareou entra direto, sem digitar o PIN de novo.
+                    </p>
+                  )}
                 </div>
+
+                {enderecoPrincipal && status.pin && (
+                  <Button
+                    variant="ghost"
+                    onClick={async () => {
+                      const recado = `Lúmen — controle pelo celular
+${enderecoPrincipal}
+PIN: ${status.pin}`;
+                      try {
+                        await navigator.clipboard.writeText(recado);
+                        setCopiado(true);
+                        window.setTimeout(() => setCopiado(false), 2000);
+                      } catch {
+                        // Sem permissão da área de transferência, o endereço
+                        // continua na tela para ser copiado à mão.
+                        setCopiado(false);
+                      }
+                    }}
+                  >
+                    <Copy /> {copiado ? "Copiado" : "Copiar endereço e PIN"}
+                  </Button>
+                )}
 
                 <Dispositivos status={status} aoMudar={setStatus} />
 

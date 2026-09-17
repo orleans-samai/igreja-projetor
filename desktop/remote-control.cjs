@@ -108,14 +108,31 @@ function nomeLimpo(bruto, padrao) {
 }
 
 class RemoteControl {
-  constructor(wwwRoot) {
+  constructor(wwwRoot, cofre = null) {
     this.wwwRoot = wwwRoot;
+    /** Onde porta, PIN e aparelhos pareados sobrevivem ao fechar do app.
+     *  Sem cofre (nos testes) o controle volta a ser de uma sessão só. */
+    this.cofre = cofre;
+    const guardado = cofre ? cofre.ler() : null;
     this.server = null;
     this.porta = null;
-    this.pin = null;
+    /** A porta que queremos de volta toda vez — é ela que o operador ditou
+     *  para a equipe durante a semana. Zero (sem cofre) é "qualquer uma": sem
+     *  lugar para lembrar, insistir numa porta fixa só criaria disputa. */
+    this.portaPreferida = guardado ? guardado.porta : 0;
+    this.pin = guardado ? guardado.pin : null;
     /** token → dispositivo. Substitui o Set de tokens: agora cada aparelho
      *  tem nome, permissão e histórico, que é o que a cabine precisa ver. */
     this.dispositivos = new Map();
+    for (const d of guardado?.dispositivos ?? []) {
+      this.dispositivos.set(d.token, {
+        id: d.id,
+        nome: d.nome,
+        permissao: d.permissao,
+        criadoEm: d.criadoEm,
+        ultimoVisto: d.ultimoVisto,
+      });
+    }
     this.tentativas = new Map();
     /** res do SSE → token, para saber de quem é cada conexão aberta. */
     this.assinantes = new Map();
@@ -131,6 +148,16 @@ class RemoteControl {
 
   ligado() {
     return !!this.server;
+  }
+
+  /** Guarda o que não pode mudar entre um culto e outro. */
+  _salvar() {
+    if (!this.cofre) return;
+    this.cofre.gravar({
+      porta: this.porta ?? this.portaPreferida,
+      pin: this.pin,
+      dispositivos: [...this.dispositivos].map(([token, d]) => ({ token, ...d })),
+    });
   }
 
   _online(disp) {
@@ -162,25 +189,50 @@ class RemoteControl {
     };
   }
 
-  async ligar() {
-    if (this.ligado()) return this.status();
-    this.pin = gerarPin();
-    this.dispositivos.clear();
-    this.tentativas.clear();
-    this.chat = [];
-    await new Promise((resolve, reject) => {
+  /**
+   * Sobe o servidor sempre na mesma porta.
+   *
+   * Uma porta sorteada a cada abertura invalidava o endereço que o operador
+   * tinha passado para a equipe. Se a preferida estiver ocupada — outro
+   * programa, ou um Lúmen que não fechou direito — pega qualquer uma livre e
+   * passa a lembrar dessa, que é melhor do que não abrir.
+   */
+  _abrir(porta) {
+    return new Promise((resolve, reject) => {
       const server = http.createServer((req, res) => {
         void this._rota(req, res);
       });
-      server.once("error", reject);
-      server.listen(0, "0.0.0.0", () => {
-        server.off("error", reject);
+      const falhou = (erro) => {
+        server.close();
+        reject(erro);
+      };
+      server.once("error", falhou);
+      server.listen(porta, "0.0.0.0", () => {
+        server.off("error", falhou);
         server.on("error", () => {});
-        this.server = server;
-        this.porta = server.address().port;
-        resolve();
+        resolve(server);
       });
     });
+  }
+
+  async ligar() {
+    if (this.ligado()) return this.status();
+    // O PIN nasce uma vez e fica. Trocar a cada abertura obrigava a equipe
+    // inteira a parear de novo toda semana; para trocar de propósito existe
+    // "gerar novo PIN", que é o botão de encerrar tudo.
+    if (!this.pin) this.pin = gerarPin();
+    this.tentativas.clear();
+    this.chat = [];
+    let server;
+    try {
+      server = await this._abrir(this.portaPreferida);
+    } catch {
+      server = await this._abrir(0);
+    }
+    this.server = server;
+    this.porta = server.address().port;
+    this.portaPreferida = this.porta;
+    this._salvar();
     return this.status();
   }
 
@@ -197,7 +249,9 @@ class RemoteControl {
       }
     }
     this.assinantes.clear();
-    this.dispositivos.clear();
+    // Os aparelhos ficam: quem pareou no domingo passado abre o link e entra,
+    // sem PIN. É exatamente o que "desligar e ligar de novo" tem que custar.
+    this._salvar();
     this.ultimoEstado = null;
     this.chat = [];
     this.server.close();
@@ -207,7 +261,6 @@ class RemoteControl {
     this.server.closeAllConnections?.();
     this.server = null;
     this.porta = null;
-    this.pin = null;
     return this.status();
   }
 
@@ -225,6 +278,7 @@ class RemoteControl {
       }
     }
     this.assinantes.clear();
+    this._salvar();
     return this.status();
   }
 
@@ -245,6 +299,7 @@ class RemoteControl {
       }
       break;
     }
+    this._salvar();
     return this.status();
   }
 
@@ -254,6 +309,7 @@ class RemoteControl {
       if (d.id !== id) continue;
       d.permissao = permissao;
       this._paraToken(token, { tipo: "permissao", permissao });
+      this._salvar();
       break;
     }
     return this.status();
@@ -501,6 +557,7 @@ class RemoteControl {
       ultimoVisto: agora,
     };
     this.dispositivos.set(token, disp);
+    this._salvar();
     this.onEvento?.({ tipo: "dispositivos", novo: disp.nome });
     this._json(res, 200, {
       ok: true,

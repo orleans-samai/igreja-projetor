@@ -372,3 +372,97 @@ test("o transporte de mídia entrou na lista de ações", async () => {
     assert.equal(ACOES_VALIDAS.has(acao), false, acao);
   }
 });
+
+/*
+ * O endereço que o operador passou para a equipe não pode envelhecer.
+ *
+ * Antes, cada abertura sorteava porta nova, PIN novo e esquecia todo aparelho
+ * pareado: o link mandado no grupo da igreja durante a semana já não existia
+ * no domingo. Com o cofre, porta, PIN e pareamentos atravessam o fechar do app.
+ */
+async function comCofre(dir) {
+  const { CofreRemoto } = (await import("../desktop/remote-store.cjs")).default;
+  return new CofreRemoto(dir);
+}
+
+test("porta e PIN sobrevivem a fechar e abrir o app", async () => {
+  const dir = await comPagina();
+  try {
+    const primeira = new RemoteControl(dir, await comCofre(dir));
+    const a = await primeira.ligar();
+    primeira.desligar();
+
+    const segunda = new RemoteControl(dir, await comCofre(dir));
+    const b = await segunda.ligar();
+    segunda.desligar();
+
+    assert.equal(b.porta, a.porta, "a porta mudou entre uma abertura e outra");
+    assert.equal(b.pin, a.pin, "o PIN mudou entre uma abertura e outra");
+    assert.equal(a.porta, 8787, "a porta preferida devia ser a 8787");
+  } finally {
+    await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  }
+});
+
+test("celular pareado continua entrando depois de o app fechar", async () => {
+  const dir = await comPagina();
+  try {
+    const primeira = new RemoteControl(dir, await comCofre(dir));
+    const a = await primeira.ligar();
+    const parear = await fetch(`http://127.0.0.1:${a.porta}/parear`, {
+      method: "POST",
+      body: JSON.stringify({ pin: a.pin, nome: "Celular do Pastor" }),
+    });
+    const { token } = await parear.json();
+    assert.ok(token);
+    primeira.desligar();
+
+    const segunda = new RemoteControl(dir, await comCofre(dir));
+    const b = await segunda.ligar();
+    try {
+      // Sem PIN de novo: o mesmo token de uma semana atrás tem que valer.
+      const r = await fetch(`http://127.0.0.1:${b.porta}/chat`, {
+        method: "POST",
+        body: JSON.stringify({ token, texto: "cheguei" }),
+      });
+      assert.equal(r.status, 200, "o aparelho pareado foi esquecido no fechar");
+      assert.equal(
+        segunda.status().dispositivos.some((d) => d.nome === "Celular do Pastor"),
+        true,
+      );
+    } finally {
+      segunda.desligar();
+    }
+  } finally {
+    await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  }
+});
+
+test("porta ocupada não impede abrir, e a nova vira a preferida", async () => {
+  const dir = await comPagina();
+  const ocupante = new RemoteControl(await comPagina(), await comCofre(dir));
+  try {
+    const dela = await ocupante.ligar();
+    assert.equal(dela.porta, 8787);
+
+    const outroDir = await comPagina();
+    const segunda = new RemoteControl(dir, await comCofre(outroDir));
+    const b = await segunda.ligar();
+    try {
+    assert.notEqual(b.porta, 8787, "devia ter caído para outra porta");
+      assert.ok(b.porta > 0);
+    } finally {
+      segunda.desligar();
+    }
+    // E a porta de plano B passa a ser a lembrada, para o endereço novo
+    // também parar de mudar. Só dá para conferir com a segunda já fechada:
+    // enquanto ela segura a porta, ninguém consegue reabri-la.
+    const terceira = new RemoteControl(dir, await comCofre(outroDir));
+    const c = await terceira.ligar();
+    terceira.desligar();
+    assert.equal(c.porta, b.porta, "a porta de plano B não foi lembrada");
+  } finally {
+    ocupante.desligar();
+    await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  }
+});
