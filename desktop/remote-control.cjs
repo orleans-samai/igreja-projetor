@@ -41,6 +41,19 @@ const LIMITE_TENTATIVAS = 5;
 /** O aparelho que não dá notícia há tanto tempo aparece como desconectado. */
 const SUMIU_MS = 30 * 1000;
 const MAX_CHAT = 200;
+/** Tipos de mídia que o celular pode enxergar e mandar para o telão. */
+const TIPOS_MIDIA = ["video", "audio", "image"];
+/** O que o celular pode mandar para o telão pelo nome do item. */
+const TIPOS_PROJETAVEIS = ["song", "text", "media"];
+/**
+ * Quanto o celular espera a cabine antes de desistir de um pedido.
+ *
+ * Maior que os 18s que o provedor de letra se dá (ver lyrics-web.ts): quem
+ * tem que desistir primeiro é quem sabe do que desistiu. Se esta espera
+ * fosse a menor, uma busca lenta viraria "a cabine não respondeu", que é a
+ * mensagem errada.
+ */
+const ESPERA_CABINE_MS = 25 * 1000;
 
 const ACOES_VALIDAS = new Set([
   "proximo",
@@ -138,6 +151,17 @@ class RemoteControl {
     this.assinantes = new Map();
     this.ultimoEstado = null;
     this.repertorio = [];
+    /** Espelho da pasta de mídia: vídeo, áudio e imagem que a cabine enxerga. */
+    this.midia = [];
+    /**
+     * Pedidos que só a cabine sabe responder — buscar letra na internet, abrir
+     * uma letra achada. O celular fica esperando o HTTP; a cabine responde
+     * pelo IPC e a resposta sai por aqui. Sem isto, a busca teria que rodar no
+     * celular, que pode não ter internet, e com provedor diferente do que a
+     * cabine usa — dois resultados diferentes para a mesma busca.
+     */
+    this.pedidos = new Map();
+    this.proximoPedido = 1;
     this.chat = [];
     /** Permissão de quem acabou de parear. A cabine pode afrouxar isto. */
     this.permissaoPadrao = "chat";
@@ -327,6 +351,48 @@ class RemoteControl {
   }
 
   /** A lista de músicas que o celular pode abrir para editar. */
+  /** A pasta de mídia do PC, espelhada para o celular. */
+  atualizarMidia(lista) {
+    this.midia = (Array.isArray(lista) ? lista : [])
+      .filter((m) => m && typeof m.id === "string" && typeof m.titulo === "string")
+      .slice(0, 2000)
+      .map((m) => ({
+        id: m.id,
+        tipo: TIPOS_MIDIA.includes(m.tipo) ? m.tipo : "video",
+        titulo: semControle(String(m.titulo)).slice(0, 120),
+        detalhe: semControle(String(m.detalhe || "")).slice(0, 60),
+      }));
+  }
+
+  /**
+   * Faz um pedido à cabine e espera a resposta dela.
+   *
+   * Devolve null se a cabine não responder a tempo — janela fechada, ou
+   * internet caída no meio de uma busca. O celular mostra "não deu", que é
+   * melhor que uma tela girando para sempre.
+   */
+  _pedirACabine(tipo, dados) {
+    if (!this.onEvento) return Promise.resolve(null);
+    const id = this.proximoPedido++;
+    return new Promise((resolve) => {
+      const relogio = setTimeout(() => {
+        this.pedidos.delete(id);
+        resolve(null);
+      }, ESPERA_CABINE_MS);
+      this.pedidos.set(id, { resolve, relogio });
+      this.onEvento({ tipo, pedido: id, ...dados });
+    });
+  }
+
+  /** Chamado pelo processo principal quando a cabine termina o pedido. */
+  responderPedido(id, resposta) {
+    const espera = this.pedidos.get(Number(id));
+    if (!espera) return;
+    this.pedidos.delete(Number(id));
+    clearTimeout(espera.relogio);
+    espera.resolve(resposta ?? null);
+  }
+
   atualizarRepertorio(lista) {
     this.repertorio = Array.isArray(lista) ? lista : [];
   }
@@ -456,6 +522,10 @@ class RemoteControl {
       if (m === "GET" && p === "/musica") return this._musica(res, url);
       if (m === "POST" && p === "/musica") return await this._salvarMusica(req, res);
       if (m === "POST" && p === "/chat") return await this._chat(req, res);
+      if (m === "GET" && p === "/midia") return this._midia(res, url);
+      if (m === "POST" && p === "/projetar") return await this._projetar(req, res);
+      if (m === "POST" && p === "/buscar") return await this._buscar(req, res);
+      if (m === "POST" && p === "/letra") return await this._letra(req, res);
     } catch {
       this._json(res, 500, { ok: false, erro: "Erro interno" });
       return;
@@ -617,6 +687,98 @@ class RemoteControl {
       return;
     }
     this._json(res, 200, { ok: true, musica });
+  }
+
+  _midia(res, url) {
+    const disp = this._sessao(url.searchParams.get("token"));
+    if (!disp) {
+      this._json(res, 401, { ok: false, erro: "Sessão expirada. Pareie novamente." });
+      return;
+    }
+    if (!podeFazer(disp.permissao, "editor")) return this._semPermissao(res, "editor");
+    this._json(res, 200, { ok: true, midia: this.midia });
+  }
+
+  /**
+   * Manda um item da biblioteca para o telão.
+   *
+   * Não entra na lista de ações porque não é um botão fixo: carrega qual item
+   * é. Exige controle do telão — ver o que existe é de editor, mudar o que a
+   * igreja está vendo é de quem opera.
+   */
+  async _projetar(req, res) {
+    let corpo;
+    try {
+      corpo = JSON.parse(await this._lerCorpo(req));
+    } catch {
+      corpo = {};
+    }
+    const disp = this._sessao(corpo.token);
+    if (!disp) {
+      this._json(res, 401, { ok: false, erro: "Sessão expirada. Pareie novamente." });
+      return;
+    }
+    if (!podeFazer(disp.permissao, "controle")) return this._semPermissao(res, "controle");
+    const tipo = String(corpo.tipo || "");
+    const refId = String(corpo.refId || "");
+    if (!TIPOS_PROJETAVEIS.includes(tipo) || !refId) {
+      this._json(res, 400, { ok: false, erro: "Item inválido." });
+      return;
+    }
+    this.onEvento?.({ tipo: "projetar", kind: tipo, refId, de: disp.nome });
+    this._json(res, 200, { ok: true });
+  }
+
+  async _buscar(req, res) {
+    let corpo;
+    try {
+      corpo = JSON.parse(await this._lerCorpo(req));
+    } catch {
+      corpo = {};
+    }
+    const disp = this._sessao(corpo.token);
+    if (!disp) {
+      this._json(res, 401, { ok: false, erro: "Sessão expirada. Pareie novamente." });
+      return;
+    }
+    if (!podeFazer(disp.permissao, "editor")) return this._semPermissao(res, "editor");
+    const termo = semControle(String(corpo.termo || "")).trim().slice(0, 120);
+    if (termo.length < 2) {
+      this._json(res, 400, { ok: false, erro: "Escreva ao menos duas letras." });
+      return;
+    }
+    const resposta = await this._pedirACabine("buscar-musica", { termo });
+    if (!resposta) {
+      this._json(res, 504, { ok: false, erro: "A cabine não respondeu. Tente de novo." });
+      return;
+    }
+    this._json(res, 200, { ok: true, achados: resposta.achados ?? [], erro: resposta.erro ?? null });
+  }
+
+  async _letra(req, res) {
+    let corpo;
+    try {
+      corpo = JSON.parse(await this._lerCorpo(req));
+    } catch {
+      corpo = {};
+    }
+    const disp = this._sessao(corpo.token);
+    if (!disp) {
+      this._json(res, 401, { ok: false, erro: "Sessão expirada. Pareie novamente." });
+      return;
+    }
+    if (!podeFazer(disp.permissao, "editor")) return this._semPermissao(res, "editor");
+    const fonte = String(corpo.fonte || "");
+    if (!/^https?:\/\//.test(fonte)) {
+      this._json(res, 400, { ok: false, erro: "Endereço de letra inválido." });
+      return;
+    }
+    const resposta = await this._pedirACabine("letra-musica", { fonte });
+    if (!resposta) {
+      this._json(res, 504, { ok: false, erro: "A cabine não respondeu. Tente de novo." });
+      return;
+    }
+    this._json(res, 200, { ok: Boolean(resposta.letra), letra: resposta.letra ?? "", erro: resposta.erro ?? null });
   }
 
   async _salvarMusica(req, res) {

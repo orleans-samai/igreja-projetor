@@ -240,6 +240,8 @@ declare global {
       remoteControlPushRepertoire: (
         lista: { id: string; titulo: string; artista: string; letra: string }[],
       ) => void;
+      remoteControlPushMedia: (lista: import("./remote-control").MidiaRemota[]) => void;
+      remoteControlAnswer: (pedido: number, resposta: unknown) => void;
       remoteControlDevices: () => Promise<import("./remote-control").DispositivoRemoto[]>;
       remoteControlSetPermission: (
         id: string,

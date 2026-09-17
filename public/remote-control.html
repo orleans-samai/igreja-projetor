@@ -183,6 +183,7 @@
     <div class="abas" role="tablist">
       <button role="tab" id="abaControle" aria-selected="true">Controle</button>
       <button role="tab" id="abaLetras" aria-selected="false">Letras</button>
+      <button role="tab" id="abaMidia" aria-selected="false">Mídia</button>
       <button role="tab" id="abaChat" aria-selected="false">Chat<span class="selo" id="seloChat" hidden>0</span></button>
     </div>
 
@@ -218,6 +219,15 @@
       </p>
       <div id="letrasLista" style="display:flex;flex-direction:column;gap:10px;min-height:0;flex:1">
         <button class="botao botao-principal" id="novaMusica">+ Nova música</button>
+        <!-- Quem busca é a cabine, não este aparelho: o celular pode estar sem
+             internet, e um provedor diferente daria outro resultado para a
+             mesma busca. -->
+        <form class="linha" id="buscaForm">
+          <input id="buscaWeb" class="campo" maxlength="120" placeholder="Buscar letra na internet">
+          <button class="botao" type="submit" id="buscarWeb">Buscar</button>
+        </form>
+        <p class="dica" id="buscaEstado"></p>
+        <ul class="lista" id="achados"></ul>
         <ul class="lista" id="musicas"></ul>
       </div>
       <div id="letrasEditor" hidden style="display:flex;flex-direction:column;gap:8px;flex:1;min-height:0">
@@ -230,6 +240,22 @@
           <button class="botao botao-principal" id="edSalvar">Salvar</button>
         </div>
       </div>
+    </section>
+
+    <!-- Mídia: o que está na pasta do PC, espelhado aqui -->
+    <section class="painel" id="painelMidia" hidden>
+      <p class="aviso" id="semMidia" hidden>
+        Este aparelho ainda não vê a mídia. Peça na cabine para liberar.
+      </p>
+      <div class="linha" id="midiaFiltros">
+        <button class="botao" data-tipo="todos" aria-pressed="true">Tudo</button>
+        <button class="botao" data-tipo="video" aria-pressed="false">Vídeo</button>
+        <button class="botao" data-tipo="audio" aria-pressed="false">Áudio</button>
+        <button class="botao" data-tipo="image" aria-pressed="false">Imagem</button>
+      </div>
+      <input id="midiaBusca" class="campo" maxlength="80" placeholder="Procurar pelo nome">
+      <p class="dica" id="midiaEstado"></p>
+      <ul class="lista" id="midiaLista"></ul>
     </section>
 
     <!-- Chat -->
@@ -379,7 +405,11 @@
     document.querySelectorAll("[data-acao]").forEach(function (b) { b.disabled = !podeControlar; });
     $("novaMusica").disabled = !podeEditar;
     $("edSalvar").disabled = !podeEditar;
+    $("semMidia").hidden = podeEditar;
+    $("buscarWeb").disabled = !podeEditar;
+    $("buscaWeb").disabled = !podeEditar;
     if (podeEditar && abaAtual === "letras" && !musicaAberta) carregarRepertorio();
+    if (podeEditar && abaAtual === "midia") carregarMidia();
   }
 
   function aplicarEstado(e) {
@@ -438,8 +468,18 @@
 
   function trocarAba(nome) {
     abaAtual = nome;
-    var mapa = { controle: "painelControle", letras: "painelLetras", chat: "painelChat" };
-    var abas = { controle: "abaControle", letras: "abaLetras", chat: "abaChat" };
+    var mapa = {
+      controle: "painelControle",
+      letras: "painelLetras",
+      midia: "painelMidia",
+      chat: "painelChat",
+    };
+    var abas = {
+      controle: "abaControle",
+      letras: "abaLetras",
+      midia: "abaMidia",
+      chat: "abaChat",
+    };
     Object.keys(mapa).forEach(function (k) {
       $(mapa[k]).hidden = k !== nome;
       $(abas[k]).setAttribute("aria-selected", String(k === nome));
@@ -450,6 +490,7 @@
       rolarChat();
     }
     if (nome === "letras" && !musicaAberta) carregarRepertorio();
+    if (nome === "midia") carregarMidia();
   }
 
   // ─────────────────────────────────────────── letras
@@ -478,6 +519,127 @@
         });
       })
       .catch(function () { /* offline: a lista de antes continua na tela */ });
+  }
+
+  // ─────────────────────────────────────────── mídia
+
+  /**
+   * A pasta de mídia do PC, vista daqui.
+   *
+   * A lista vem inteira e a peneira é local: são nomes de arquivo, e filtrar
+   * no aparelho responde na hora, sem uma ida à cabine a cada letra digitada.
+   * Tocar num item manda para o telão — e isso exige controle, não só ver.
+   */
+  var midia = [];
+  var midiaTipo = "todos";
+
+  function carregarMidia() {
+    if (permissao !== "editor" && permissao !== "controle") return;
+    $("midiaEstado").textContent = "Lendo a pasta…";
+    fetch("/midia?token=" + encodeURIComponent(token))
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d.ok) { $("midiaEstado").textContent = d.erro || "Não deu para ler a pasta."; return; }
+        midia = d.midia || [];
+        desenharMidia();
+      })
+      .catch(function () { $("midiaEstado").textContent = "Sem conexão com a cabine."; });
+  }
+
+  function desenharMidia() {
+    var termo = $("midiaBusca").value.trim().toLowerCase();
+    var lista = midia.filter(function (m) {
+      if (midiaTipo !== "todos" && m.tipo !== midiaTipo) return false;
+      return !termo || m.titulo.toLowerCase().indexOf(termo) >= 0;
+    });
+    var ul = $("midiaLista");
+    ul.innerHTML = "";
+    lista.slice(0, 300).forEach(function (m) {
+      var li = document.createElement("li");
+      var b = document.createElement("button");
+      b.textContent = m.titulo;
+      if (m.detalhe) {
+        var s = document.createElement("span");
+        s.className = "autor";
+        s.textContent = m.detalhe;
+        b.appendChild(s);
+      }
+      b.disabled = permissao !== "controle";
+      b.onclick = function () {
+        $("midiaEstado").textContent = "Mandando “" + m.titulo + "” para o telão…";
+        pedir("/projetar", { tipo: "media", refId: m.id })
+          .then(function () { $("midiaEstado").textContent = "“" + m.titulo + "” no telão."; })
+          .catch(function (e) {
+            if (e.message !== "sessao") $("midiaEstado").textContent = e.message;
+          });
+      };
+      li.appendChild(b);
+      ul.appendChild(li);
+    });
+    if (lista.length === 0) {
+      $("midiaEstado").textContent = midia.length
+        ? "Nada com esse nome."
+        : "A pasta de mídia está vazia — ou ainda não foi escolhida na cabine.";
+    } else if (permissao !== "controle") {
+      $("midiaEstado").textContent = "Você vê a pasta, mas ainda não manda para o telão.";
+    } else {
+      $("midiaEstado").textContent = lista.length + " de " + midia.length;
+    }
+  }
+
+  // ─────────────────────────────────────────── buscar letra na internet
+
+  function buscarNaInternet(termo) {
+    $("achados").innerHTML = "";
+    $("buscaEstado").textContent = "Procurando…";
+    $("buscarWeb").disabled = true;
+    pedir("/buscar", { termo: termo })
+      .then(function (d) {
+        var achados = d.achados || [];
+        if (achados.length === 0) {
+          $("buscaEstado").textContent = d.erro || "Nada encontrado com esse nome.";
+          return;
+        }
+        $("buscaEstado").textContent = "Toque para trazer a letra.";
+        var ul = $("achados");
+        achados.forEach(function (a) {
+          var li = document.createElement("li");
+          var b = document.createElement("button");
+          b.textContent = a.titulo;
+          if (a.artista) {
+            var sp = document.createElement("span");
+            sp.className = "autor";
+            sp.textContent = a.artista;
+            b.appendChild(sp);
+          }
+          b.onclick = function () { trazerLetra(a); };
+          li.appendChild(b);
+          ul.appendChild(li);
+        });
+      })
+      .catch(function (e) {
+        if (e.message !== "sessao") $("buscaEstado").textContent = e.message;
+      })
+      .finally(function () { $("buscarWeb").disabled = permissao === "chat"; });
+  }
+
+  /** A letra chega no editor, não no repertório: quem confere é quem pediu. */
+  function trazerLetra(achado) {
+    $("buscaEstado").textContent = "Trazendo a letra…";
+    pedir("/letra", { fonte: achado.fonte })
+      .then(function (d) {
+        if (!d.letra) {
+          $("buscaEstado").textContent = d.erro || "Essa página não trouxe a letra.";
+          return;
+        }
+        $("buscaEstado").textContent = "";
+        $("achados").innerHTML = "";
+        $("buscaWeb").value = "";
+        abrirEditor({ id: null, titulo: achado.titulo, artista: achado.artista, letra: d.letra });
+      })
+      .catch(function (e) {
+        if (e.message !== "sessao") $("buscaEstado").textContent = e.message;
+      });
   }
 
   function abrirEditor(musica) {
@@ -619,7 +781,28 @@
 
   $("abaControle").addEventListener("click", function () { trocarAba("controle"); });
   $("abaLetras").addEventListener("click", function () { trocarAba("letras"); });
+  $("abaMidia").addEventListener("click", function () { trocarAba("midia"); });
   $("abaChat").addEventListener("click", function () { trocarAba("chat"); });
+
+  $("midiaBusca").addEventListener("input", desenharMidia);
+  $("midiaFiltros").addEventListener("click", function (ev) {
+    var b = ev.target.closest("[data-tipo]");
+    if (!b) return;
+    midiaTipo = b.dataset.tipo;
+    $("midiaFiltros").querySelectorAll("[data-tipo]").forEach(function (o) {
+      o.setAttribute("aria-pressed", String(o === b));
+    });
+    desenharMidia();
+  });
+  $("buscaForm").addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    var termo = $("buscaWeb").value.trim();
+    if (termo.length < 2) {
+      $("buscaEstado").textContent = "Escreva ao menos duas letras.";
+      return;
+    }
+    buscarNaInternet(termo);
+  });
 
   document.querySelectorAll("[data-acao]").forEach(function (b) {
     b.addEventListener("click", function () {

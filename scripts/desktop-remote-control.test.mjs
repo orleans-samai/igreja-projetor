@@ -466,3 +466,136 @@ test("porta ocupada não impede abrir, e a nova vira a preferida", async () => {
     await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
   }
 });
+
+/*
+ * A pasta de mídia do PC, vista do celular — e o caminho de volta: tocar num
+ * item manda para o telão, buscar letra na internet é a cabine quem faz.
+ */
+async function comPermissao(ctx, permissao) {
+  const r = await fetch(`${ctx.base}/parear`, {
+    method: "POST",
+    body: JSON.stringify({ pin: ctx.pin, nome: "Celular" }),
+  });
+  const { token } = await r.json();
+  const id = ctx.rc.status().dispositivos[0].id;
+  ctx.rc.definirPermissao(id, permissao);
+  return token;
+}
+
+test("a mídia da cabine chega ao celular, e ver não é mandar para o telão", async () => {
+  const ctx = await subir();
+  try {
+    ctx.rc.atualizarMidia([
+      { id: "v1", tipo: "video", titulo: "Chamada do culto", detalhe: "Vídeo" },
+      { id: "a1", tipo: "audio", titulo: "Playback", detalhe: "Áudio" },
+      { id: "x", tipo: "inventado", titulo: "Estranho" },
+    ]);
+    const token = await comPermissao(ctx, "editor");
+    const lista = await (await fetch(`${ctx.base}/midia?token=${token}`)).json();
+    assert.equal(lista.ok, true);
+    assert.equal(lista.midia.length, 3);
+    // Tipo que não existe vira vídeo em vez de vazar para o celular.
+    assert.equal(lista.midia[2].tipo, "video");
+
+    // Editor vê a pasta, mas não muda o que a igreja está vendo.
+    const negado = await fetch(`${ctx.base}/projetar`, {
+      method: "POST",
+      body: JSON.stringify({ token, tipo: "media", refId: "v1" }),
+    });
+    assert.equal(negado.status, 403);
+  } finally {
+    await derrubar(ctx);
+  }
+});
+
+test("projetar pelo celular chega à cabine como pedido, com o item", async () => {
+  const ctx = await subir();
+  const vistos = [];
+  ctx.rc.onEvento = (e) => vistos.push(e);
+  try {
+    const token = await comPermissao(ctx, "controle");
+    const ok = await fetch(`${ctx.base}/projetar`, {
+      method: "POST",
+      body: JSON.stringify({ token, tipo: "media", refId: "v1" }),
+    });
+    assert.equal(ok.status, 200);
+    const pedido = vistos.find((e) => e.tipo === "projetar");
+    assert.deepEqual(
+      { tipo: pedido.tipo, kind: pedido.kind, refId: pedido.refId },
+      { tipo: "projetar", kind: "media", refId: "v1" },
+    );
+
+    // Tipo fora da lista não vira comando: o celular não escolhe o que o
+    // telão sabe desenhar.
+    const recusado = await fetch(`${ctx.base}/projetar`, {
+      method: "POST",
+      body: JSON.stringify({ token, tipo: "planilha", refId: "v1" }),
+    });
+    assert.equal(recusado.status, 400);
+  } finally {
+    await derrubar(ctx);
+  }
+});
+
+test("buscar letra na internet é a cabine quem faz, e o celular espera", async () => {
+  const ctx = await subir();
+  try {
+    ctx.rc.onEvento = (e) => {
+      if (e.tipo === "buscar-musica") {
+        assert.equal(e.termo, "castelo forte");
+        ctx.rc.responderPedido(e.pedido, {
+          achados: [{ titulo: "Castelo Forte", artista: "Lutero", fonte: "https://x/y" }],
+        });
+      }
+      if (e.tipo === "letra-musica") {
+        assert.equal(e.fonte, "https://x/y");
+        ctx.rc.responderPedido(e.pedido, { letra: "Castelo forte é nosso Deus" });
+      }
+    };
+    const token = await comPermissao(ctx, "editor");
+
+    const busca = await (
+      await fetch(`${ctx.base}/buscar`, {
+        method: "POST",
+        body: JSON.stringify({ token, termo: "castelo forte" }),
+      })
+    ).json();
+    assert.equal(busca.achados.length, 1);
+    assert.equal(busca.achados[0].titulo, "Castelo Forte");
+
+    const letra = await (
+      await fetch(`${ctx.base}/letra`, {
+        method: "POST",
+        body: JSON.stringify({ token, fonte: busca.achados[0].fonte }),
+      })
+    ).json();
+    assert.match(letra.letra, /Castelo forte/);
+
+    // Endereço que não é http não vira pedido à cabine.
+    const ruim = await fetch(`${ctx.base}/letra`, {
+      method: "POST",
+      body: JSON.stringify({ token, fonte: "file:///C:/senhas.txt" }),
+    });
+    assert.equal(ruim.status, 400);
+  } finally {
+    await derrubar(ctx);
+  }
+});
+
+test("cabine muda não deixa o celular girando para sempre", async () => {
+  const ctx = await subir();
+  try {
+    // Sem onEvento — é a janela da cabine fechada, ou travada.
+    ctx.rc.onEvento = null;
+    const token = await comPermissao(ctx, "editor");
+    const r = await fetch(`${ctx.base}/buscar`, {
+      method: "POST",
+      body: JSON.stringify({ token, termo: "qualquer coisa" }),
+    });
+    const d = await r.json();
+    assert.equal(r.status, 504);
+    assert.match(d.erro, /não respondeu/i);
+  } finally {
+    await derrubar(ctx);
+  }
+});

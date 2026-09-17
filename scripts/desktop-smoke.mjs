@@ -103,6 +103,38 @@ try {
   // diferente de idle) atrapalhar o relançamento do Electron mais abaixo.
   await fetch(`${remoteBase}/comando`, { method: "POST", body: JSON.stringify({ token: pareado.token, acao: "parar" }) });
   await page.waitForFunction(() => JSON.parse(localStorage.getItem("lumen-live-frame") ?? "null")?.status === "idle");
+  // ---- Celular: pasta de mídia espelhada, projetar item, buscar na internet ----
+  const midiaNoCelular = await fetch(`${remoteBase}/midia?token=${pareado.token}`).then((r) => r.json());
+  assert.equal(midiaNoCelular.ok, true);
+  assert.ok(Array.isArray(midiaNoCelular.midia));
+
+  const repertorioNoCelular = await fetch(`${remoteBase}/repertorio?token=${pareado.token}`).then((r) => r.json());
+  assert.ok(repertorioNoCelular.musicas.length > 0, "o celular não recebeu o repertório");
+  const escolhida = repertorioNoCelular.musicas[0];
+  const projetou = await fetch(`${remoteBase}/projetar`, {
+    method: "POST",
+    body: JSON.stringify({ token: pareado.token, tipo: "song", refId: escolhida.id }),
+  }).then((r) => r.json());
+  assert.equal(projetou.ok, true);
+  await page.waitForFunction(
+    (titulo) => JSON.parse(localStorage.getItem("lumen-live-frame") ?? "null")?.deck?.title === titulo,
+    escolhida.titulo,
+    { timeout: 10000 },
+  );
+
+  // Buscar letra na internet: o que se prova aqui é a ponte — o celular
+  // pergunta e a CABINE responde. Ter ou não rede muda o resultado, não o
+  // caminho; 504 aqui seria a cabine muda, que é o defeito que importa.
+  const buscaDoCelular = await fetch(`${remoteBase}/buscar`, {
+    method: "POST",
+    body: JSON.stringify({ token: pareado.token, termo: "castelo forte" }),
+  });
+  assert.equal(buscaDoCelular.status, 200, "a cabine não respondeu à busca do celular");
+  assert.ok(Array.isArray((await buscaDoCelular.json()).achados));
+
+  await fetch(`${remoteBase}/comando`, { method: "POST", body: JSON.stringify({ token: pareado.token, acao: "parar" }) });
+  await page.waitForFunction(() => JSON.parse(localStorage.getItem("lumen-live-frame") ?? "null")?.status === "idle");
+
   const semSessao = await fetch(`${remoteBase}/comando`, { method: "POST", body: JSON.stringify({ token: "invalido", acao: "preto" }) });
   assert.equal(semSessao.status, 401);
   await page.evaluate(() => window.lumenDesktop.remoteControlStop());
@@ -319,7 +351,7 @@ try {
   assert.deepEqual(errors, []);
   const disk = JSON.parse(await readFile(path.join(profile, "data", "library.json"), "utf8"));
   assert.ok(disk.values["lumen-v2"]);
-  console.log(`PASS: offline, fonts, Bible, restart persistence, projector, media ranges, preflight, Auto-Slide, remote control (LAN + PIN), update check, review before apply, 1366×768 at 100/125/150% and 800×600, double-click to project, fixed text only in the footer, YouTube collapses the lyrics strip. Evidence: ${evidence}`);
+  console.log(`PASS: offline, fonts, Bible, restart persistence, projector, media ranges, preflight, Auto-Slide, remote control (LAN + PIN), update check, review before apply, 1366×768 at 100/125/150% and 800×600, double-click to project, fixed text only in the footer, YouTube collapses the lyrics strip, phone sees the media folder, projects from it and searches lyrics through the cabine. Evidence: ${evidence}`);
 } finally {
   if (app) await app.close();
   console.log(`Isolated test profile: ${profile}`);

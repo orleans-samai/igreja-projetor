@@ -55,7 +55,30 @@ export type EventoRemoto =
       tipo: "musica";
       de: string;
       musica: { id: string | null; titulo: string; artista: string; letra: string };
-    };
+    }
+  // Mandar para o telão pelo celular: o item vai pelo nome, não por um botão
+  // fixo, e por isso não cabe na lista de ações.
+  | { tipo: "projetar"; kind: "song" | "text" | "media"; refId: string; de: string }
+  // Buscar letra na internet é a cabine quem faz: o celular pode estar sem
+  // rede, e dois provedores diferentes dariam dois resultados para a mesma
+  // busca. `pedido` é o número que casa a resposta com quem perguntou.
+  | { tipo: "buscar-musica"; pedido: number; termo: string }
+  | { tipo: "letra-musica"; pedido: number; fonte: string };
+
+/** Um achado da internet, do jeito que o celular precisa ver. */
+export interface AchadoRemoto {
+  titulo: string;
+  artista: string;
+  fonte: string;
+}
+
+/** O que a cabine espelha da pasta de mídia para o celular. */
+export interface MidiaRemota {
+  id: string;
+  tipo: "video" | "audio" | "image";
+  titulo: string;
+  detalhe?: string;
+}
 
 export const ROTULO_PERMISSAO: Record<PermissaoRemota, string> = {
   controle: "Controle completo",
