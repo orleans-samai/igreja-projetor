@@ -209,6 +209,11 @@
         <button class="botao" data-acao="pausar">❚❚ Pausar</button>
         <button class="botao larga" data-acao="parar-midia">■ Parar vídeo</button>
       </div>
+      <div id="fixoBloco" hidden>
+        <p class="dica">Endereço que não vence — guarde nos favoritos</p>
+        <a class="botao larga" id="fixoLink" href="#" target="_blank" rel="noopener"></a>
+        <p class="dica">Se abrir aqui, vai abrir sempre, mesmo se o computador mudar de número.</p>
+      </div>
       <button class="botao botao-perigo" id="sair">Sair deste controle</button>
     </section>
 
@@ -373,6 +378,7 @@
     if (!d || !d.tipo) return;
     if (d.tipo === "inicio") {
       if (d.nome) $("quem").textContent = d.nome;
+      mostrarEnderecoFixo(d.enderecoFixo);
       definirPermissao(d.permissao);
       aplicarEstado(d.estado);
       $("chatLista").innerHTML = "";
@@ -394,6 +400,22 @@
       conexao("off", "o Lúmen encerrou o controle remoto");
       return;
     }
+  }
+
+  /**
+   * O endereço que não vence, oferecido como link de verdade.
+   *
+   * A cabine já mostra esse endereço para o operador passar à equipe, mas
+   * quem precisa guardá-lo é quem segura o celular. E como nem todo aparelho
+   * resolve nomes ".local", o link serve de teste: se abrir aqui, abre
+   * sempre — e é melhor descobrir isso agora do que no domingo de manhã.
+   */
+  function mostrarEnderecoFixo(endereco) {
+    var bloco = $("fixoBloco");
+    if (!endereco) { bloco.hidden = true; return; }
+    $("fixoLink").textContent = endereco;
+    $("fixoLink").href = endereco;
+    bloco.hidden = false;
   }
 
   function definirPermissao(p) {

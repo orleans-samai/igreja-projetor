@@ -79,6 +79,17 @@ try {
   assert.equal(remoteStatus.ligado, true);
   assert.match(remoteStatus.pin, /^\d{6}$/);
   const remoteBase = `http://127.0.0.1:${remoteStatus.porta}`;
+  // O nome fixo na rede: http://lumen.local:<porta>, para o endereço não
+  // morrer quando o roteador trocar o IP do computador. Se o Firewall ou uma
+  // porta 5353 já ocupada impedirem, a cabine tem que DIZER por quê — o que
+  // não pode acontecer é o nome sumir calado.
+  assert.ok(
+    remoteStatus.nomeLocal || remoteStatus.avisoNome,
+    "o nome na rede não subiu e o app não explicou por quê",
+  );
+  if (remoteStatus.nomeLocal) {
+    assert.equal(remoteStatus.nomeLocal, "lumen.local");
+  }
   const pinErrado = await fetch(`${remoteBase}/parear`, { method: "POST", body: JSON.stringify({ pin: "000001" }) });
   assert.equal(pinErrado.status, 401);
   const pareado = await fetch(`${remoteBase}/parear`, { method: "POST", body: JSON.stringify({ pin: remoteStatus.pin, nome: "Smoke" }) }).then((r) => r.json());
@@ -351,7 +362,7 @@ try {
   assert.deepEqual(errors, []);
   const disk = JSON.parse(await readFile(path.join(profile, "data", "library.json"), "utf8"));
   assert.ok(disk.values["lumen-v2"]);
-  console.log(`PASS: offline, fonts, Bible, restart persistence, projector, media ranges, preflight, Auto-Slide, remote control (LAN + PIN), update check, review before apply, 1366×768 at 100/125/150% and 800×600, double-click to project, fixed text only in the footer, YouTube collapses the lyrics strip, phone sees the media folder, projects from it and searches lyrics through the cabine. Evidence: ${evidence}`);
+  console.log(`PASS: offline, fonts, Bible, restart persistence, projector, media ranges, preflight, Auto-Slide, remote control (LAN + PIN + nome fixo na rede), update check, review before apply, 1366×768 at 100/125/150% and 800×600, double-click to project, fixed text only in the footer, YouTube collapses the lyrics strip, phone sees the media folder, projects from it and searches lyrics through the cabine. Evidence: ${evidence}`);
 } finally {
   if (app) await app.close();
   console.log(`Isolated test profile: ${profile}`);

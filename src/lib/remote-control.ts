@@ -97,6 +97,10 @@ export interface RemoteStatus {
   porta: number | null;
   pin: string | null;
   enderecos: string[];
+  /** "lumen.local" quando o nome está de pé na rede; null quando não subiu. */
+  nomeLocal?: string | null;
+  /** Por que o nome não subiu — a cabine explica em vez de esconder. */
+  avisoNome?: string | null;
   sessoesAtivas: number;
   dispositivos?: DispositivoRemoto[];
   permissaoPadrao?: PermissaoRemota;
@@ -136,4 +140,18 @@ export function estadoRemoto(
 export function enderecosDeAcesso(status: RemoteStatus): string[] {
   if (!status.ligado || !status.porta) return [];
   return status.enderecos.map((ip) => `http://${ip}:${status.porta}`);
+}
+
+/**
+ * O endereço que vale guardar: o que não muda quando o roteador troca o IP.
+ *
+ * É separado do endereço por IP de propósito. O IP funciona agora, em
+ * qualquer aparelho — é o que vai no QR. O nome funciona na semana que vem,
+ * mas depende de o celular saber resolver ".local" e de o Firewall deixar o
+ * UDP 5353 passar. Oferecer os dois, dizendo qual é qual, é mais honesto do
+ * que escolher um e torcer.
+ */
+export function enderecoFixo(status: RemoteStatus): string | null {
+  if (!status.ligado || !status.porta || !status.nomeLocal) return null;
+  return `http://${status.nomeLocal}:${status.porta}`;
 }

@@ -7,6 +7,7 @@ import { cn } from "@/lib/cn";
 import {
   AJUDA_PERMISSAO,
   ROTULO_PERMISSAO,
+  enderecoFixo,
   enderecosDeAcesso,
   type DispositivoRemoto,
   type PermissaoRemota,
@@ -175,6 +176,7 @@ export function RemoteControlDialog({
 
   const enderecos = enderecosDeAcesso(status);
   const enderecoPrincipal = enderecos[0] ?? null;
+  const fixo = enderecoFixo(status);
   const [copiado, setCopiado] = useState(false);
 
   // O QR carrega o PIN junto no endereço: aponta a câmera e o celular já
@@ -239,9 +241,32 @@ export function RemoteControlDialog({
                   </div>
                 </div>
 
+                {/* O endereço que vale guardar vem primeiro, e o por IP logo
+                    abaixo como plano B. O nome sobrevive à troca de IP pelo
+                    roteador; o IP funciona em qualquer aparelho, hoje. Dizer
+                    qual é qual é mais honesto do que escolher um e torcer. */}
+                {fixo && (
+                  <div>
+                    <p className="text-caption font-medium uppercase tracking-wide text-subtle">
+                      Endereço fixo — este é o de guardar
+                    </p>
+                    <p className="mt-1 text-body font-medium text-fg">{fixo}</p>
+                    <p className="mt-1 text-secondary text-muted">
+                      Não muda nem quando o roteador troca o número do computador. Em celular
+                      antigo pode não abrir; nesse caso use o endereço de baixo.
+                    </p>
+                  </div>
+                )}
+                {!fixo && status.avisoNome && (
+                  <p className="text-secondary text-muted">
+                    Não consegui publicar o nome <span className="text-fg">lumen.local</span> na
+                    rede ({status.avisoNome}). O endereço abaixo continua valendo.
+                  </p>
+                )}
+
                 <div>
                   <p className="text-caption font-medium uppercase tracking-wide text-subtle">
-                    Endereço no celular
+                    {fixo ? "Endereço por número, se o nome não abrir" : "Endereço no celular"}
                   </p>
                   {enderecos.length === 0 ? (
                     <p className="mt-1 text-secondary text-muted">
@@ -272,9 +297,14 @@ export function RemoteControlDialog({
                   <Button
                     variant="ghost"
                     onClick={async () => {
-                      const recado = `Lúmen — controle pelo celular
-${enderecoPrincipal}
-PIN: ${status.pin}`;
+                      const recado = [
+                        "Lúmen — controle pelo celular",
+                        fixo,
+                        fixo ? `Se não abrir: ${enderecoPrincipal}` : enderecoPrincipal,
+                        `PIN: ${status.pin}`,
+                      ]
+                        .filter(Boolean)
+                        .join("\n");
                       try {
                         await navigator.clipboard.writeText(recado);
                         setCopiado(true);

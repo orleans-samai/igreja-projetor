@@ -599,3 +599,52 @@ test("cabine muda não deixa o celular girando para sempre", async () => {
     await derrubar(ctx);
   }
 });
+
+test("o nome na rede sobe com o servidor e cai junto", async () => {
+  const dir = await comPagina();
+  const { Anunciante } = (await import("../desktop/mdns.cjs")).default;
+  // Porta 0: o nome é provado de verdade nos testes de mDNS; aqui o que
+  // importa é que o servidor o acende, o apaga e conta isso à cabine.
+  const anunciante = new Anunciante({ nome: "lumen", porta: 0, enderecos: () => ["192.168.0.5"] });
+  const rc = new RemoteControl(dir, null, anunciante);
+  try {
+    assert.equal(rc.status().nomeLocal, null, "o nome não existe com o servidor desligado");
+    await rc.ligar();
+    assert.equal(rc.status().nomeLocal, "lumen.local");
+    assert.equal(anunciante.ativo, true);
+    rc.desligar();
+    assert.equal(anunciante.ativo, false, "o nome ficou de pé depois de desligar");
+    assert.equal(rc.status().nomeLocal, null);
+  } finally {
+    anunciante.desligar();
+    await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  }
+});
+
+test("o celular recebe o endereço que não vence, quando existe", async () => {
+  const dir = await comPagina();
+  const { Anunciante } = (await import("../desktop/mdns.cjs")).default;
+  const anunciante = new Anunciante({ nome: "lumen", porta: 0, enderecos: () => ["192.168.0.5"] });
+  const rc = new RemoteControl(dir, null, anunciante);
+  const status = await rc.ligar();
+  const base = `http://127.0.0.1:${status.porta}`;
+  try {
+    const { token } = await (
+      await fetch(`${base}/parear`, { method: "POST", body: JSON.stringify({ pin: status.pin }) })
+    ).json();
+    const fluxo = await fetch(`${base}/estado?token=${token}`);
+    const leitor = fluxo.body.getReader();
+    const primeiro = new TextDecoder().decode((await leitor.read()).value);
+    const inicio = JSON.parse(
+      (primeiro.match(/data: (.*)/) ?? [])[1] ??
+        new TextDecoder().decode((await leitor.read()).value).match(/data: (.*)/)[1],
+    );
+    assert.equal(inicio.tipo, "inicio");
+    assert.equal(inicio.enderecoFixo, `http://lumen.local:${status.porta}`);
+    await leitor.cancel();
+  } finally {
+    rc.desligar();
+    anunciante.desligar();
+    await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  }
+});

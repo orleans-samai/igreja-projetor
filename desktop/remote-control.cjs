@@ -1,8 +1,8 @@
 const http = require("node:http");
-const os = require("node:os");
 const path = require("node:path");
 const nodeCrypto = require("node:crypto");
 const fsp = require("node:fs/promises");
+const { enderecosLan } = require("./mdns.cjs");
 
 /**
  * Controle remoto pelo celular.
@@ -78,16 +78,6 @@ function podeFazer(permissao, minima) {
   return tem >= 0 && precisa >= 0 && tem >= precisa;
 }
 
-function enderecosLan() {
-  const saida = [];
-  for (const lista of Object.values(os.networkInterfaces())) {
-    for (const info of lista || []) {
-      if (info.family === "IPv4" && !info.internal) saida.push(info.address);
-    }
-  }
-  return saida;
-}
-
 function gerarPin() {
   return String(nodeCrypto.randomInt(0, 1_000_000)).padStart(6, "0");
 }
@@ -121,8 +111,14 @@ function nomeLimpo(bruto, padrao) {
 }
 
 class RemoteControl {
-  constructor(wwwRoot, cofre = null) {
+  constructor(wwwRoot, cofre = null, anunciante = null) {
     this.wwwRoot = wwwRoot;
+    /**
+     * Quem responde por "lumen.local" na rede. Opcional de propósito: os
+     * testes sobem dezenas de servidores, e nenhum deles precisa disputar a
+     * porta 5353 do sistema para provar o que veio provar.
+     */
+    this.anunciante = anunciante;
     /** Onde porta, PIN e aparelhos pareados sobrevivem ao fechar do app.
      *  Sem cofre (nos testes) o controle volta a ser de uma sessão só. */
     this.cofre = cofre;
@@ -207,6 +203,10 @@ class RemoteControl {
       porta: this.porta,
       pin: this.pin,
       enderecos: this.ligado() ? enderecosLan() : [],
+      /** "lumen.local" quando o nome está de pé na rede; null quando não. */
+      nomeLocal: this.ligado() && this.anunciante?.ativo ? this.anunciante.host : null,
+      /** Por que o nome não subiu — para a cabine poder explicar em vez de sumir. */
+      avisoNome: this.ligado() ? (this.anunciante?.erro ?? null) : null,
       sessoesAtivas: [...this.dispositivos.values()].filter((d) => this._online(d)).length,
       dispositivos: this.listarDispositivos(),
       permissaoPadrao: this.permissaoPadrao,
@@ -257,6 +257,8 @@ class RemoteControl {
     this.porta = server.address().port;
     this.portaPreferida = this.porta;
     this._salvar();
+    // O nome é um extra: se não subir, o endereço por IP continua inteiro.
+    await this.anunciante?.ligar();
     return this.status();
   }
 
@@ -285,6 +287,7 @@ class RemoteControl {
     this.server.closeAllConnections?.();
     this.server = null;
     this.porta = null;
+    this.anunciante?.desligar();
     return this.status();
   }
 
@@ -548,6 +551,12 @@ class RemoteControl {
     }
   }
 
+  /** http://lumen.local:8787 — ou null quando o nome não subiu na rede. */
+  _enderecoFixo() {
+    if (!this.ligado() || !this.anunciante?.ativo) return null;
+    return `http://${this.anunciante.host}:${this.porta}`;
+  }
+
   _sse(req, res, url) {
     const token = url.searchParams.get("token") || "";
     const disp = this._sessao(token);
@@ -572,6 +581,10 @@ class RemoteControl {
         estado: this.ultimoEstado,
         permissao: disp.permissao,
         nome: disp.nome,
+        // O endereço que não vence, para o aparelho poder guardar. Vai como
+        // um link de verdade: se abrir neste celular, funciona neste celular
+        // — melhor descobrir agora do que no domingo de manhã.
+        enderecoFixo: this._enderecoFixo(),
         chat: this.chat.slice(-30),
       })}\n\n`,
     );

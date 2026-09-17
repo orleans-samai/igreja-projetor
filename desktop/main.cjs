@@ -10,6 +10,7 @@ const packages = require("./service-package.cjs");
 const { YoutubeHost } = require("./youtube-host.cjs");
 const { RemoteControl } = require("./remote-control.cjs");
 const { CofreRemoto } = require("./remote-store.cjs");
+const { Anunciante } = require("./mdns.cjs");
 const updater = require("./updater.cjs");
 
 
@@ -23,7 +24,11 @@ if (smokeTest) app.setPath("userData", path.resolve(process.env.LUMEN_TEST_DATA)
 const dataDir = app.getPath("userData");
 const recognition = new Recognition(dataDir);
 const youtubeHost = new YoutubeHost(path.join(__dirname, "www"));
-const remoteControl = new RemoteControl(path.join(__dirname, "www"), new CofreRemoto(dataDir));
+const remoteControl = new RemoteControl(
+  path.join(__dirname, "www"),
+  new CofreRemoto(dataDir),
+  new Anunciante(),
+);
 // O celular não fala com a cabine por IPC — só o processo principal tem
 // acesso à janela. Um comando aprovado (PIN certo, sessão válida, ação da
 // lista) vira um "send" comum, como se fosse um atalho de teclado.
