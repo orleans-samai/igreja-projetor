@@ -360,7 +360,15 @@ export function OperatorApp() {
 
   return (
     <TooltipProvider>
-      <div className="flex h-dvh flex-col bg-bg text-fg">
+      {/*
+        A cabine nunca rola — nem para o lado, nem para baixo.
+
+        Numa igreja, controle que saiu da tela é controle que não existe: no
+        meio do culto ninguém vai procurar barra de rolagem para achar o botão
+        de parar. A janela é o limite, e quem precisa de mais espaço rola por
+        dentro do próprio painel.
+      */}
+      <div className="flex h-dvh flex-col overflow-hidden bg-bg text-fg">
         <MenuBar
           onNewSong={() => setSongEd(true)}
           onWebLyrics={() => setWebOpen(true)}
@@ -409,13 +417,22 @@ export function OperatorApp() {
           encolhe, nada fica coberto. Flutuante é o único que sobrepõe, e
           mesmo assim no canto de baixo, longe da barra de controles.
         */}
-        <div className="relative flex min-h-0 flex-1">
+        <div className="relative flex min-w-0 min-h-0 flex-1">
           {chatPosicao === "esquerda" && (
             <div className="hidden w-72 shrink-0 md:block">
               <ChatPanel />
             </div>
           )}
-          <div className="min-h-0 flex-1">
+          {/*
+            `min-w-0` não é enfeite.
+
+            Item de flex nasce com `min-width: auto`, que o proíbe de encolher
+            abaixo do conteúdo. Bastou um vídeo com nome de oitenta caracteres
+            para esta coluna inchar até 1953px numa janela de 1569 — e empurrar
+            a coluna do chat inteira para fora da tela, junto com a barra de
+            rolagem que veio atrás.
+          */}
+          <div className="min-w-0 min-h-0 flex-1">
           {bibleOpen ? (
             <BibleWorkspace previewFrame={previewFrame} onBack={() => setBibleOpen(false)} />
           ) : (

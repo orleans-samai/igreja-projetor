@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { durableStorage } from "@/lib/durable-storage";
+import { chatVisivel } from "@/lib/chat-visivel";
 import type { MensagemChat } from "@/lib/remote-control";
 
 /**
@@ -29,6 +30,8 @@ interface ChatState {
   mensagens: MensagemChat[];
   aberto: boolean;
   posicao: PosicaoChat;
+  /** Para onde o botão Chat devolve o painel depois de escondido. */
+  ultimaLateral: PosicaoChat;
   naoLidas: number;
   /** Última mensagem recebida com o painel fechado, para o aviso discreto. */
   aviso: MensagemChat | null;
@@ -47,8 +50,11 @@ export const useChatStore = create<ChatState>()(
   persist(
     (set) => ({
       mensagens: [],
-      aberto: false,
+      // Nasce à vista: na lateral o chat não cobre nada, e recado de culto
+      // que chega num painel fechado é recado perdido.
+      aberto: true,
       posicao: "direita",
+      ultimaLateral: "direita",
       naoLidas: 0,
       aviso: null,
 
@@ -58,14 +64,23 @@ export const useChatStore = create<ChatState>()(
           // reconecta e recebe o histórico junto: id repetido não entra.
           if (s.mensagens.some((x) => x.id === m.id)) return s;
           const mensagens = [...s.mensagens, m].slice(-LIMITE);
-          // O que a própria cabine escreveu nunca conta como não lida.
-          if (m.daCabine || s.aberto) return { ...s, mensagens };
+          // O que a própria cabine escreveu nunca conta como não lida — nem o
+          // que chega com o painel à vista, porque já foi lido.
+          if (m.daCabine || chatVisivel(s.posicao, s.aberto)) return { ...s, mensagens };
           return { ...s, mensagens, naoLidas: s.naoLidas + 1, aviso: m };
         }),
 
       abrir: (v) => set((s) => ({ ...s, aberto: v, naoLidas: v ? 0 : s.naoLidas, aviso: null })),
       setPosicao: (posicao) =>
-        set((s) => ({ ...s, posicao, aberto: posicao === "oculto" ? false : s.aberto })),
+        set((s) => ({
+          ...s,
+          posicao,
+          // Sair do oculto para uma lateral já traz o painel de volta à vista.
+          aberto: posicao === "oculto" ? s.aberto : true,
+          naoLidas: posicao === "oculto" ? s.naoLidas : 0,
+          ultimaLateral:
+            posicao === "direita" || posicao === "esquerda" ? posicao : s.ultimaLateral,
+        })),
       limparAviso: () => set((s) => ({ ...s, aviso: null })),
       limparTudo: () => set((s) => ({ ...s, mensagens: [], naoLidas: 0, aviso: null })),
     }),
@@ -74,7 +89,16 @@ export const useChatStore = create<ChatState>()(
       storage: durableStorage,
       // Mensagem é do culto; o que merece sobreviver ao reinício é a
       // preferência de onde o painel fica.
-      partialize: (s) => ({ posicao: s.posicao, aberto: s.aberto }),
+      partialize: (s) => ({
+        posicao: s.posicao,
+        aberto: s.aberto,
+        ultimaLateral: s.ultimaLateral,
+      }),
+      // Quem já usava o Lúmen tinha "fechado" gravado de uma época em que o
+      // painel nascia assim. Não faz mais sentido na lateral, e manter o
+      // valor antigo deixaria essas pessoas sem chat sem nunca terem pedido.
+      version: 2,
+      migrate: (guardado) => ({ ...(guardado as object), aberto: true }),
     },
   ),
 );

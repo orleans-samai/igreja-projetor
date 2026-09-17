@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Hint } from "@/components/ui/tooltip";
+import { chatVisivel, fecharLeva, mostrarLeva } from "@/lib/chat-visivel";
 import { cn } from "@/lib/cn";
 import type { MensagemChat } from "@/lib/remote-control";
 import { useChatStore } from "@/store/chat-store";
@@ -25,17 +26,30 @@ export function ChatButton() {
   const aberto = useChatStore((s) => s.aberto);
   const naoLidas = useChatStore((s) => s.naoLidas);
   const posicao = useChatStore((s) => s.posicao);
+  const ultimaLateral = useChatStore((s) => s.ultimaLateral);
   const abrir = useChatStore((s) => s.abrir);
+  const setPosicao = useChatStore((s) => s.setPosicao);
   const suportado = typeof window !== "undefined" && window.lumenDesktop?.isDesktop;
 
-  if (!suportado || posicao === "oculto") return null;
+  // O botão continua existindo com o chat escondido: sem ele, quem apertasse
+  // o X ficaria sem caminho de volta que não passasse pelos Ajustes.
+  if (!suportado) return null;
+  const aVista = chatVisivel(posicao, aberto);
 
   return (
-    <Hint label={aberto ? "Fechar o chat" : "Abrir o chat com os celulares"}>
+    <Hint label={aVista ? "Esconder o chat" : "Mostrar o chat dos celulares"}>
       <Button
         size="sm"
-        variant={aberto ? "secondary" : "ghost"}
-        onClick={() => abrir(!aberto)}
+        variant={aVista ? "secondary" : "ghost"}
+        onClick={() => {
+          if (!aVista) {
+            setPosicao(mostrarLeva(posicao, ultimaLateral));
+            abrir(true);
+            return;
+          }
+          const destino = fecharLeva(posicao);
+          if (destino) setPosicao(destino);
+        }}
         aria-label={naoLidas > 0 ? `Chat, ${naoLidas} não lidas` : "Chat"}
       >
         <MessageSquare />
@@ -105,7 +119,7 @@ export function ChatPanel() {
   const mensagens = useChatStore((s) => s.mensagens);
   const aberto = useChatStore((s) => s.aberto);
   const posicao = useChatStore((s) => s.posicao);
-  const abrir = useChatStore((s) => s.abrir);
+  const setPosicao = useChatStore((s) => s.setPosicao);
   const operador = useLumenStore((s) => s.settings.operatorName);
   const [texto, setTexto] = useState("");
   const [enviando, setEnviando] = useState(false);
@@ -115,7 +129,7 @@ export function ChatPanel() {
     fim.current?.scrollIntoView({ block: "end" });
   }, [mensagens.length, aberto]);
 
-  if (!aberto || posicao === "oculto") return null;
+  if (!chatVisivel(posicao, aberto)) return null;
 
   const enviar = async () => {
     const limpo = texto.trim();
@@ -150,7 +164,17 @@ export function ChatPanel() {
         <h2 className="flex items-center gap-1.5">
           <MessageSquare className="size-3.5 text-subtle" aria-hidden /> Chat
         </h2>
-        <Button size="iconSm" variant="ghost" aria-label="Fechar o chat" onClick={() => abrir(false)}>
+        {/* Na lateral, fechar quer dizer esconder de vez — não há "fechado
+            mas ocupando coluna". O botão Chat da barra de cima traz de volta. */}
+        <Button
+          size="iconSm"
+          variant="ghost"
+          aria-label="Esconder o chat"
+          onClick={() => {
+            const destino = fecharLeva(posicao);
+            if (destino) setPosicao(destino);
+          }}
+        >
           <X />
         </Button>
       </div>

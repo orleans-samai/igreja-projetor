@@ -143,6 +143,70 @@ try {
   assert.equal(buscaDoCelular.status, 200, "a cabine não respondeu à busca do celular");
   assert.ok(Array.isArray((await buscaDoCelular.json()).achados));
 
+  // ---- A cabine não rola, nem para o lado nem para baixo ----
+  // Controle que saiu da tela é controle que não existe: no meio do culto
+  // ninguém procura barra de rolagem para achar o botão de parar. Um vídeo
+  // com nome de arquivo comprido já inchou a coluna de trabalho até 1953px
+  // numa janela de 1569 e empurrou o chat inteiro para fora da tela.
+  const nomeComprido =
+    "YTDown.com_YouTube_COISAS-MAIORES-ATITUDE-SOUNDS-feat-ESTHE_Media_Z1JJrI4DR28_003_480p (1)";
+  await fetch(`${remoteBase}/musica`, {
+    method: "POST",
+    body: JSON.stringify({ token: pareado.token, titulo: nomeComprido, letra: "Uma linha só" }),
+  });
+  await page.waitForFunction(
+    (t) => document.body.textContent.includes(t.slice(0, 40)),
+    nomeComprido,
+    { timeout: 10000 },
+  );
+  const comprida = await fetch(`${remoteBase}/repertorio?token=${pareado.token}`)
+    .then((r) => r.json())
+    .then((d) => d.musicas.find((m) => m.titulo === nomeComprido));
+  assert.ok(comprida, "a música de nome comprido não entrou no repertório");
+  await fetch(`${remoteBase}/projetar`, {
+    method: "POST",
+    body: JSON.stringify({ token: pareado.token, tipo: "song", refId: comprida.id }),
+  });
+  await page.waitForFunction(
+    (t) => JSON.parse(localStorage.getItem("lumen-live-frame") ?? "null")?.deck?.title === t,
+    nomeComprido,
+    { timeout: 10000 },
+  );
+  for (const [largura, altura] of [
+    [1600, 900],
+    [1366, 768],
+  ]) {
+    await app.evaluate(
+      ({ BrowserWindow }, [w, h]) => {
+        const j = BrowserWindow.getAllWindows().find((x) => x.webContents.getURL() === "lumen://app/");
+        j?.unmaximize();
+        j?.setSize(w, h);
+      },
+      [largura, altura],
+    );
+    await page.waitForTimeout(700);
+    const rolagem = await page.evaluate(() => {
+      const d = document.documentElement;
+      const chat = document.querySelector('[aria-label="Chat com os celulares"]');
+      const c = chat?.getBoundingClientRect();
+      return {
+        sobraLado: d.scrollWidth - d.clientWidth,
+        sobraBaixo: d.scrollHeight - d.clientHeight,
+        janela: d.clientWidth,
+        chatLargura: c ? Math.round(c.width) : 0,
+        chatDireita: c ? Math.round(c.right) : 0,
+      };
+    });
+    assert.equal(rolagem.sobraLado, 0, `a cabine rolou ${rolagem.sobraLado}px para o lado em ${largura}x${altura}`);
+    assert.equal(rolagem.sobraBaixo, 0, `a cabine rolou ${rolagem.sobraBaixo}px para baixo em ${largura}x${altura}`);
+    // O chat é móvel da cabine, não janelinha: fica à vista, dentro da tela.
+    assert.ok(rolagem.chatLargura > 0, `o chat sumiu em ${largura}x${altura}`);
+    assert.ok(
+      rolagem.chatDireita <= rolagem.janela + 1,
+      `o chat ficou ${rolagem.chatDireita - rolagem.janela}px fora da tela em ${largura}x${altura}`,
+    );
+  }
+
   await fetch(`${remoteBase}/comando`, { method: "POST", body: JSON.stringify({ token: pareado.token, acao: "parar" }) });
   await page.waitForFunction(() => JSON.parse(localStorage.getItem("lumen-live-frame") ?? "null")?.status === "idle");
 
@@ -362,7 +426,7 @@ try {
   assert.deepEqual(errors, []);
   const disk = JSON.parse(await readFile(path.join(profile, "data", "library.json"), "utf8"));
   assert.ok(disk.values["lumen-v2"]);
-  console.log(`PASS: offline, fonts, Bible, restart persistence, projector, media ranges, preflight, Auto-Slide, remote control (LAN + PIN + nome fixo na rede), update check, review before apply, 1366×768 at 100/125/150% and 800×600, double-click to project, fixed text only in the footer, YouTube collapses the lyrics strip, phone sees the media folder, projects from it and searches lyrics through the cabine. Evidence: ${evidence}`);
+  console.log(`PASS: offline, fonts, Bible, restart persistence, projector, media ranges, preflight, Auto-Slide, remote control (LAN + PIN + nome fixo na rede), update check, review before apply, 1366×768 at 100/125/150% and 800×600, cabine never scrolls and the chat stays on screen, double-click to project, fixed text only in the footer, YouTube collapses the lyrics strip, phone sees the media folder, projects from it and searches lyrics through the cabine. Evidence: ${evidence}`);
 } finally {
   if (app) await app.close();
   console.log(`Isolated test profile: ${profile}`);
