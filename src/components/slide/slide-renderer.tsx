@@ -431,7 +431,17 @@ function MediaStage({
       // Terminado sem repetir, currentTime fica preso no fim: sem isto,
       // Tocar de novo pediria play e nada aconteceria.
       if (el.ended) el.currentTime = 0;
-      void el.play().catch(() => undefined);
+      /*
+        Pedir para tocar antes de o arquivo estar pronto faz o navegador
+        recusar a promessa — e engolir essa recusa era o bastante para o
+        vídeo ficar parado no primeiro quadro, parecendo travado, sem
+        ninguém saber por quê. Então recusou, espera ficar pronto e tenta
+        de novo uma vez.
+      */
+      const tentar = () => el.play().catch(() => undefined);
+      void el.play().catch(() => {
+        el.addEventListener("canplay", tentar, { once: true });
+      });
     } else if (acao === "pausar") el.pause();
     else {
       el.pause();
@@ -468,7 +478,7 @@ function MediaStage({
         key={src}
         ref={videoRef}
         src={src}
-        autoPlay={acao === undefined}
+        autoPlay={acao === undefined || acao === "tocar"}
         loop={loop}
         playsInline
         muted={variant !== "audience"}

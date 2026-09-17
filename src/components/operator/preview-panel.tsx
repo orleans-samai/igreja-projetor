@@ -279,22 +279,31 @@ function YoutubeTransporte() {
 function MediaVideoTransporte() {
   const live = useLumenStore((s) => s.live);
   const comandar = useLumenStore((s) => s.comandarMedia);
-  const [estado, setEstado] = useState<"tocando" | "pausado" | "fim">("pausado");
+  /**
+   * O telão só avisa quando o vídeo acaba sozinho.
+   *
+   * O resto do tempo quem sabe se está tocando é a própria cabine, porque foi
+   * ela que mandou. Antes o botão dependia do relato de volta da janela de
+   * projeção: com ela fechada — ou no instante antes do relato chegar — ele
+   * ficava escrito "Tocar" com o vídeo já tocando, e o operador apertava de
+   * novo achando que não tinha funcionado.
+   */
+  const [terminou, setTerminou] = useState(false);
 
   useEffect(() => {
     return subscribeOps((msg) => {
       if (msg.type !== "media-tempo") return;
-      setEstado(msg.estado);
+      setTerminou(msg.estado === "fim");
     });
   }, []);
 
-  // Cronômetro zerado a cada vídeo novo: senão o botão herdaria o estado
-  // de quem tocou antes dele.
+  // Vídeo novo, ou comando novo, apagam o "terminou" de antes.
   const src = live?.mediaSrc;
-  useEffect(() => setEstado("pausado"), [src]);
+  const seq = live?.mediaSeq;
+  useEffect(() => setTerminou(false), [src, seq]);
 
   if (!live || live.kind !== "media" || live.mediaType !== "video") return null;
-  const tocando = estado === "tocando";
+  const tocando = !terminou && (live.mediaAcao ?? "tocar") === "tocar";
 
   return (
     <div className="animate-swap-in flex flex-wrap items-center gap-2 border-t border-border bg-elevated px-3 py-1.5">
@@ -313,10 +322,10 @@ function MediaVideoTransporte() {
           <Square />
         </Button>
       </Hint>
-      {!tocando && estado !== "fim" && (
-        <span className="text-caption text-subtle">Telão parado até você tocar</span>
+      {!tocando && !terminou && (
+        <span className="text-caption text-subtle">Pausado</span>
       )}
-      {estado === "fim" && <span className="text-caption text-subtle">Vídeo terminou</span>}
+      {terminou && <span className="text-caption text-subtle">Vídeo terminou</span>}
       <label className="ml-auto flex select-none items-center gap-2 text-caption text-muted">
         <Repeat className="size-3.5 text-subtle" aria-hidden />
         <button

@@ -1012,9 +1012,14 @@ export const useLumenStore = create<LumenState>()(
             slides,
             mediaSrc: item.path,
             mediaType: item.type === "announcement" ? undefined : item.type,
-            // Vídeo toca no telão, com som — por isso entra pausado, do mesmo
-            // jeito que o vídeo do YouTube: quem decide a hora é o operador.
-            mediaAcao: item.type === "video" ? "pausar" : undefined,
+            // Vídeo começa a tocar ao ser apresentado, como sempre foi.
+            //
+            // Cheguei a fazer entrar pausado, por analogia com o YouTube — lá
+            // a capa do vídeo apareceria para a igreja antes da hora. Mas
+            // arquivo local não tem capa nenhuma: pausado, ele só parece
+            // travado, e quem opera aperta Apresentar esperando que toque.
+            // Pausar e parar continuam a um clique, no transporte.
+            mediaAcao: item.type === "video" ? "tocar" : undefined,
             mediaLoop: false,
           },
           previewIndex: 0,
@@ -1027,11 +1032,25 @@ export const useLumenStore = create<LumenState>()(
        * Comanda o vídeo local que está no telão — mesmo desenho do YouTube:
        * a cabine descreve o que quer, quem toca de verdade é o telão.
        */
+      /**
+       * Comanda o vídeo local que está no telão.
+       *
+       * O comando entra no baralho no ar e também no selecionado, quando são
+       * o mesmo item. A cabine desenha os dois — o quadro do telão e o da
+       * seleção — e cada um monta o seu `<video>`. Com o comando em só um
+       * deles, os dois elementos recebiam ordens contrárias: um tocava e o
+       * outro pausava no mesmo instante, e o vídeo parecia travar sozinho
+       * depois de um segundo.
+       */
       comandarMedia: (patch) => {
-        const atual = get().live;
+        const s = get();
+        const atual = s.live;
         if (!atual || atual.mediaType !== "video") return;
+        const seq = (atual.mediaSeq ?? 0) + 1;
+        const live = { ...atual, ...patch, mediaSeq: seq };
+        const mesmoItem = s.preview && s.preview.refId === atual.refId;
         broadcast(
-          { live: { ...atual, ...patch, mediaSeq: (atual.mediaSeq ?? 0) + 1 } },
+          { live, preview: mesmoItem ? { ...s.preview!, ...patch, mediaSeq: seq } : s.preview },
           set,
         );
       },
