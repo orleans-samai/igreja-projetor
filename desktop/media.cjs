@@ -428,8 +428,107 @@ async function receber(nomeBruto, dados) {
   };
 }
 
+/**
+ * O caminho de um arquivo daquele tipo, preso dentro da pasta dele.
+ *
+ * Tudo que chega aqui veio da janela, e a janela recebe nome de arquivo de
+ * lista que veio do disco — mas o caminho é montado aqui, uma vez, em vez
+ * de confiar que ninguém vai mandar "..\\..\\Windows\\System32" um dia.
+ */
+function dentroDaPasta(kind, nome) {
+  if (!KINDS[kind]) return null;
+  const dir = dirFor(kind);
+  const limpo = nomeSeguro(nome);
+  const alvo = path.join(dir, limpo);
+  if (path.dirname(alvo) !== dir) return null;
+  if (!KINDS[kind].includes(path.extname(limpo).toLowerCase())) return null;
+  return alvo;
+}
+
+/** Um nome livre na pasta, a partir do que se pediu. */
+async function nomeLivre(dir, nome) {
+  const ext = path.extname(nome);
+  const base = nome.slice(0, nome.length - ext.length);
+  let destino = path.join(dir, nome);
+  for (let n = 2; n < 100; n += 1) {
+    try {
+      await fsp.access(destino);
+      destino = path.join(dir, `${base} (${n})${ext}`);
+    } catch {
+      return destino;
+    }
+  }
+  return destino;
+}
+
+/**
+ * Troca o nome de um arquivo da pasta de mídia.
+ *
+ * A extensão é do arquivo, não do nome novo: quem renomeia "Fundo" para
+ * "Abertura" não quer descobrir que o vídeo virou um arquivo sem tipo.
+ */
+async function renomear(kind, nome, novoNome) {
+  const de = dentroDaPasta(kind, nome);
+  if (!de) return { ok: false, error: "Arquivo fora da pasta de mídia." };
+  const ext = path.extname(de);
+  const pedido = nomeSeguro(String(novoNome || "").trim());
+  const semExt = pedido.toLowerCase().endsWith(ext.toLowerCase())
+    ? pedido.slice(0, pedido.length - ext.length)
+    : pedido;
+  if (!semExt.trim()) return { ok: false, error: "Escreva um nome." };
+  const para = dentroDaPasta(kind, `${semExt}${ext}`);
+  if (!para) return { ok: false, error: "Nome inválido." };
+  if (para === de) return { ok: true, nome: path.basename(de), id: idFor(kind, path.basename(de)) };
+  const livre = await nomeLivre(path.dirname(para), path.basename(para));
+  try {
+    await fsp.rename(de, livre);
+  } catch (error) {
+    return { ok: false, error: `Não consegui renomear: ${error?.message || error}` };
+  }
+  const final = path.basename(livre);
+  return { ok: true, nome: final, id: idFor(kind, final) };
+}
+
+/** Uma cópia do arquivo, ao lado do original. */
+async function duplicar(kind, nome) {
+  const de = dentroDaPasta(kind, nome);
+  if (!de) return { ok: false, error: "Arquivo fora da pasta de mídia." };
+  const ext = path.extname(de);
+  const base = path.basename(de, ext);
+  const livre = await nomeLivre(path.dirname(de), `${base} (cópia)${ext}`);
+  try {
+    await fsp.copyFile(de, livre);
+  } catch (error) {
+    return { ok: false, error: `Não consegui duplicar: ${error?.message || error}` };
+  }
+  const final = path.basename(livre);
+  return { ok: true, nome: final, id: idFor(kind, final) };
+}
+
+/**
+ * Manda o arquivo para a lixeira do Windows, não o apaga.
+ *
+ * Um clique errado no domingo de manhã não pode ser definitivo: da
+ * lixeira volta, do `unlink` não volta.
+ */
+async function excluir(kind, nome) {
+  const alvo = dentroDaPasta(kind, nome);
+  if (!alvo) return { ok: false, error: "Arquivo fora da pasta de mídia." };
+  try {
+    await shell.trashItem(alvo);
+    return { ok: true };
+  } catch {
+    // Sem lixeira (pasta de rede, por exemplo) não se apaga escondido: o
+    // operador precisa saber que o arquivo continua lá.
+    return { ok: false, error: "Não consegui mandar para a lixeira. O arquivo continua na pasta." };
+  }
+}
+
 module.exports = {
   init,
+  renomear,
+  duplicar,
+  excluir,
   ensure,
   folders,
   list,

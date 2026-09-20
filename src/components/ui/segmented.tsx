@@ -14,6 +14,15 @@ export interface SegmentedItem<T extends string> {
    * caçar — a Bíblia, quando o pregador pede um versículo na hora.
    */
   destaque?: boolean;
+  /**
+   * Aba que existe mas não abre agora.
+   *
+   * Continua na fileira, apagada, em vez de sumir: uma aba que some leva
+   * junto a explicação de por que ela sumiu.
+   */
+  disabled?: boolean;
+  /** O porquê, para o cursor parado em cima contar. */
+  title?: string;
 }
 
 /**
@@ -70,8 +79,15 @@ export function Segmented<T extends string>({
     if (!dir) return;
     e.preventDefault();
     const i = items.findIndex((it) => it.value === value);
-    const next = items[(i + dir + items.length) % items.length];
-    if (next) onChange(next.value);
+    // Pula as desabilitadas: a seta que para numa aba que não abre deixa o
+    // teclado preso ali.
+    for (let passo = 1; passo <= items.length; passo += 1) {
+      const next = items[(i + dir * passo + items.length * passo) % items.length];
+      if (next && !next.disabled) {
+        onChange(next.value);
+        return;
+      }
+    }
   };
 
   return (
@@ -108,6 +124,8 @@ export function Segmented<T extends string>({
             aria-selected={on}
             tabIndex={on ? 0 : -1}
             data-on={on}
+            disabled={item.disabled}
+            title={item.title}
             onClick={() => onChange(item.value)}
             className={cn(
               "relative z-10 inline-flex h-7 min-w-0 items-center justify-center gap-1.5 rounded-sm",
@@ -121,6 +139,7 @@ export function Segmented<T extends string>({
                 : item.destaque
                   ? "text-accent hover:text-accent"
                   : "text-muted hover:text-fg",
+              item.disabled && "cursor-default opacity-45 hover:text-muted",
               full && "flex-1",
             )}
           >

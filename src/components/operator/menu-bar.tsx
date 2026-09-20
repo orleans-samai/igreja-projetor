@@ -56,6 +56,7 @@ export function MenuBar({
   onPermissoes,
   onIa,
   onArtes,
+  onVfx,
   onOptimize,
 }: {
   onNewSong: () => void;
@@ -72,6 +73,7 @@ export function MenuBar({
   onPermissoes: () => void;
   onIa: () => void;
   onArtes: () => void;
+  onVfx: () => void;
   onOptimize: () => void;
 }) {
   const church = useLumenStore((s) => s.settings.churchName);
@@ -539,6 +541,12 @@ export function MenuBar({
                 YouTube
               </span>
             </MenuItem>
+            <MenuItem onSelect={onVfx}>
+              <span className="flex items-center gap-2">
+                <span className="size-3.5 shrink-0" aria-hidden />
+                VFX
+              </span>
+            </MenuItem>
           </MenuContent>
         </Menu>
       </nav>
@@ -570,6 +578,7 @@ export function MenuBar({
             <MenuItem onSelect={onPermissoes}>Permissões do celular</MenuItem>
             <MenuItem onSelect={onIa}>Assistente Lúmen</MenuItem>
             <MenuItem onSelect={onArtes}>Artes</MenuItem>
+            <MenuItem onSelect={onVfx}>VFX</MenuItem>
           </Section>
         </MenuContent>
       </Menu>

@@ -1,5 +1,5 @@
 import { _electron as electron } from "playwright";
-import { mkdtemp, readFile, mkdir } from "node:fs/promises";
+import { mkdtemp, readFile, mkdir, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import assert from "node:assert/strict";
@@ -256,6 +256,116 @@ try {
   await page.keyboard.press("Escape");
   await dialogoArtes.waitFor({ state: "hidden", timeout: 10000 });
 
+  // ---- VFX: os três modos, e o vídeo dinâmico virando arquivo ----
+  // O que se prova aqui é a promessa inteira da área: a composição se monta
+  // com efeito ao vivo, mas o que vai para o culto é um arquivo pronto, que
+  // não gasta processador desenhando nada no domingo.
+  // Numa largura de cabine: a coluna da direita só existe no layout de
+  // colunas, e abaixo de 1280px a cabine vira abas — sem fixar o tamanho o
+  // teste procuraria uma aba que, com razão, não está na tela.
+  const cdpVfx = await page.context().newCDPSession(page);
+  await cdpVfx.send("Emulation.setDeviceMetricsOverride", {
+    width: 1600,
+    height: 950,
+    deviceScaleFactor: 1,
+    mobile: false,
+  });
+  await page.waitForTimeout(500);
+
+  const abrirVfx = async () => {
+    await page.getByRole("button", { name: "Mais", exact: true }).click();
+    await page.getByRole("menuitem", { name: "VFX" }).click();
+    await page.getByRole("dialog", { name: "VFX" }).waitFor({ timeout: 10000 });
+  };
+  await abrirVfx();
+  const dialogoVfx = page.getByRole("dialog", { name: "VFX" });
+  for (const nome of ["Ativado", "Desativado", "Automático"]) {
+    await dialogoVfx.getByRole("button", { name: new RegExp(`^${nome}`) }).waitFor({ timeout: 5000 });
+  }
+  await dialogoVfx.getByRole("button", { name: /^Desativado/ }).click();
+  await page.keyboard.press("Escape");
+  await dialogoVfx.waitFor({ state: "hidden", timeout: 10000 });
+
+  // Desativado: a aba fica apagada e explica, em vez de sumir.
+  const abaDinamicos = page.getByRole("tab", { name: "Dinâmicos" });
+  await abaDinamicos.waitFor({ timeout: 10000 });
+  assert.equal(
+    await abaDinamicos.isDisabled(),
+    true,
+    "com o VFX desativado a aba de vídeos dinâmicos devia ficar apagada",
+  );
+
+  await abrirVfx();
+  await dialogoVfx.getByRole("button", { name: /^Ativado/ }).click();
+  await page.keyboard.press("Escape");
+  await dialogoVfx.waitFor({ state: "hidden", timeout: 10000 });
+  await page.waitForFunction(
+    () => {
+      const t = [...document.querySelectorAll('[role="tab"]')].find((b) =>
+        b.textContent.includes("Dinâmicos"),
+      );
+      return t && !t.disabled;
+    },
+    null,
+    { timeout: 10000 },
+  );
+
+  // Uma composição a partir de um modelo pronto, e um controle mexido.
+  await abaDinamicos.click();
+  await page.getByRole("button", { name: "Nova composição" }).click();
+  await page.getByRole("button", { name: /Culto da bênção/ }).click();
+  const editorVfx = page.getByRole("dialog", { name: "Vídeos dinâmicos" });
+  await editorVfx.waitFor({ timeout: 10000 });
+  await editorVfx.getByLabel("Nome da composição").fill("Fundo do ensaio");
+  await editorVfx.getByLabel("Intensidade").fill("85");
+
+  // Salvar como vídeo: o menor dos vídeos, porque a captura é em tempo real
+  // e o teste não vai ficar dois minutos olhando uma barra.
+  await editorVfx.getByRole("button", { name: "Salvar como vídeo" }).click();
+  const salvarVideo = page.getByRole("dialog", { name: "Salvar como vídeo" });
+  await salvarVideo.waitFor({ timeout: 10000 });
+  await salvarVideo.getByLabel("Nome do vídeo").fill("Fundo do ensaio");
+  await salvarVideo.getByRole("button", { name: "854 × 480 (leve)" }).click();
+  await salvarVideo.locator('input[type="range"]').fill("3");
+  await salvarVideo.getByRole("button", { name: "Renderizar e salvar" }).click();
+  await salvarVideo.waitFor({ state: "detached", timeout: 90000 });
+  await page.keyboard.press("Escape");
+  await editorVfx.waitFor({ state: "hidden", timeout: 10000 });
+
+  // O arquivo existe na pasta de vídeo da igreja, não só na tela.
+  const naPasta = await page.evaluate(() => window.lumenDesktop.mediaList("video"));
+  assert.ok(
+    (naPasta.items ?? []).some((v) => v.title === "Fundo do ensaio" && v.size > 0),
+    "o vídeo renderizado não chegou à pasta de vídeo",
+  );
+
+  // E aparece na aba Vídeos, que é onde o operador vai procurar.
+  await page.getByRole("tab", { name: "Vídeos", exact: true }).click();
+  await page.waitForFunction(
+    () => document.body.textContent.includes("Fundo do ensaio"),
+    null,
+    { timeout: 15000 },
+  );
+
+  // O projeto não foi consumido: continua editável, agora com um vídeo no
+  // currículo.
+  await abaDinamicos.click();
+  await page.waitForFunction(
+    () => document.body.textContent.includes("1 vídeo gerado"),
+    null,
+    { timeout: 10000 },
+  );
+
+  // Automático fica guardado, e a aba continua de pé.
+  await abrirVfx();
+  await dialogoVfx.getByRole("button", { name: /^Automático/ }).click();
+  await page.keyboard.press("Escape");
+  await dialogoVfx.waitFor({ state: "hidden", timeout: 10000 });
+  assert.equal(await abaDinamicos.isDisabled(), false, "no automático a aba continua aberta");
+  await page.getByRole("tab", { name: "Temas" }).click();
+  await cdpVfx.send("Emulation.clearDeviceMetricsOverride");
+  await page.waitForTimeout(400);
+
   // ---- O assistente existe, nasce desligado, e não é pré-requisito de nada ----
   const iaInicial = await page.evaluate(() => window.lumenDesktop.iaEstado());
   assert.equal(iaInicial.modo, "desativado", "a IA devia nascer desativada num PC de igreja");
@@ -431,6 +541,60 @@ try {
     { timeout: 10000 },
   );
 
+  // ---- A grade de slides: tocar numa estrofe põe ela no telão ----
+  // É o caminho inteiro num teste só: a cabine manda os slides prontos, a
+  // página desenha a grade, o dedo escolhe a quarta estrofe e o telão anda
+  // para ela — não para o começo da música.
+  await celular.click("#abaLetras");
+  await celular.waitForSelector("#musicas li button", { timeout: 10000 });
+  await celular.locator("#musicas li button").first().click();
+  await celular.waitForSelector("#letrasSlides:not([hidden])", { timeout: 10000 });
+
+  const grade = await celular.evaluate(() => ({
+    titulo: document.querySelector("#slidesTitulo").textContent,
+    quantos: document.querySelector("#slidesQuantos").textContent,
+    miniaturas: document.querySelectorAll("#gradeSlides li").length,
+    // A primeira estrofe tem que trazer texto: grade de quadrados vazios
+    // não serve para escolher slide nenhum.
+    primeira: document.querySelector("#gradeSlides .texto").textContent.trim(),
+    // E o fundo do tema tem que ter chegado, senão a miniatura mente sobre
+    // o que a igreja vai ver.
+    fundo: document.querySelector("#gradeSlides .mini").style.backgroundImage,
+  }));
+  assert.ok(grade.miniaturas >= 3, `a grade veio com ${grade.miniaturas} slides`);
+  assert.equal(grade.quantos, `${grade.miniaturas} slides`);
+  assert.ok(grade.primeira.length > 0, "a miniatura veio sem a letra do slide");
+  assert.match(grade.fundo, /^url\("data:image\/jpeg/, "a miniatura veio sem o fundo do tema");
+
+  await celular.locator("#gradeSlides li button").nth(2).click();
+  await page.waitForFunction(
+    (titulo) => {
+      const f = JSON.parse(localStorage.getItem("lumen-live-frame") ?? "null");
+      return f?.deck?.title === titulo && f?.index === 2;
+    },
+    grade.titulo,
+    { timeout: 10000 },
+  );
+
+  // E a grade acende a estrofe que está no ar, para quem segura o aparelho
+  // saber onde o culto está sem olhar para a parede.
+  await celular.waitForFunction(
+    () => document.querySelectorAll("#gradeSlides [aria-current='true']").length === 1,
+    null,
+    { timeout: 10000 },
+  );
+  const aceso = await celular.evaluate(() =>
+    [...document.querySelectorAll("#gradeSlides li button")].findIndex((b) =>
+      b.hasAttribute("aria-current"),
+    ),
+  );
+  assert.equal(aceso, 2, "a grade acendeu o slide errado");
+
+  // Voltar tem que devolver a lista de músicas, não deixar as duas telas.
+  await celular.click("#slidesVoltar");
+  await celular.waitForSelector("#letrasLista:not([hidden])", { timeout: 10000 });
+  assert.equal(await celular.locator("#letrasSlides").isHidden(), true);
+
   await celular.close();
 
   // ---- A página do dirigente: existe, tem a cara da igreja, e é fechada ----
@@ -448,6 +612,113 @@ try {
     body: JSON.stringify({ senha: "seja o que for" }),
   });
   assert.equal(dirigenteFechado.status, 403);
+
+  // ---- A página do dirigente de verdade: entrar, abas, arquivo, chat, aviso ----
+  // A mesma página que o dirigente abre no navegador, carregada numa janela
+  // do Electron. Aqui se prova o caminho inteiro, não só as rotas: o campo,
+  // o clique, a barra de envio, o recado chegando na cabine.
+  await page.evaluate(() =>
+    window.lumenDesktop.remoteControlSetDirigentePassword("cordeiro-de-deus"),
+  );
+  const janelaDirigente = app.waitForEvent("window");
+  await app.evaluate(({ BrowserWindow }, url) => {
+    const w = new BrowserWindow({ width: 1100, height: 860, show: true });
+    void w.loadURL(url);
+  }, `${remoteBase}/dirigente`);
+  const dirigente = await janelaDirigente;
+  await dirigente.waitForLoadState("domcontentloaded");
+  dirigente.on("dialog", (d) => {
+    void d.dismiss().catch(() => {});
+  });
+
+  // O olho da senha: quem digita no escuro precisa poder conferir.
+  await dirigente.fill("#senha", "cordeiro-de-deus");
+  assert.equal(await dirigente.locator("#senha").getAttribute("type"), "password");
+  await dirigente.click("#verSenha");
+  assert.equal(await dirigente.locator("#senha").getAttribute("type"), "text");
+  await dirigente.click("#verSenha");
+
+  // Sem usuário não entra: é o nome que a cabine mostra em cada arquivo.
+  await dirigente.click("#entrar");
+  await dirigente.waitForFunction(
+    () => document.querySelector("#erro").textContent.includes("usuário"),
+    null,
+    { timeout: 10000 },
+  );
+
+  await dirigente.fill("#usuario", "Pastor Elias");
+  await dirigente.click("#entrar");
+  await dirigente.waitForSelector("#envio:not([hidden])", { timeout: 15000 });
+  assert.equal(await dirigente.locator("#topo").isVisible(), true);
+  assert.equal(await dirigente.locator("#quemTopo").textContent(), "Pastor Elias");
+  // A senha não fica no campo depois de entrar.
+  assert.equal(await dirigente.locator("#senha").inputValue(), "");
+
+  // As abas trocam o que a folha pede, e o seletor de arquivo junto.
+  await dirigente.click('[data-aba="imagem"]');
+  await dirigente.waitForFunction(
+    () => document.querySelector("#tituloFolha").textContent === "Enviar imagens",
+    null,
+    { timeout: 10000 },
+  );
+  assert.equal(await dirigente.locator("#arquivo").getAttribute("accept"), "image/*");
+  await dirigente.click('[data-aba="apresentacao"]');
+
+  // Um arquivo de verdade, pelo mesmo caminho do dirigente no domingo.
+  const doDirigente = path.join(evidence, "fundo-do-dirigente.png");
+  await writeFile(doDirigente, Buffer.alloc(2048, 7));
+  await dirigente.setInputFiles("#arquivo", doDirigente);
+  await dirigente.waitForFunction(
+    () => document.querySelectorAll("#fila li").length === 1,
+    null,
+    { timeout: 10000 },
+  );
+  await dirigente.click("#enviar");
+  await dirigente.waitForFunction(
+    () => /No culto|Guardado/.test(document.querySelector("#fila .estado").textContent),
+    null,
+    { timeout: 20000 },
+  );
+  // E a cabine diz de quem veio, que é para isso que o usuário serve.
+  await page.waitForFunction(
+    () => document.body.textContent.includes("de Pastor Elias"),
+    null,
+    { timeout: 10000 },
+  );
+
+  // O chat: o dirigente escreve, e o recado chega ao mural da cabine.
+  await dirigente.click('[data-aba="chat"]');
+  await dirigente.waitForSelector("#painelChat:not([hidden])", { timeout: 10000 });
+  await dirigente.fill("#textoChat", "Chegamos com o pen drive");
+  await dirigente.click("#mandarChat");
+  await page.waitForFunction(
+    () => document.body.textContent.includes("Chegamos com o pen drive"),
+    null,
+    { timeout: 10000 },
+  );
+  // E volta para a própria página pelo fluxo, sem recarregar nada.
+  await dirigente.waitForFunction(
+    () => document.querySelector("#listaChat").textContent.includes("Chegamos com o pen drive"),
+    null,
+    { timeout: 10000 },
+  );
+
+  // O aviso escrito vira texto na biblioteca da cabine, não item do culto.
+  await dirigente.click('[data-aba="texto"]');
+  await dirigente.waitForSelector("#painelTexto:not([hidden])", { timeout: 10000 });
+  await dirigente.fill("#avisoTitulo", "Santa Ceia no domingo");
+  await dirigente.fill("#avisoTexto", "Traga a família às dezenove horas");
+  await dirigente.click("#enviarAviso");
+  await page.waitForFunction(
+    async () => {
+      const cru = await window.lumenDesktop.storageGet("lumen-v2");
+      return JSON.stringify(cru ?? "").includes("Santa Ceia no domingo");
+    },
+    null,
+    { timeout: 15000 },
+  );
+
+  await dirigente.close();
 
   // ---- A cabine não rola, nem para o lado nem para baixo ----
   // Controle que saiu da tela é controle que não existe: no meio do culto
@@ -758,7 +1029,7 @@ try {
   assert.deepEqual(errors, []);
   const disk = JSON.parse(await readFile(path.join(profile, "data", "library.json"), "utf8"));
   assert.ok(disk.values["lumen-v2"]);
-  console.log(`PASS: offline, fonts, Bible, restart persistence, projector, media ranges, preflight, Auto-Slide, remote control (LAN, entrada por nome, nome fixo na rede), update check, review before apply, 1366×768 at 100/125/150% and 800×600, no scroll at seven sizes from 800×600 to 2560×1440 and the chat stays on screen, church logo and name reachable from the menu bar, art studio makes a design from a form, local AI off by default and the cabine independent of it, dirigente upload page, video as a theme background, find a song by a lyric excerpt, right-click on lyrics edits or removes, double-click to project, fixed text only in the footer, YouTube collapses the lyrics strip, phone has one play/pause button and the screen volume, sees the media folder, projects from it and searches lyrics through the cabine. Evidence: ${evidence}`);
+  console.log(`PASS: offline, fonts, Bible, restart persistence, projector, media ranges, preflight, Auto-Slide, remote control (LAN, entrada por nome, nome fixo na rede), update check, review before apply, 1366×768 at 100/125/150% and 800×600, no scroll at seven sizes from 800×600 to 2560×1440 and the chat stays on screen, church logo and name reachable from the menu bar, art studio makes a design from a form, VFX has three modes and a dynamic video becomes a real file in the Vídeos tab, local AI off by default and the cabine independent of it, dirigente page signs in, sends a file, chats and files a notice, video as a theme background, find a song by a lyric excerpt, right-click on lyrics edits or removes, double-click to project, fixed text only in the footer, YouTube collapses the lyrics strip, phone has one play/pause button and the screen volume, sees the media folder, projects from it, opens a song as a grid of slides and puts one on the screen, and searches lyrics through the cabine. Evidence: ${evidence}`);
 } finally {
   if (app) await app.close();
   console.log(`Isolated test profile: ${profile}`);

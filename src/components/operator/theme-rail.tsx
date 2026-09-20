@@ -1,21 +1,95 @@
 import { useState } from "react";
 import { Empty } from "@/components/ui/panel";
 import { Segmented } from "@/components/ui/segmented";
+import { PainelDinamicos } from "@/features/vfx/componentes/painel-dinamicos";
+import { PainelVideos } from "@/features/vfx/componentes/painel-videos";
+import { useVfxStore } from "@/features/vfx/store";
 import { themeSwatch } from "@/lib/theme-swatch";
 import { cn } from "@/lib/cn";
 import type { Theme } from "@/lib/types";
 import { useLumenStore } from "@/store/lumen-store";
 
 /**
- * Coluna da direita: só temas.
+ * Coluna da direita: temas, vídeos prontos e vídeos dinâmicos.
  *
- * Já foi "Anotações", com quatro coisas sem relação dentro. Depois virou a
- * letra em cima e uma tira de temas espremida embaixo, em 52px de altura —
- * trinta e sete fundos disputando duas fileiras. A letra agora mora na grade
- * da faixa de baixo, inteira e do tamanho que o operador quiser, então a
- * coluna faz uma coisa só e faz por completo: os temas ocupam a altura toda.
+ * Já foi "Anotações", com quatro coisas sem relação dentro. Depois foi só
+ * temas, e a coluna fazia uma coisa bem feita. Agora são três abas, e a
+ * razão é que as três respondem à mesma pergunta na hora do culto: o que
+ * vai atrás da letra?
+ *
+ * "Vídeos" e "Vídeos dinâmicos" ficam lado a lado porque são o antes e o
+ * depois da mesma coisa — a composição se monta na segunda e se projeta da
+ * primeira. "Temas" continua onde estava, com o mesmo filtro de sempre:
+ * trinta e sete fundos da casa não iam sumir por causa de uma aba nova.
  */
+
+type Aba = "temas" | "videos" | "dinamicos";
+
 export function ThemeRail() {
+  const themes = useLumenStore((s) => s.themes);
+  const [aba, setAba] = useState<Aba>("temas");
+  const vfxLigado = useVfxStore((s) => s.modo) !== "desligado";
+  // Mudar de aba para recarregar a pasta: quando um vídeo acaba de ser
+  // renderizado, ele tem que aparecer sem o operador procurar como atualizar.
+  const [recarga, setRecarga] = useState(0);
+
+  return (
+    <aside className="flex h-full min-h-0 flex-col bg-surface">
+      <div className="panel-head">
+        <h2>
+          {aba === "temas" ? "Temas" : aba === "videos" ? "Vídeos" : "Vídeos dinâmicos"}{" "}
+          {aba === "temas" && <span className="tnum text-subtle">{themes.length}</span>}
+        </h2>
+      </div>
+
+      <div className="border-b border-border p-2">
+        <Segmented
+          label="O que mostrar na coluna"
+          full
+          value={aba}
+          onChange={(v) => {
+            if (v === "dinamicos" && !vfxLigado) return;
+            setAba(v);
+          }}
+          // Sem ícone e com "Dinâmicos" no lugar de "Vídeos dinâmicos": a
+          // coluna tem uns duzentos pixels, e com o nome inteiro as duas
+          // abas de vídeo apareciam as duas como "Víde…" — indistinguíveis
+          // justamente uma da outra. O nome completo vive no cabeçalho do
+          // painel e no cursor parado em cima.
+          items={[
+            { value: "temas", label: "Temas", title: "Temas da casa" },
+            { value: "videos", label: "Vídeos", title: "Vídeos prontos para projetar" },
+            {
+              value: "dinamicos",
+              label: "Dinâmicos",
+              disabled: !vfxLigado,
+              title: vfxLigado
+                ? "Vídeos dinâmicos: o editor de VFX"
+                : "Os vídeos dinâmicos estão desativados para melhorar o desempenho.",
+            },
+          ]}
+        />
+      </div>
+
+      <div className="lumen-scroll min-h-0 flex-1 overflow-y-auto p-2">
+        {aba === "temas" && <Temas />}
+        {aba === "videos" && <PainelVideos recarregarEm={recarga} />}
+        {aba === "dinamicos" &&
+          (vfxLigado ? (
+            <PainelDinamicos aoSalvarVideo={() => setRecarga((n) => n + 1)} />
+          ) : (
+            <Empty
+              title="Os vídeos dinâmicos estão desativados para melhorar o desempenho."
+              hint="Ative em Mais → VFX."
+            />
+          ))}
+      </div>
+    </aside>
+  );
+}
+
+/** Os temas da casa, com o filtro que sempre existiu. */
+function Temas() {
   const themes = useLumenStore((s) => s.themes);
   const songThemeId = useLumenStore((s) => s.songThemeId);
   const bibleThemeId = useLumenStore((s) => s.bibleThemeId);
@@ -30,46 +104,35 @@ export function ThemeRail() {
       : themes;
 
   return (
-    <aside className="flex h-full min-h-0 flex-col bg-surface">
-      <div className="panel-head">
-        <h2>
-          Temas <span className="tnum text-subtle">{shown.length}</span>
-        </h2>
-      </div>
-
-      <div className="border-b border-border p-2">
-        <Segmented
-          label="Filtrar temas"
-          full
-          value={scope}
-          onChange={setScope}
-          items={[
-            { value: "todos", label: "Todos" },
-            { value: "tipo", label: kind === "bible" ? "Bíblia" : "Louvor" },
-          ]}
+    <div className="grid gap-2">
+      <Segmented
+        label="Filtrar temas"
+        full
+        value={scope}
+        onChange={setScope}
+        items={[
+          { value: "todos", label: "Todos" },
+          { value: "tipo", label: kind === "bible" ? "Bíblia" : "Louvor" },
+        ]}
+      />
+      {shown.length === 0 ? (
+        <Empty
+          title="Nenhum tema para este tipo."
+          hint="Volte para Todos, ou crie um tema em Tela → Temas."
         />
-      </div>
-
-      <div className="lumen-scroll min-h-0 flex-1 overflow-y-auto p-2">
-        {shown.length === 0 ? (
-          <Empty
-            title="Nenhum tema para este tipo."
-            hint="Volte para Todos, ou crie um tema em Tela → Temas."
-          />
-        ) : (
-          <div className="grid grid-cols-2 gap-1.5">
-            {shown.map((theme) => (
-              <ThemeThumb
-                key={theme.id}
-                theme={theme}
-                active={theme.id === songThemeId || theme.id === bibleThemeId}
-                onClick={() => applyThemeLive(theme.id)}
-              />
-            ))}
-          </div>
-        )}
-      </div>
-    </aside>
+      ) : (
+        <div className="grid grid-cols-2 gap-1.5">
+          {shown.map((theme) => (
+            <ThemeThumb
+              key={theme.id}
+              theme={theme}
+              active={theme.id === songThemeId || theme.id === bibleThemeId}
+              onClick={() => applyThemeLive(theme.id)}
+            />
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 

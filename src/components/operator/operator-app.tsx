@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ChatAviso, ChatPanel } from "@/components/operator/chat-panel";
 import { LogoDialog } from "@/components/operator/logo-dialog";
 import { ArtesDialog } from "@/features/artes/componentes/artes-dialog";
+import { VfxDialog } from "@/features/vfx/componentes/vfx-dialog";
 import { IaDialog } from "@/components/operator/ia-dialog";
 import { PermissoesDialog } from "@/components/operator/permissoes-dialog";
 import { ControlBar } from "@/components/operator/control-bar";
@@ -79,6 +80,7 @@ export function OperatorApp() {
   const [logoAberto, setLogoAberto] = useState(false);
   const [permissoesAberto, setPermissoesAberto] = useState(false);
   const [artesAberto, setArtesAberto] = useState(false);
+  const [vfxAberto, setVfxAberto] = useState(false);
   const [mobileTab, setMobileTab] = useState<"lib" | "preview" | "culto">("preview");
   const liveMode = useOpsStore((s) => s.liveMode);
   const chatPosicao = useChatStore((s) => s.posicao);
@@ -397,6 +399,7 @@ export function OperatorApp() {
           onPermissoes={() => setPermissoesAberto(true)}
           onIa={() => useIaStore.getState().abrir(true)}
           onArtes={() => setArtesAberto(true)}
+          onVfx={() => setVfxAberto(true)}
           onOptimize={() => void runOptimize()}
         />
         <WindowsRuntime />
@@ -512,6 +515,7 @@ export function OperatorApp() {
       <PermissoesDialog open={permissoesAberto} onOpenChange={setPermissoesAberto} />
       <IaDialog onConfiguracoes={() => setSettings(true)} />
       <ArtesDialog open={artesAberto} onOpenChange={setArtesAberto} />
+      <VfxDialog open={vfxAberto} onOpenChange={setVfxAberto} />
       <DisplayDialog open={display} onOpenChange={setDisplay} />
       <CountdownDialog open={countdown} onOpenChange={setCountdown} />
       <LyricsSearchDialog
