@@ -1,0 +1,427 @@
+import { feitioDe, margemSegura, type Feitio } from "./formatos.ts";
+import { consertar, linhasEstimadas, textoLegivelSobre } from "./validacao.ts";
+import {
+  VERSAO_DOCUMENTO,
+  type Alinhamento,
+  type CampoDeTexto,
+  type DadosDoEvento,
+  type Documento,
+  type Elemento,
+  type ElementoTexto,
+} from "./types.ts";
+
+/**
+ * Centenas de artes a partir de poucas peças.
+ *
+ * Fazer cinquenta templates à mão daria cinquenta artes e um arquivo enorme
+ * para manter. Aqui existem seis ingredientes independentes — disposição,
+ * paleta, par tipográfico, fundo, enfeite e densidade — e a variação é a
+ * combinação deles. Seis listas curtas dão mais resultado do que cinquenta
+ * arquivos, e cada ingredinte novo multiplica em vez de somar.
+ *
+ * A semente é o que torna isso utilizável: a mesma semente dá exatamente a
+ * mesma arte, hoje e no ano que vem. Sem isso, "gerar mais opções" perderia
+ * a que a pessoa tinha gostado.
+ *
+ * E nenhuma combinação sai ilegível. As paletas carregam a própria cor de
+ * texto, e no fim tudo passa pelo conserto automático — que encolhe o que
+ * não cabe e troca o que não lê. O teste percorre todas as sementes em todos
+ * os formatos e exige zero erros.
+ */
+
+/** Gerador determinístico: mesma semente, mesma sequência, sempre. */
+export function sorteio(semente: number): () => number {
+  let a = (Math.floor(semente) || 1) >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function escolher<T>(lista: readonly T[], r: () => number): T {
+  return lista[Math.floor(r() * lista.length) % lista.length];
+}
+
+// ─────────────────────────────────────────────── ingredientes
+
+export interface Paleta {
+  id: string;
+  nome: string;
+  /** Uma ou duas cores de fundo; duas viram gradiente. */
+  fundo: string[];
+  texto: string;
+  /** Para o tema, a data, o que precisa saltar. */
+  destaque: string;
+  /** Cor da faixa ou do cartão, quando a disposição usa. */
+  painel: string;
+}
+
+export const PALETAS: readonly Paleta[] = [
+  { id: "noite", nome: "Noite", fundo: ["#0d1017", "#1b2432"], texto: "#f2f4f8", destaque: "#eba63f", painel: "#161c26" },
+  { id: "brasa", nome: "Brasa", fundo: ["#2a0f0c", "#5c1f14"], texto: "#fdf2e9", destaque: "#f0a04b", painel: "#3a1610" },
+  { id: "oliveira", nome: "Oliveira", fundo: ["#101a14", "#1f3327"], texto: "#eef5ef", destaque: "#9dc08b", painel: "#17251c" },
+  { id: "indigo", nome: "Índigo", fundo: ["#0b1030", "#1d2a63"], texto: "#eef1ff", destaque: "#8fb8ff", painel: "#121a45" },
+  { id: "papel", nome: "Papel", fundo: ["#f5f1e8", "#e7e0d1"], texto: "#1f1b16", destaque: "#9a6b3f", painel: "#efe9dc" },
+  { id: "alva", nome: "Alva", fundo: ["#ffffff", "#eef1f5"], texto: "#12161c", destaque: "#2f6fa8", painel: "#f6f8fa" },
+  { id: "vinho", nome: "Vinho", fundo: ["#1d0a14", "#43142a"], texto: "#fbeef4", destaque: "#d98cae", painel: "#290e1c" },
+  { id: "areia", nome: "Areia", fundo: ["#f3e7d3", "#e2cfae"], texto: "#2a2015", destaque: "#8a5a2b", painel: "#eaddc3" },
+  { id: "tinta", nome: "Tinta", fundo: ["#111111", "#242424"], texto: "#fafafa", destaque: "#c9a227", painel: "#1a1a1a" },
+  { id: "mar", nome: "Maré", fundo: ["#07222b", "#0f3b49"], texto: "#eafaff", destaque: "#5fd0d8", painel: "#0b2e3a" },
+] as const;
+
+export interface Tipografia {
+  id: string;
+  /** A do título: pesada, para ser vista de longe. */
+  titulo: string;
+  /** A do resto: legível em corpo pequeno. */
+  corpo: string;
+  pesoTitulo: number;
+  /** Espaçamento entre letras do título, em fração do corpo. */
+  espacamento: number;
+  maiuscula: boolean;
+}
+
+export const TIPOGRAFIAS: readonly Tipografia[] = [
+  { id: "classica", titulo: "display", corpo: "sans", pesoTitulo: 700, espacamento: 0, maiuscula: false },
+  { id: "monumental", titulo: "display", corpo: "sans", pesoTitulo: 800, espacamento: 0.02, maiuscula: true },
+  { id: "limpa", titulo: "sans", corpo: "sans", pesoTitulo: 700, espacamento: -0.01, maiuscula: false },
+  { id: "editorial", titulo: "display", corpo: "sans", pesoTitulo: 600, espacamento: 0.01, maiuscula: false },
+  { id: "cartaz", titulo: "sans", corpo: "sans", pesoTitulo: 900, espacamento: 0.04, maiuscula: true },
+] as const;
+
+export type Disposicao = "centro" | "alto" | "baixo" | "faixa" | "lateral";
+export const DISPOSICOES: readonly Disposicao[] = ["centro", "alto", "baixo", "faixa", "lateral"];
+
+export type EstiloDeFundo = "solido" | "gradiente" | "radial";
+export const FUNDOS: readonly EstiloDeFundo[] = ["solido", "gradiente", "radial"];
+
+export type Enfeite = "nenhum" | "linha" | "cantos" | "circulo" | "barra";
+export const ENFEITES: readonly Enfeite[] = ["nenhum", "linha", "cantos", "circulo", "barra"];
+
+/** Quanto texto secundário a arte mostra. */
+export type Densidade = "enxuta" | "media" | "cheia";
+export const DENSIDADES: readonly Densidade[] = ["enxuta", "media", "cheia"];
+
+export interface Receita {
+  semente: number;
+  paleta: Paleta;
+  tipografia: Tipografia;
+  disposicao: Disposicao;
+  fundo: EstiloDeFundo;
+  enfeite: Enfeite;
+  densidade: Densidade;
+}
+
+/** Quantas combinações diferentes existem, de verdade. */
+export const COMBINACOES =
+  PALETAS.length * TIPOGRAFIAS.length * DISPOSICOES.length * FUNDOS.length * ENFEITES.length * DENSIDADES.length;
+
+export function receitaDe(semente: number): Receita {
+  const r = sorteio(semente);
+  return {
+    semente,
+    paleta: escolher(PALETAS, r),
+    tipografia: escolher(TIPOGRAFIAS, r),
+    disposicao: escolher(DISPOSICOES, r),
+    fundo: escolher(FUNDOS, r),
+    enfeite: escolher(ENFEITES, r),
+    densidade: escolher(DENSIDADES, r),
+  };
+}
+
+// ─────────────────────────────────────────────── montagem
+
+interface Linha {
+  campo: CampoDeTexto;
+  /** Peso visual: 3 é título, 1 é rodapé. */
+  nivel: 3 | 2 | 1;
+  destaque?: boolean;
+}
+
+/**
+ * O que entra na arte, e em que ordem.
+ *
+ * Campo vazio não vira caixa vazia — some da composição, e o que sobra se
+ * redistribui. É o que faz a mesma arte funcionar com três informações e
+ * com dez.
+ */
+function linhasDe(dados: DadosDoEvento, densidade: Densidade): Linha[] {
+  const tudo: Linha[] = [
+    { campo: "tema", nivel: 1, destaque: true },
+    { campo: "titulo", nivel: 3 },
+    { campo: "subtitulo", nivel: 2 },
+    { campo: "palavraBase", nivel: 2, destaque: true },
+    { campo: "referencia", nivel: 1, destaque: true },
+    { campo: "textoBiblico", nivel: 1 },
+    { campo: "pregador", nivel: 1 },
+    { campo: "ministerio", nivel: 1 },
+    { campo: "data", nivel: 2, destaque: true },
+    { campo: "horario", nivel: 2, destaque: true },
+    { campo: "local", nivel: 1 },
+    { campo: "endereco", nivel: 1 },
+    { campo: "chamada", nivel: 1 },
+    { campo: "informacoes", nivel: 1 },
+    { campo: "contato", nivel: 1 },
+    { campo: "redes", nivel: 1 },
+    { campo: "igreja", nivel: 1 },
+  ];
+  const teto = densidade === "enxuta" ? 4 : densidade === "media" ? 7 : 11;
+  const comConteudo = tudo.filter((l) => String(dados[l.campo] ?? "").trim());
+  // O título e o que tem mais peso ficam; o excesso sai do fim, que é onde
+  // mora a informação de apoio.
+  const principais = comConteudo.filter((l) => l.nivel === 3);
+  const resto = comConteudo.filter((l) => l.nivel !== 3);
+  return [...principais, ...resto.slice(0, Math.max(0, teto - principais.length))].sort(
+    (a, b) => comConteudo.indexOf(a) - comConteudo.indexOf(b),
+  );
+}
+
+/** Corpo de letra por nível, já ajustado ao feitio do quadro. */
+function corpoDe(nivel: 1 | 2 | 3, feitio: Feitio): number {
+  const base = nivel === 3 ? 0.082 : nivel === 2 ? 0.038 : 0.024;
+  // Em quadro deitado sobra largura e falta altura: a letra encolhe um
+  // pouco para caberem as mesmas linhas.
+  return feitio === "deitado" ? base * 0.82 : feitio === "empe" ? base * 1.05 : base;
+}
+
+function alinhamentoDe(d: Disposicao): Alinhamento {
+  return d === "lateral" ? "left" : "center";
+}
+
+function montarTextos(
+  linhas: Linha[],
+  dados: DadosDoEvento,
+  receita: Receita,
+  feitio: Feitio,
+): ElementoTexto[] {
+  const margem = margemSegura(feitio);
+  const util = 1 - 2 * margem;
+  const { paleta, tipografia, disposicao } = receita;
+  const alinhamento = alinhamentoDe(disposicao);
+
+  const larguraCaixa = disposicao === "lateral" ? util * 0.78 : util;
+  const proporcao = feitio === "deitado" ? 16 / 9 : feitio === "empe" ? 9 / 16 : 1;
+
+  /**
+   * A altura de cada bloco sai do texto, não do nível.
+   *
+   * Reservar altura fixa por nível funcionava até alguém escrever um
+   * versículo inteiro: a caixa tinha espaço para uma linha e o texto pedia
+   * três, e o remendo depois só encolhia a letra até ela ficar ilegível. A
+   * composição precisa saber quanto texto há.
+   */
+  const alturaDe = (l: Linha, escala: number) => {
+    const corpo = corpoDe(l.nivel, feitio) * escala;
+    const entrelinha = l.nivel === 3 ? 1.08 : 1.35;
+    const n = linhasEstimadas(String(dados[l.campo] ?? ""), larguraCaixa, corpo, proporcao);
+    const folga = l.nivel === 3 ? 0.55 : 0.35;
+    return corpo * entrelinha * Math.max(1, n) + corpo * folga;
+  };
+
+  // Se o conjunto não cabe, tudo encolhe junto — proporção preservada é o
+  // que mantém a hierarquia de pé. Duas voltas bastam: a primeira estima, a
+  // segunda confere depois de o texto reflowar no tamanho novo.
+  let escala = 1;
+  for (let volta = 0; volta < 3; volta += 1) {
+    const soma = linhas.reduce((a, l) => a + alturaDe(l, escala), 0);
+    if (soma <= util) break;
+    escala = Math.max(0.42, escala * (util / soma) * 0.98);
+  }
+
+  const alturas = linhas.map((l) => alturaDe(l, escala));
+  const total = alturas.reduce((a, b) => a + b, 0);
+  const respiro = Math.max(0, util - total);
+  const inicio =
+    disposicao === "alto"
+      ? margem
+      : disposicao === "baixo"
+        ? margem + respiro
+        : margem + respiro / 2;
+
+  const x = margem;
+
+  let y = inicio;
+  return linhas.map((l, i) => {
+    const tamanho = corpoDe(l.nivel, feitio) * escala;
+    const altura = alturas[i];
+    const el: ElementoTexto = {
+      tipo: "texto",
+      id: `txt-${l.campo}`,
+      campo: l.campo,
+      texto: String(dados[l.campo] ?? "").trim(),
+      caixa: { x, y, largura: larguraCaixa, altura },
+      tamanho,
+      peso: l.nivel === 3 ? tipografia.pesoTitulo : l.nivel === 2 ? 600 : 500,
+      cor: l.destaque ? paleta.destaque : paleta.texto,
+      alinhamento,
+      entrelinha: l.nivel === 3 ? 1.08 : 1.35,
+      espacamento: l.nivel === 3 ? tipografia.espacamento : l.nivel === 1 ? 0.06 : 0,
+      maiuscula: l.nivel === 3 ? tipografia.maiuscula : l.nivel === 1,
+      fonte: l.nivel === 3 ? tipografia.titulo : tipografia.corpo,
+      sombra: receita.fundo === "radial" ? false : false,
+    };
+    y += altura;
+    return el;
+  });
+}
+
+function montarEnfeite(receita: Receita, feitio: Feitio): Elemento[] {
+  const margem = margemSegura(feitio);
+  const { enfeite, paleta } = receita;
+  const cor = paleta.destaque;
+  switch (enfeite) {
+    case "linha":
+      return [
+        {
+          tipo: "forma",
+          id: "enf-linha",
+          forma: "retangulo",
+          caixa: { x: 0.5 - 0.06, y: margem * 0.62, largura: 0.12, altura: 0.005 },
+          cor,
+          opacidade: 1,
+          raio: 1,
+        },
+      ];
+    case "barra":
+      return [
+        {
+          tipo: "forma",
+          id: "enf-barra",
+          forma: "retangulo",
+          caixa: { x: 0, y: 0, largura: 0.018, altura: 1 },
+          cor,
+          opacidade: 1,
+          raio: 0,
+        },
+      ];
+    case "circulo":
+      return [
+        {
+          tipo: "forma",
+          id: "enf-circulo",
+          forma: "circulo",
+          caixa: { x: 0.62, y: -0.18, largura: 0.62, altura: 0.62 },
+          cor,
+          opacidade: 0.14,
+          raio: 1,
+        },
+      ];
+    case "cantos":
+      return [
+        {
+          tipo: "forma",
+          id: "enf-canto-a",
+          forma: "retangulo",
+          caixa: { x: margem * 0.5, y: margem * 0.5, largura: 0.09, altura: 0.004 },
+          cor,
+          opacidade: 1,
+          raio: 1,
+        },
+        {
+          tipo: "forma",
+          id: "enf-canto-b",
+          forma: "retangulo",
+          caixa: { x: 1 - margem * 0.5 - 0.09, y: 1 - margem * 0.5 - 0.004, largura: 0.09, altura: 0.004 },
+          cor,
+          opacidade: 1,
+          raio: 1,
+        },
+      ];
+    default:
+      return [];
+  }
+}
+
+/**
+ * Do formulário a um documento pronto para desenhar.
+ *
+ * O último passo é o conserto automático: encolhe o que não cabe e troca a
+ * cor do que não lê. Sem ele, uma combinação boa no papel sairia com o
+ * título cortado num formato e ilegível em outro.
+ */
+export function montar(opcoes: {
+  id: string;
+  nome: string;
+  dados: DadosDoEvento;
+  semente: number;
+  formatoId: string;
+  largura: number;
+  altura: number;
+  templateId?: string;
+}): Documento {
+  const { largura, altura } = opcoes;
+  const feitio = feitioDe(largura, altura);
+  const receita = receitaDe(opcoes.semente);
+  const { paleta, fundo } = receita;
+
+  const temFoto = Boolean(opcoes.dados.imagem);
+  const elementoFundo: Elemento = {
+    tipo: "fundo",
+    id: "fundo",
+    estilo: temFoto ? "foto" : fundo,
+    // Sobre foto, a cor de texto é sempre a clara, e o véu garante o resto.
+    cores: fundo === "solido" ? [paleta.fundo[0]] : paleta.fundo,
+    angulo: receita.disposicao === "lateral" ? 90 : 160,
+    src: temFoto ? opcoes.dados.imagem : undefined,
+    veu: temFoto ? 0.45 : 0,
+  };
+
+  const linhas = linhasDe(opcoes.dados, receita.densidade);
+  const textos = montarTextos(linhas, opcoes.dados, receita, feitio);
+  if (temFoto) {
+    for (const t of textos) {
+      t.cor = t.cor === paleta.destaque ? paleta.destaque : "#ffffff";
+      t.sombra = true;
+    }
+  }
+
+  const logo: Elemento[] = opcoes.dados.logo
+    ? [
+        {
+          tipo: "imagem",
+          id: "logo",
+          src: opcoes.dados.logo,
+          caixa: {
+            x: 0.5 - 0.09,
+            y: 1 - margemSegura(feitio) - 0.1,
+            largura: 0.18,
+            altura: 0.08,
+          },
+          ajuste: "contain",
+          opacidade: 1,
+          raio: 0,
+        },
+      ]
+    : [];
+
+  const doc: Documento = {
+    v: VERSAO_DOCUMENTO,
+    id: opcoes.id,
+    nome: opcoes.nome,
+    formatoId: opcoes.formatoId,
+    largura,
+    altura,
+    templateId: opcoes.templateId ?? receita.disposicao,
+    semente: opcoes.semente,
+    dados: opcoes.dados,
+    elementos: [elementoFundo, ...montarEnfeite(receita, feitio), ...textos, ...logo],
+    criadoEm: Date.now(),
+    atualizadoEm: Date.now(),
+  };
+
+  return consertar(doc);
+}
+
+/** Sementes para a grade de opções — sempre as mesmas, para a mesma base. */
+export function sementesPara(base: number, quantas: number): number[] {
+  const r = sorteio(base);
+  return Array.from({ length: quantas }, () => Math.floor(r() * 1_000_000) + 1);
+}
+
+/** A cor que lê melhor sobre o fundo desta receita — usada pela prévia. */
+export function corDeTextoDa(receita: Receita): string {
+  return textoLegivelSobre(receita.paleta.fundo[0]);
+}
