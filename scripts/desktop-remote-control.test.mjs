@@ -695,3 +695,45 @@ test("o volume do telão vem do celular, e só de quem controla", async () => {
     await derrubar(ctx);
   }
 });
+
+test("recado falado chega ao chat, e formato estranho não", async () => {
+  const ctx = await subir();
+  const vistos = [];
+  ctx.rc.onEvento = (e) => vistos.push(e);
+  try {
+    // Só chat basta: falar é a coisa mais básica que o aparelho faz aqui.
+    const token = await parear(ctx.base, "Ministério");
+    const ok = await fetch(ctx.base + "/voz", {
+      method: "POST",
+      body: JSON.stringify({
+        token,
+        audio: "data:audio/webm;codecs=opus;base64,AAAAAAAAAAAA",
+        segundos: 7,
+      }),
+    });
+    assert.equal(ok.status, 200);
+    const msg = vistos.find((e) => e.tipo === "chat")?.mensagem;
+    assert.ok(msg.audio.startsWith("data:audio/webm"));
+    assert.equal(msg.segundos, 7);
+    assert.equal(msg.de, "Ministério");
+    // Recado falado não precisa de texto escrito.
+    assert.equal(msg.texto, "");
+
+    // Uma imagem disfarçada de recado não entra no chat da cabine.
+    const imagem = await fetch(ctx.base + "/voz", {
+      method: "POST",
+      body: JSON.stringify({ token, audio: "data:image/png;base64,AAAA" }),
+    });
+    assert.equal(imagem.status, 400);
+
+    // Duração absurda é aparada, não aceita como veio.
+    await fetch(ctx.base + "/voz", {
+      method: "POST",
+      body: JSON.stringify({ token, audio: "data:audio/ogg;base64,AAAA", segundos: 99999 }),
+    });
+    const ultima = ctx.rc.chat[ctx.rc.chat.length - 1];
+    assert.equal(ultima.segundos, 120);
+  } finally {
+    await derrubar(ctx);
+  }
+});

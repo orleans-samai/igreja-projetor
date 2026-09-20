@@ -66,7 +66,21 @@ function Mensagem({ m }: { m: MensagemChat }) {
         <span className="truncate text-caption font-semibold text-fg">{m.de}</span>
         <span className="tnum shrink-0 text-caption text-subtle">{hora(m.em)}</span>
       </p>
-      <p className="whitespace-pre-wrap break-words text-secondary text-fg">{m.texto}</p>
+      {/* Recado falado: o player nativo basta, e é o que todo mundo já sabe
+          operar. `preload="none"` para o culto não carregar áudio nenhum até
+          alguém decidir ouvir. */}
+      {m.audio && (
+        <audio
+          controls
+          preload="none"
+          src={m.audio}
+          className="mt-1 w-full"
+          aria-label={`Recado falado de ${m.de}${m.segundos ? `, ${m.segundos} segundos` : ""}`}
+        />
+      )}
+      {m.texto && (
+        <p className="whitespace-pre-wrap break-words text-secondary text-fg">{m.texto}</p>
+      )}
     </li>
   );
 }

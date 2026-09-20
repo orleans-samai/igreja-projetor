@@ -276,6 +276,20 @@
       <div id="chatLista"></div>
       <form id="chatForm">
         <textarea id="chatTexto" class="campo" maxlength="500" placeholder="Mensagem para a cabine" rows="1"></textarea>
+        <!--
+          Recado falado pelo gravador do próprio celular.
+
+          Não é gravação dentro da página de propósito: `getUserMedia` só
+          funciona em contexto seguro, e este endereço é HTTP puro num IP da
+          rede da igreja — o navegador recusa o microfone e não há HTTPS aqui
+          sem um certificado que cada aparelho teria de aceitar na mão. O
+          campo de arquivo com `capture` abre o gravador que a pessoa já sabe
+          usar, e funciona em qualquer celular.
+        -->
+        <label class="botao" id="vozBotao" aria-label="Gravar recado falado">
+          🎤
+          <input id="vozArquivo" type="file" accept="audio/*" capture hidden>
+        </label>
         <button class="botao botao-principal" type="submit" id="chatEnviar">Enviar</button>
       </form>
     </section>
@@ -823,11 +837,21 @@
     var de = document.createElement("p");
     de.className = "de";
     de.textContent = m.de + " · " + hora(m.em);
-    var txt = document.createElement("p");
-    txt.className = "texto";
-    txt.textContent = m.texto;
     div.appendChild(de);
-    div.appendChild(txt);
+    if (m.audio) {
+      var som = document.createElement("audio");
+      som.controls = true;
+      som.preload = "none";
+      som.src = m.audio;
+      som.style.width = "100%";
+      div.appendChild(som);
+    }
+    if (m.texto) {
+      var txt = document.createElement("p");
+      txt.className = "texto";
+      txt.textContent = m.texto;
+      div.appendChild(txt);
+    }
     $("chatLista").appendChild(div);
     if (!silencioso) rolarChat();
   }
@@ -942,6 +966,38 @@
   $("edSalvar").addEventListener("click", salvarMusica);
   ["edTitulo", "edArtista", "edLetra"].forEach(function (id) {
     $(id).addEventListener("input", guardarRascunho);
+  });
+
+  /** 1,5 MB é o teto do servidor; avisar antes poupa uma ida à rede à toa. */
+  var MAX_VOZ = 1536 * 1024;
+
+  $("vozArquivo").addEventListener("change", function () {
+    var arquivo = $("vozArquivo").files && $("vozArquivo").files[0];
+    $("vozArquivo").value = "";
+    if (!arquivo) return;
+    if (arquivo.size > MAX_VOZ) {
+      conexao("off", "Recado longo demais. Grave um mais curto.");
+      return;
+    }
+    var leitor = new FileReader();
+    leitor.onload = function () {
+      var audio = String(leitor.result || "");
+      // A duração o navegador só sabe depois de carregar o áudio; sem ela o
+      // player da cabine mostra o recado do mesmo jeito.
+      var som = document.createElement("audio");
+      som.preload = "metadata";
+      var mandar = function () {
+        var s = Number.isFinite(som.duration) ? Math.round(som.duration) : 0;
+        pedir("/voz", { audio: audio, segundos: s }).catch(function (e) {
+          if (e.message !== "sessao") conexao("off", e.message);
+        });
+      };
+      som.onloadedmetadata = mandar;
+      som.onerror = mandar;
+      som.src = audio;
+    };
+    leitor.onerror = function () { conexao("off", "Não consegui ler o recado."); };
+    leitor.readAsDataURL(arquivo);
   });
 
   $("chatForm").addEventListener("submit", function (ev) {

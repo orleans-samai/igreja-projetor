@@ -45,6 +45,15 @@ export interface MensagemChat {
   texto: string;
   em: number;
   daCabine: boolean;
+  /**
+   * Recado falado, como endereço `data:` de áudio.
+   *
+   * Vive só na memória da sessão — o chat não é persistido, e um culto de
+   * recados gravados não deve engordar a biblioteca da igreja no disco.
+   */
+  audio?: string;
+  /** Duração em segundos, para o player mostrar antes de tocar. */
+  segundos?: number;
 }
 
 /** O que chega do celular pelo processo principal, fora o transporte. */

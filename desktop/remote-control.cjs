@@ -38,6 +38,18 @@ const { enderecosLan } = require("./mdns.cjs");
 const MAX_BODY = 4 * 1024;
 /** Letra de música é maior que um comando: um hino comprido passa de 4 KB. */
 const MAX_BODY_MUSICA = 256 * 1024;
+/**
+ * Recado falado cabe em 1,5 MB.
+ *
+ * Trinta segundos de opus dão uns 60 KB; o teto é folgado de propósito, para
+ * aceitar o que o navegador do celular escolher gravar, e apertado o
+ * bastante para ninguém mandar um culto inteiro pelo chat.
+ */
+const MAX_BODY_VOZ = 1536 * 1024;
+/** Tipos de áudio que um navegador de celular grava. */
+const AUDIOS_ACEITOS = /^data:audio\/(webm|ogg|mp4|mpeg|wav)(;[^,]*)?,/i;
+/** Recado mais comprido que isto é conversa, não recado. */
+const MAX_SEGUNDOS_VOZ = 120;
 const JANELA_TENTATIVAS_MS = 3 * 60 * 1000;
 const LIMITE_TENTATIVAS = 5;
 /** O aparelho que não dá notícia há tanto tempo aparece como desconectado. */
@@ -399,15 +411,17 @@ class RemoteControl {
     });
   }
 
-  _registrarChat({ de, texto, daCabine }) {
+  _registrarChat({ de, texto, daCabine, audio, segundos }) {
     const limpo = semControle(texto, true).trim();
-    if (!limpo) return null;
+    // Recado falado não precisa de texto escrito; recado escrito precisa.
+    if (!limpo && !audio) return null;
     const msg = {
       id: nodeCrypto.randomUUID(),
       de,
       texto: limpo.slice(0, 500),
       em: Date.now(),
       daCabine: !!daCabine,
+      ...(audio ? { audio, segundos } : {}),
     };
     this.chat.push(msg);
     if (this.chat.length > MAX_CHAT) this.chat.splice(0, this.chat.length - MAX_CHAT);
@@ -515,6 +529,7 @@ class RemoteControl {
       if (m === "GET" && p === "/musica") return this._musica(res, url);
       if (m === "POST" && p === "/musica") return await this._salvarMusica(req, res);
       if (m === "POST" && p === "/chat") return await this._chat(req, res);
+      if (m === "POST" && p === "/voz") return await this._voz(req, res);
       if (m === "GET" && p === "/midia") return this._midia(res, url);
       if (m === "POST" && p === "/projetar") return await this._projetar(req, res);
       if (m === "POST" && p === "/volume") return await this._volume(req, res);
@@ -848,6 +863,52 @@ class RemoteControl {
     // Quem guarda o repertório é a cabine; aqui só se entrega o pedido.
     this.onEvento?.({ tipo: "musica", musica, de: disp.nome });
     this._json(res, 200, { ok: true });
+  }
+
+  /**
+   * Recado falado do celular.
+   *
+   * O áudio viaja como `data:` e fica só na memória desta sessão: some ao
+   * fechar o Lúmen, como qualquer recado de culto. Quem manda precisa só de
+   * chat — falar é a coisa mais básica que o aparelho faz aqui.
+   */
+  async _voz(req, res) {
+    let corpo;
+    try {
+      corpo = JSON.parse(await this._lerCorpo(req, MAX_BODY_VOZ));
+    } catch {
+      this._json(res, 400, { ok: false, erro: "O recado é grande demais ou chegou incompleto." });
+      return;
+    }
+    const disp = this._sessao(corpo.token);
+    if (!disp) {
+      this._json(res, 401, { ok: false, erro: "Sessão expirada. Entre novamente." });
+      return;
+    }
+    const audio = String(corpo.audio || "");
+    if (!AUDIOS_ACEITOS.test(audio)) {
+      this._json(res, 400, { ok: false, erro: "Formato de áudio não reconhecido." });
+      return;
+    }
+    if (audio.length > MAX_BODY_VOZ) {
+      this._json(res, 400, { ok: false, erro: "Recado longo demais. Grave um mais curto." });
+      return;
+    }
+    const segundos = Number(corpo.segundos);
+    const msg = this._registrarChat({
+      de: disp.nome,
+      texto: "",
+      daCabine: false,
+      audio,
+      segundos:
+        Number.isFinite(segundos) && segundos > 0 ? Math.min(MAX_SEGUNDOS_VOZ, Math.round(segundos)) : 0,
+    });
+    if (!msg) {
+      this._json(res, 400, { ok: false, erro: "Recado vazio." });
+      return;
+    }
+    this.onEvento?.({ tipo: "chat", mensagem: msg });
+    this._json(res, 200, { ok: true, mensagem: { id: msg.id, em: msg.em } });
   }
 
   async _chat(req, res) {
