@@ -33,8 +33,16 @@ const NOMES_RUNTIME =
     ? ["llama-server.exe", "server.exe"]
     : ["llama-server", "server"];
 
-/** Contexto curto de propósito: PC de igreja, e resposta curta é o que se quer. */
-const CONTEXTO_PADRAO = 1024;
+/**
+ * Contexto curto, mas não apertado.
+ *
+ * Começou em 1024, que era o certo quando o catálogo tinha dez ferramentas.
+ * Com vinte e quatro, só a instrução do sistema come uns 560 tokens, e o que
+ * sobrava para o operador falar era pouco demais — o modelo esquecia a
+ * pergunta antes de responder. 2048 dá folga e custa pouca memória num
+ * modelo de 0.6B; acima disso o ganho não paga o que a projeção perde.
+ */
+const CONTEXTO_PADRAO = 2048;
 const CONTEXTO_MIN = 512;
 const CONTEXTO_MAX = 4096;
 /** Resposta longa no meio de um culto é resposta que ninguém lê. */

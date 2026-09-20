@@ -41,6 +41,49 @@ function acoesDeMentira(): AcoesIA & { feito: string[] } {
       feito.push(`culto:${nome}:${dia}`);
       return nome === "Repetido" ? { ok: false, motivo: "Já existe um culto com esse nome." } : { ok: true };
     },
+    listarTemas: () => [{ id: "t1", nome: "Escuro" }],
+    aplicarTema: (id) => {
+      feito.push("tema:" + id);
+      return id === "t1";
+    },
+    ajustarTema: (patch) => {
+      feito.push("ajuste:" + JSON.stringify(patch));
+      return true;
+    },
+    listarCulto: () => [
+      { indice: 1, titulo: "Boas-vindas", tipo: "text" },
+      { indice: 2, titulo: "Castelo forte", tipo: "song" },
+    ],
+    adicionarAoCulto: (tipo, refId) => {
+      feito.push(`add:${tipo}:${refId}`);
+      return refId === "s1";
+    },
+    removerDoCulto: (i) => {
+      feito.push("rm:" + i);
+      return i === 0 ? { ok: true, titulo: "Boas-vindas" } : { ok: false };
+    },
+    moverItemDoCulto: (de, para) => {
+      feito.push(`mv:${de}:${para}`);
+      return de === 0 && para === 1;
+    },
+    criarPlaylist: (nome) => {
+      feito.push("playlist:" + nome);
+      return true;
+    },
+    letraDoPreview: () => [{ slideId: "sl1", rotulo: "Verso 1", texto: "uma linha\noutra linha" }],
+    editarSlide: (id, texto) => {
+      feito.push(`editar:${id}:${texto}`);
+      return id === "sl1";
+    },
+    dividirSlide: (id, linha) => {
+      feito.push(`dividir:${id}:${linha}`);
+      return id === "sl1" && linha === 2;
+    },
+    abrirProjecao: () => feito.push("projecao"),
+    desfazer: () => {
+      feito.push("desfazer");
+      return true;
+    },
   };
 }
 
@@ -179,5 +222,149 @@ describe("executar", () => {
     const r = executarPlano(p as Extract<typeof p, { ok: true }>, acoes);
     assert.equal(r.ok, false);
     assert.match(r.mensagem, /Já existe/);
+  });
+});
+
+describe("temas", () => {
+  test("cor só entra em hexadecimal", () => {
+    // Aceitar cor por nome deixaria qualquer string do modelo chegar a um
+    // `style`. É superfície que não precisa existir para pedir "amarelo".
+    for (const cor of ["amarelo", "red", "javascript:alert(1)", "#ggg", "url(x)"]) {
+      assert.equal(planejar({ ferramenta: "ajustar_tema", argumentos: { cor } }).ok, false, cor);
+    }
+    assert.equal(planejar({ ferramenta: "ajustar_tema", argumentos: { cor: "#ffcc00" } }).ok, true);
+  });
+
+  test("ajuste vazio não é ajuste", () => {
+    assert.equal(planejar({ ferramenta: "ajustar_tema", argumentos: {} }).ok, false);
+  });
+
+  test("tamanho e entrelinha ficam na faixa que o telão aguenta", () => {
+    assert.equal(planejar({ ferramenta: "ajustar_tema", argumentos: { tamanho: 5 } }).ok, false);
+    assert.equal(planejar({ ferramenta: "ajustar_tema", argumentos: { tamanho: 900 } }).ok, false);
+    assert.equal(planejar({ ferramenta: "ajustar_tema", argumentos: { entrelinha: 9 } }).ok, false);
+    assert.equal(planejar({ ferramenta: "ajustar_tema", argumentos: { tamanho: 72 } }).ok, true);
+  });
+
+  test("mexer no tema pergunta antes, e a frase diz o que muda", () => {
+    const p = planejar({
+      ferramenta: "ajustar_tema",
+      argumentos: { tamanho: 80, alinhamento: "center" },
+    });
+    assert.equal(p.ok && p.precisaConfirmar, true);
+    assert.match(p.ok ? p.previa : "", /letra 80/);
+    assert.match(p.ok ? p.previa : "", /center/);
+  });
+
+  test("o ajuste chega às ações só com o que foi pedido", () => {
+    const acoes = acoesDeMentira();
+    const p = planejar({ ferramenta: "ajustar_tema", argumentos: { maiuscula: true } });
+    executarPlano(p as Extract<typeof p, { ok: true }>, acoes);
+    assert.match(acoes.feito[0], /"uppercase":true/);
+    assert.ok(!acoes.feito[0].includes("fontSize"), acoes.feito[0]);
+  });
+});
+
+describe("programação do culto", () => {
+  test("acrescentar acontece na hora; tirar pergunta antes", () => {
+    // Acrescentar não faz ninguém perder nada; tirar obriga a achar de novo.
+    const add = planejar({ ferramenta: "adicionar_ao_culto", argumentos: { id: "s1" } });
+    assert.equal(add.ok && add.precisaConfirmar, false);
+    const rm = planejar({ ferramenta: "remover_do_culto", argumentos: { posicao: 1 } });
+    assert.equal(rm.ok && rm.precisaConfirmar, true);
+  });
+
+  test("as posições que o operador conta viram as que o código usa", () => {
+    const acoes = acoesDeMentira();
+    const p = planejar({ ferramenta: "mover_item_do_culto", argumentos: { de: 1, para: 2 } });
+    const r = executarPlano(p as Extract<typeof p, { ok: true }>, acoes);
+    assert.equal(r.ok, true);
+    assert.ok(acoes.feito.includes("mv:0:1"), acoes.feito.join(" | "));
+  });
+
+  test("posição zero não existe na tela nem aqui", () => {
+    assert.equal(planejar({ ferramenta: "remover_do_culto", argumentos: { posicao: 0 } }).ok, false);
+    assert.equal(
+      planejar({ ferramenta: "mover_item_do_culto", argumentos: { de: 0, para: 1 } }).ok,
+      false,
+    );
+  });
+
+  test("posição que não existe é recusada pela cabine, não pelo modelo", () => {
+    const acoes = acoesDeMentira();
+    const p = planejar({ ferramenta: "remover_do_culto", argumentos: { posicao: 9 } });
+    const r = executarPlano(p as Extract<typeof p, { ok: true }>, acoes);
+    assert.equal(r.ok, false);
+    assert.match(r.mensagem, /não existe/i);
+  });
+
+  test("tipo de item fora dos três não passa", () => {
+    assert.equal(
+      planejar({ ferramenta: "adicionar_ao_culto", argumentos: { tipo: "arquivo", id: "x" } }).ok,
+      false,
+    );
+  });
+});
+
+describe("letra", () => {
+  test("reescrever mostra o texto novo antes de perguntar", () => {
+    const p = planejar({
+      ferramenta: "editar_letra",
+      argumentos: { slideId: "sl1", texto: "Tua graça me basta" },
+    });
+    assert.equal(p.ok && p.precisaConfirmar, true);
+    // O operador aprova o texto, não um id de slide.
+    assert.match(p.ok ? p.previa : "", /Tua graça me basta/);
+  });
+
+  test("dividir na primeira linha não é dividir", () => {
+    assert.equal(
+      planejar({ ferramenta: "dividir_slide", argumentos: { slideId: "sl1", naLinha: 1 } }).ok,
+      false,
+    );
+    assert.equal(
+      planejar({ ferramenta: "dividir_slide", argumentos: { slideId: "sl1", naLinha: 2 } }).ok,
+      true,
+    );
+  });
+
+  test("ver a letra é consulta: acontece sem perguntar", () => {
+    const acoes = acoesDeMentira();
+    const p = planejar({ ferramenta: "ver_letra", argumentos: {} });
+    assert.equal(p.ok && p.precisaConfirmar, false);
+    const r = executarPlano(p as Extract<typeof p, { ok: true }>, acoes);
+    assert.equal(r.ok, true);
+    assert.equal((r.dados as { slideId: string }[])[0].slideId, "sl1");
+  });
+});
+
+describe("o catálogo ampliado continua fechado", () => {
+  test("toda ferramenta que mexe no guardado pede confirmação", () => {
+    for (const f of FERRAMENTAS) {
+      const pede = f.risco === "edit" || f.risco === "destructive";
+      const confirma = f.risco === "edit" || f.risco === "destructive";
+      assert.equal(pede, confirma, f.nome);
+    }
+  });
+
+  test("toda ferramenta que mexe no guardado sabe ser desfeita", () => {
+    // Sem isto, "Desfazer" seria um botão que às vezes mente.
+    for (const f of FERRAMENTAS) {
+      if (f.risco !== "edit" && f.risco !== "destructive") continue;
+      assert.equal(f.podeDesfazer, true, `${f.nome} altera e não pode ser desfeita`);
+    }
+  });
+
+  test("toda ferramenta tem descrição que serve de instrução ao modelo", () => {
+    for (const f of FERRAMENTAS) {
+      assert.ok(f.descricao.length > 15, f.nome);
+      assert.ok(f.descricao.endsWith("."), `${f.nome}: descrição sem ponto final`);
+    }
+  });
+
+  test("nome de ferramenta é minúsculo com sublinhado, sem surpresa", () => {
+    for (const f of FERRAMENTAS) {
+      assert.match(f.nome, /^[a-z][a-z_]*$/, f.nome);
+    }
   });
 });

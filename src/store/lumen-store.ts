@@ -181,6 +181,8 @@ export interface LumenState {
   deleteSong: (id: string) => void;
   updatePreviewSlide: (slideId: string, patch: Partial<Slide>) => void;
   removePreviewSlide: (slideId: string) => void;
+  /** Parte um slide em dois a partir de uma linha. Devolve se deu. */
+  dividirSlideDoPreview: (slideId: string, naLinha: number) => boolean;
   reorderPreview: (from: number, to: number) => void;
   duplicatePreviewLabel: (label: string) => void;
   addToPlaylist: (item: Omit<PlaylistItem, "id">) => void;
@@ -403,6 +405,7 @@ const empty = (): Omit<
   | "deleteSong"
   | "updatePreviewSlide"
   | "removePreviewSlide"
+  | "dividirSlideDoPreview"
   | "reorderPreview"
   | "duplicatePreviewLabel"
   | "addToPlaylist"
@@ -922,6 +925,58 @@ export const useLumenStore = create<LumenState>()(
             liveIndex: live ? Math.min(s.liveIndex, Math.max(0, live.slides.length - 1)) : s.liveIndex,
           };
         }, set);
+      },
+
+      /**
+       * Parte um slide em dois.
+       *
+       * Existe porque um verso comprido demais não cabe no telão, e cortar
+       * na mão obriga a apagar, digitar de novo e reordenar. `naLinha` é
+       * 1-indexado porque é o que o operador conta olhando a tela.
+       *
+       * Segue o caminho de `updatePreviewSlide`: o que muda aqui muda na
+       * música do repertório, não numa cópia da sessão.
+       */
+      dividirSlideDoPreview: (slideId, naLinha) => {
+        const QUEBRA = "\n";
+        const atual = get().preview;
+        const alvo = atual?.slides.find((sl) => sl.id === slideId);
+        if (!atual || !alvo) return false;
+        const linhas = alvo.text.split(QUEBRA);
+        // Dividir na primeira linha deixaria um slide vazio; depois da
+        // última não divide nada.
+        if (naLinha < 2 || naLinha > linhas.length) return false;
+        const antes = linhas.slice(0, naLinha - 1).join(QUEBRA).trimEnd();
+        const depois = linhas.slice(naLinha - 1).join(QUEBRA).trimStart();
+        if (!antes || !depois) return false;
+
+        const partir = (deck: Deck | null) => {
+          if (!deck) return deck;
+          const i = deck.slides.findIndex((sl) => sl.id === slideId);
+          if (i < 0) return deck;
+          const velho = deck.slides[i];
+          const novos = [
+            { ...velho, text: antes },
+            { ...velho, id: nid(), text: depois, label: `${velho.label} (2)` },
+          ];
+          const slides = [...deck.slides.slice(0, i), ...novos, ...deck.slides.slice(i + 1)].map(
+            (sl, n) => ({ ...sl, sortOrder: n }),
+          );
+          return { ...deck, slides };
+        };
+
+        broadcast((st) => {
+          const preview = partir(st.preview)!;
+          const live = st.live && st.live.refId === preview.refId ? partir(st.live) : st.live;
+          let songs = st.songs;
+          if (preview.kind === "song") {
+            songs = songs.map((m) =>
+              m.id === preview.refId ? { ...m, slides: preview.slides, updatedAt: Date.now() } : m,
+            );
+          }
+          return { ...st, preview, live, songs };
+        }, set);
+        return true;
       },
 
       reorderPreview: (from, to) => {

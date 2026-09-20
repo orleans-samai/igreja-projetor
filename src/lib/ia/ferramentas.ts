@@ -54,6 +54,34 @@ export interface AcoesIA {
   linhasPorSlide(quantas: number): void;
   historicoDeHoje(): { titulo: string; hora: string }[];
   criarCultoRecorrente(nome: string, diaDaSemana: number): { ok: boolean; motivo?: string };
+
+  // ─── culto e repertório ───
+  listarTemas(): { id: string; nome: string }[];
+  aplicarTema(id: string): boolean;
+  ajustarTema(patch: AjusteDeTema): boolean;
+  listarCulto(): { indice: number; titulo: string; tipo: string }[];
+  adicionarAoCulto(tipo: "song" | "text" | "media", refId: string): boolean;
+  removerDoCulto(indice: number): { ok: boolean; titulo?: string };
+  moverItemDoCulto(de: number, para: number): boolean;
+  criarPlaylist(nome: string): boolean;
+  /** A letra que está no preview, para a IA poder mostrar antes de mudar. */
+  letraDoPreview(): { slideId: string; rotulo: string; texto: string }[] | null;
+  editarSlide(slideId: string, texto: string): boolean;
+  dividirSlide(slideId: string, naLinha: number): boolean;
+  abrirProjecao(): void;
+  desfazer(): boolean;
+}
+
+/** Só o que faz sentido a IA mexer — nada de id de tema nem de arquivo. */
+export interface AjusteDeTema {
+  fontSize?: number;
+  fontWeight?: number;
+  textColor?: string;
+  alignH?: "left" | "center" | "right";
+  alignV?: "top" | "center" | "bottom";
+  lineHeight?: number;
+  margin?: number;
+  uppercase?: boolean;
 }
 
 export interface Ferramenta {
@@ -193,12 +221,12 @@ export const FERRAMENTAS: readonly Ferramenta[] = [
         : { ok: false, mensagem: `Não reconheci a passagem “${a.referencia}”.` },
   }),
 
-  umBotao("proximo_slide", "Avança um slide no telão.", "avançar um slide", (a) => a.proximoSlide()),
-  umBotao("slide_anterior", "Volta um slide no telão.", "voltar um slide", (a) => a.slideAnterior()),
-  umBotao("tela_preta", "Apaga o telão.", "apagar o telão", (a) => a.telaPreta()),
-  umBotao("mostrar_logo", "Põe a logo da igreja no telão.", "mostrar a logo", (a) => a.mostrarLogo()),
-  umBotao("ocultar_texto", "Mantém o fundo e tira a letra.", "ocultar a letra", (a) => a.ocultarTexto()),
-  umBotao("parar_projecao", "Para de apresentar.", "parar a projeção", (a) => a.pararProjecao()),
+  umBotao("proximo_slide", "Avança para o próximo slide da letra no telão.", "avançar um slide", (a) => a.proximoSlide()),
+  umBotao("slide_anterior", "Volta para o slide anterior da letra no telão.", "voltar um slide", (a) => a.slideAnterior()),
+  umBotao("tela_preta", "Apaga o telão e deixa a tela preta para a igreja.", "apagar o telão", (a) => a.telaPreta()),
+  umBotao("mostrar_logo", "Põe a logo da igreja no telão, no lugar da letra.", "mostrar a logo", (a) => a.mostrarLogo()),
+  umBotao("ocultar_texto", "Mantém o fundo no telão e tira só a letra.", "ocultar a letra", (a) => a.ocultarTexto()),
+  umBotao("parar_projecao", "Para de apresentar e volta o telão ao repouso.", "parar a projeção", (a) => a.pararProjecao()),
 
   ferramenta({
     nome: "criar_aviso",
@@ -303,6 +331,251 @@ export const FERRAMENTAS: readonly Ferramenta[] = [
         : { ok: false, mensagem: r.motivo ?? "Não consegui criar o culto." };
     },
   }),
+
+  // ─────────────────────────── temas
+
+  ferramenta({
+    nome: "listar_temas",
+    apelidos: ["list_themes"],
+    descricao: "Lista os temas de fundo disponíveis, com o id de cada um.",
+    risco: "read",
+    entrada: semArgumentos,
+    podeDesfazer: false,
+    previa: () => "ver os temas disponíveis",
+    executar: (_a, acoes) => {
+      const temas = acoes.listarTemas();
+      return temas.length === 0
+        ? { ok: false, mensagem: "Não achei tema nenhum." }
+        : { ok: true, mensagem: `${temas.length} tema(s).`, dados: temas };
+    },
+  }),
+
+  ferramenta({
+    nome: "aplicar_tema",
+    apelidos: ["apply_theme", "set_theme"],
+    descricao: "Troca o tema das músicas. Use o id vindo de listar_temas.",
+    // Muda como toda música vai aparecer no telão, e fica guardado.
+    risco: "edit",
+    entrada: z.object({ id: z.string().min(1).max(80) }).strict(),
+    podeDesfazer: true,
+    previa: (a) => `trocar o tema das músicas para ${a.id}`,
+    executar: (a, acoes) =>
+      acoes.aplicarTema(a.id)
+        ? { ok: true, mensagem: "Tema trocado." }
+        : { ok: false, mensagem: "Não achei esse tema." },
+  }),
+
+  ferramenta({
+    nome: "ajustar_tema",
+    apelidos: ["adjust_theme", "set_font"],
+    descricao:
+      "Ajusta a letra do telão: tamanho, peso, cor, alinhamento, entrelinha, margem e caixa alta.",
+    risco: "edit",
+    entrada: z
+      .object({
+        tamanho: z.number().int().min(24).max(160).optional(),
+        peso: z.number().int().min(300).max(900).optional(),
+        // Só hexadecimal. Aceitar cor por nome deixaria qualquer string do
+        // modelo chegar a um `style`, e essa é superfície que não precisa
+        // existir para o operador pedir "deixe o texto amarelo".
+        cor: z
+          .string()
+          .regex(/^#[0-9a-fA-F]{6}$/, "use uma cor no formato #rrggbb")
+          .optional(),
+        alinhamento: z.enum(["left", "center", "right"]).optional(),
+        vertical: z.enum(["top", "center", "bottom"]).optional(),
+        entrelinha: z.number().min(0.9).max(2).optional(),
+        margem: z.number().int().min(0).max(25).optional(),
+        maiuscula: z.boolean().optional(),
+      })
+      .strict()
+      .refine((v) => Object.values(v).some((x) => x !== undefined), {
+        message: "diga o que mudar",
+      }),
+    podeDesfazer: true,
+    previa: (a) => {
+      const partes: string[] = [];
+      if (a.tamanho) partes.push(`letra ${a.tamanho}`);
+      if (a.peso) partes.push(`peso ${a.peso}`);
+      if (a.cor) partes.push(`cor ${a.cor}`);
+      if (a.alinhamento) partes.push(`alinhada à ${a.alinhamento}`);
+      if (a.vertical) partes.push(`na parte de ${a.vertical}`);
+      if (a.entrelinha) partes.push(`entrelinha ${a.entrelinha}`);
+      if (a.margem !== undefined) partes.push(`margem ${a.margem}`);
+      if (a.maiuscula !== undefined) partes.push(a.maiuscula ? "em maiúsculas" : "sem maiúsculas");
+      return `deixar o telão com ${partes.join(", ")}`;
+    },
+    executar: (a, acoes) =>
+      acoes.ajustarTema({
+        fontSize: a.tamanho,
+        fontWeight: a.peso,
+        textColor: a.cor,
+        alignH: a.alinhamento,
+        alignV: a.vertical,
+        lineHeight: a.entrelinha,
+        margin: a.margem,
+        uppercase: a.maiuscula,
+      })
+        ? { ok: true, mensagem: "Telão ajustado." }
+        : { ok: false, mensagem: "Não consegui ajustar o tema." },
+  }),
+
+  // ─────────────────────────── programação do culto
+
+  ferramenta({
+    nome: "ver_culto",
+    apelidos: ["list_service", "ver_programacao"],
+    descricao: "Mostra a programação do culto de hoje, com a posição de cada item.",
+    risco: "read",
+    entrada: semArgumentos,
+    podeDesfazer: false,
+    previa: () => "ver a programação do culto",
+    executar: (_a, acoes) => {
+      const itens = acoes.listarCulto();
+      return itens.length === 0
+        ? { ok: true, mensagem: "A programação está vazia." }
+        : { ok: true, mensagem: `${itens.length} item(ns) no culto.`, dados: itens };
+    },
+  }),
+
+  ferramenta({
+    nome: "adicionar_ao_culto",
+    apelidos: ["add_to_service"],
+    descricao: "Põe uma música, aviso ou mídia na programação do culto. Use o id de uma busca.",
+    // Acrescentar não faz ninguém perder nada: tirar é um clique.
+    risco: "live",
+    entrada: z
+      .object({
+        tipo: z.enum(["song", "text", "media"]).default("song"),
+        id: z.string().min(1).max(80),
+      })
+      .strict(),
+    podeDesfazer: true,
+    previa: (a) => `pôr ${a.id} na programação`,
+    executar: (a, acoes) =>
+      acoes.adicionarAoCulto(a.tipo, a.id)
+        ? { ok: true, mensagem: "Entrou na programação." }
+        : { ok: false, mensagem: "Não achei esse item." },
+  }),
+
+  ferramenta({
+    nome: "mover_item_do_culto",
+    apelidos: ["move_service_item"],
+    descricao: "Muda um item de lugar na programação. As posições começam em 1.",
+    risco: "live",
+    entrada: z
+      .object({ de: z.number().int().min(1).max(200), para: z.number().int().min(1).max(200) })
+      .strict(),
+    podeDesfazer: true,
+    previa: (a) => `mover o item ${a.de} para a posição ${a.para}`,
+    executar: (a, acoes) =>
+      acoes.moverItemDoCulto(a.de - 1, a.para - 1)
+        ? { ok: true, mensagem: "Item movido." }
+        : { ok: false, mensagem: "Essa posição não existe na programação." },
+  }),
+
+  ferramenta({
+    nome: "remover_do_culto",
+    apelidos: ["remove_from_service"],
+    descricao: "Tira um item da programação pela posição, começando em 1.",
+    // Tirar obriga o operador a achar de novo: pergunta antes.
+    risco: "edit",
+    entrada: z.object({ posicao: z.number().int().min(1).max(200) }).strict(),
+    podeDesfazer: true,
+    previa: (a) => `tirar o item ${a.posicao} da programação`,
+    executar: (a, acoes) => {
+      const r = acoes.removerDoCulto(a.posicao - 1);
+      return r.ok
+        ? { ok: true, mensagem: `“${r.titulo}” saiu da programação.` }
+        : { ok: false, mensagem: "Essa posição não existe na programação." };
+    },
+  }),
+
+  ferramenta({
+    nome: "criar_playlist",
+    apelidos: ["create_playlist"],
+    descricao: "Cria uma programação nova com o nome dado, a partir da de hoje.",
+    risco: "live",
+    entrada: z.object({ nome: z.string().min(2).max(60) }).strict(),
+    podeDesfazer: true,
+    previa: (a) => `criar a programação “${a.nome}”`,
+    executar: (a, acoes) =>
+      acoes.criarPlaylist(a.nome)
+        ? { ok: true, mensagem: `Programação “${a.nome}” criada.` }
+        : { ok: false, mensagem: "Não consegui criar a programação." },
+  }),
+
+  // ─────────────────────────── letra
+
+  ferramenta({
+    nome: "ver_letra",
+    apelidos: ["read_lyrics"],
+    descricao: "Mostra a letra que está preparada, slide por slide, com o id de cada um.",
+    risco: "read",
+    entrada: semArgumentos,
+    podeDesfazer: false,
+    previa: () => "ver a letra preparada",
+    executar: (_a, acoes) => {
+      const slides = acoes.letraDoPreview();
+      return slides && slides.length > 0
+        ? { ok: true, mensagem: `${slides.length} slide(s).`, dados: slides }
+        : { ok: false, mensagem: "Não há letra preparada agora." };
+    },
+  }),
+
+  ferramenta({
+    nome: "editar_letra",
+    apelidos: ["edit_lyrics"],
+    descricao: "Troca o texto de um slide. Use o slideId vindo de ver_letra.",
+    // Reescreve a música no repertório: mostra o texto novo e pergunta.
+    risco: "edit",
+    entrada: z
+      .object({ slideId: z.string().min(1).max(80), texto: z.string().min(1).max(1200) })
+      .strict(),
+    podeDesfazer: true,
+    previa: (a) => `reescrever o slide para:\n${a.texto}`,
+    executar: (a, acoes) =>
+      acoes.editarSlide(a.slideId, a.texto)
+        ? { ok: true, mensagem: "Letra corrigida." }
+        : { ok: false, mensagem: "Não achei esse slide." },
+  }),
+
+  ferramenta({
+    nome: "dividir_slide",
+    apelidos: ["split_slide"],
+    descricao: "Parte um slide em dois, a partir da linha indicada (a primeira linha é 1).",
+    risco: "edit",
+    entrada: z
+      .object({ slideId: z.string().min(1).max(80), naLinha: z.number().int().min(2).max(40) })
+      .strict(),
+    podeDesfazer: true,
+    previa: (a) => `partir o slide a partir da linha ${a.naLinha}`,
+    executar: (a, acoes) =>
+      acoes.dividirSlide(a.slideId, a.naLinha)
+        ? { ok: true, mensagem: "Slide dividido." }
+        : { ok: false, mensagem: "Não deu para dividir nessa linha." },
+  }),
+
+  // ─────────────────────────── janelas e desfazer
+
+  umBotao("abrir_projecao", "Abre a janela de projeção no segundo monitor.", "abrir a janela de projeção", (a) =>
+    a.abrirProjecao(),
+  ),
+
+  ferramenta({
+    nome: "desfazer",
+    apelidos: ["undo"],
+    descricao: "Desfaz a última alteração feita na programação do culto.",
+    risco: "live",
+    entrada: semArgumentos,
+    podeDesfazer: false,
+    previa: () => "desfazer a última alteração",
+    executar: (_a, acoes) =>
+      acoes.desfazer()
+        ? { ok: true, mensagem: "Desfeito." }
+        : { ok: false, mensagem: "Não há nada para desfazer." },
+  }),
+
 ] as const;
 
 /** O inglês do prompt também é aceito: modelo pequeno troca de idioma sozinho. */
@@ -375,7 +648,24 @@ export function executarPlano(plano: Extract<Plano, { ok: true }>, acoes: AcoesI
   }
 }
 
-/** O catálogo em texto, para o modelo saber o que pode pedir. */
+/**
+ * O catálogo em texto, para o modelo saber o que pode pedir.
+ *
+ * Compacto de propósito. Com contexto de 1024 tokens, uma linha explicada
+ * por ferramenta comeria quase tudo antes de o modelo chegar ao pedido — e o
+ * que sobra de contexto é o que ele usa para entender o operador.
+ *
+ * Quem não tem argumento dispensa explicação: `tela_preta` e `proximo_slide`
+ * se explicam pelo nome. Quem tem argumento ganha a frase inteira, porque é
+ * aí que o modelo erra.
+ */
 export function catalogoParaModelo(): string {
-  return FERRAMENTAS.map((f) => `- ${f.nome}: ${f.descricao}`).join("\n");
+  const simples: string[] = [];
+  const explicadas: string[] = [];
+  for (const f of FERRAMENTAS) {
+    if (f.entrada === semArgumentos) simples.push(f.nome);
+    else explicadas.push(`- ${f.nome}: ${f.descricao}`);
+  }
+  if (simples.length > 0) explicadas.push(`- sem argumentos: ${simples.join(", ")}`);
+  return explicadas.join("\n");
 }
