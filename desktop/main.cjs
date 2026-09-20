@@ -13,6 +13,7 @@ const { CofreRemoto } = require("./remote-store.cjs");
 const { Anunciante } = require("./mdns.cjs");
 const { AssistenteLocal } = require("./ia.cjs");
 const updater = require("./updater.cjs");
+const { abortou } = require("./navegacao.cjs");
 
 
 const ORIGIN = "lumen://app";
@@ -191,7 +192,16 @@ function createWindow(route, opts = {}) {
       autoplayPolicy: "no-user-gesture-required",
     },
   });
-  win.loadURL(origin + route).catch(reportError);
+  // ERR_ABORTED (-3) não é falha: é o que o Chromium devolve quando uma
+  // navegação foi substituída por outra — um reload por cima do
+  // carregamento inicial, a janela fechando no meio, a restauração de
+  // backup trocando a página. O `did-fail-load` logo abaixo já ignora o
+  // -3 pelo mesmo motivo; aqui faltava, e o resultado era uma caixa de
+  // erro vermelha na cara do operador por uma coisa que não aconteceu.
+  win.loadURL(origin + route).catch((erro) => {
+    if (abortou(erro)) return;
+    reportError(erro);
+  });
   win.webContents.on("did-fail-load", (_event, code, description, _url, isMainFrame) => {
     if (isMainFrame && code !== -3) reportError(new Error("Não foi possível abrir a interface: " + description));
   });
@@ -421,13 +431,21 @@ async function restoreBackup() {
   const raw = await fs.promises.readFile(filePaths[0], "utf8");
   // Freeze renderers before replacing state, preventing stale writes during reload.
   for (const win of BrowserWindow.getAllWindows()) win.webContents.setIgnoreMenuShortcuts(true);
-  for (const win of BrowserWindow.getAllWindows()) await win.loadURL("about:blank");
+  // Trocar a página por cima da que está carregando devolve ERR_ABORTED, e
+  // aqui isso é o comportamento pedido, não um problema.
+  for (const win of BrowserWindow.getAllWindows()) {
+    await win.loadURL("about:blank").catch((e) => { if (!abortou(e)) throw e; });
+  }
   try { await storage.restore(raw); }
   finally {
-    if (cabine && !cabine.isDestroyed()) await cabine.loadURL(ORIGIN + "/");
-    if (projetor && !projetor.isDestroyed()) await projetor.loadURL(ORIGIN + "/projetor?tela=1");
-    if (palco && !palco.isDestroyed()) await palco.loadURL(ORIGIN + "/palco");
-    if (pedido && !pedido.isDestroyed()) await pedido.loadURL(ORIGIN + "/pedido");
+    const reabrir = (win, rota) =>
+      win && !win.isDestroyed()
+        ? win.loadURL(ORIGIN + rota).catch((e) => { if (!abortou(e)) throw e; })
+        : Promise.resolve();
+    await reabrir(cabine, "/");
+    await reabrir(projetor, "/projetor?tela=1");
+    await reabrir(palco, "/palco");
+    await reabrir(pedido, "/pedido");
     for (const win of BrowserWindow.getAllWindows()) win.webContents.setIgnoreMenuShortcuts(false);
   }
 }
