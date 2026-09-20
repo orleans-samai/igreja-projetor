@@ -14,6 +14,7 @@ const { Anunciante } = require("./mdns.cjs");
 const { AssistenteLocal } = require("./ia.cjs");
 const updater = require("./updater.cjs");
 const { abortou } = require("./navegacao.cjs");
+const { alturaDaCabine, larguraDaCabine } = require("./janela.cjs");
 
 
 const ORIGIN = "lumen://app";
@@ -251,7 +252,16 @@ function openCabine() {
     cabine.focus();
     return cabine;
   }
-  cabine = createWindow("/", { title: "Lúmen — cabine" });
+  // Larga o bastante para o desenho de colunas caber. Com os 1280 de
+  // antes, uma tela Full HD a 100% dava 1264 de área útil — dois pixels
+  // abaixo do corte — e a cabine nascia no desenho estreito, sem a coluna
+  // da direita, em quase todo PC de igreja.
+  const tela = screen.getPrimaryDisplay().workArea;
+  cabine = createWindow("/", {
+    title: "Lúmen — cabine",
+    width: larguraDaCabine(tela.width),
+    height: alturaDaCabine(tela.height),
+  });
   cabine.on("closed", () => {
     cabine = null;
   });

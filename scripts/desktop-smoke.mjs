@@ -756,7 +756,13 @@ try {
   for (const [largura, altura] of [
     [800, 600],
     [1024, 640],
+    // Em volta do corte de 1280: é ali que a cabine troca de desenho, e
+    // era ali que os dois desenhos ficavam montados ao mesmo tempo — um
+    // deles com largura zero, medindo a si mesmo e errando.
+    [1264, 720],
+    [1279, 720],
     [1280, 720],
+    [1281, 720],
     [1366, 768],
     [1600, 900],
     [1920, 1080],
@@ -789,6 +795,30 @@ try {
       };
     });
     const onde = `${largura}x${altura}`;
+
+    // Um desenho de cada vez, em qualquer tela.
+    //
+    // Os dois ficavam montados e o CSS escondia um. O escondido rodava
+    // com largura zero, e as colunas redimensionáveis, que se medem para
+    // se organizar, derrubavam a cabine inteira com "Panel constraints
+    // not found for index 4" — a tela de erro no lugar do app, no
+    // domingo de alguém.
+    const desenho = await page.evaluate(() => ({
+      colunas: document.querySelectorAll('[role="separator"]').length > 0,
+      abas: !!document.querySelector('[role="tablist"][aria-label="Área da cabine"]'),
+      quebrou: document.body.textContent.includes("Something went wrong"),
+    }));
+    assert.equal(desenho.quebrou, false, `a cabine mostrou a tela de erro em ${onde}`);
+    assert.ok(
+      desenho.colunas !== desenho.abas,
+      `em ${onde} a cabine montou ${desenho.colunas && desenho.abas ? "os dois desenhos" : "desenho nenhum"}`,
+    );
+    // Onde cabe, as colunas são o desenho certo: é a cabine de verdade,
+    // com o repertório, o culto, o que está no ar e os fundos à vista.
+    if (largura >= 1280) {
+      assert.ok(desenho.colunas, `${onde} comporta as colunas e mesmo assim abriu em abas`);
+    }
+
     assert.equal(rolagem.sobraLado, 0, `a cabine rolou ${rolagem.sobraLado}px para o lado em ${onde}`);
     assert.equal(rolagem.sobraBaixo, 0, `a cabine rolou ${rolagem.sobraBaixo}px para baixo em ${onde}`);
     for (const v of rolagem.vivos) {
@@ -1029,7 +1059,7 @@ try {
   assert.deepEqual(errors, []);
   const disk = JSON.parse(await readFile(path.join(profile, "data", "library.json"), "utf8"));
   assert.ok(disk.values["lumen-v2"]);
-  console.log(`PASS: offline, fonts, Bible, restart persistence, projector, media ranges, preflight, Auto-Slide, remote control (LAN, entrada por nome, nome fixo na rede), update check, review before apply, 1366×768 at 100/125/150% and 800×600, no scroll at seven sizes from 800×600 to 2560×1440 and the chat stays on screen, church logo and name reachable from the menu bar, art studio makes a design from a form, VFX has three modes and a dynamic video becomes a real file in the Vídeos tab, local AI off by default and the cabine independent of it, dirigente page signs in, sends a file, chats and files a notice, video as a theme background, find a song by a lyric excerpt, right-click on lyrics edits or removes, double-click to project, fixed text only in the footer, YouTube collapses the lyrics strip, phone has one play/pause button and the screen volume, sees the media folder, projects from it, opens a song as a grid of slides and puts one on the screen, and searches lyrics through the cabine. Evidence: ${evidence}`);
+  console.log(`PASS: offline, fonts, Bible, restart persistence, projector, media ranges, preflight, Auto-Slide, remote control (LAN, entrada por nome, nome fixo na rede), update check, review before apply, 1366×768 at 100/125/150% and 800×600, no scroll and exactly one layout at ten sizes from 800×600 to 2560×1440, including every pixel around the 1280 cutover and the chat stays on screen, church logo and name reachable from the menu bar, art studio makes a design from a form, VFX has three modes and a dynamic video becomes a real file in the Vídeos tab, local AI off by default and the cabine independent of it, dirigente page signs in, sends a file, chats and files a notice, video as a theme background, find a song by a lyric excerpt, right-click on lyrics edits or removes, double-click to project, fixed text only in the footer, YouTube collapses the lyrics strip, phone has one play/pause button and the screen volume, sees the media folder, projects from it, opens a song as a grid of slides and puts one on the screen, and searches lyrics through the cabine. Evidence: ${evidence}`);
 } finally {
   if (app) await app.close();
   console.log(`Isolated test profile: ${profile}`);

@@ -2,6 +2,7 @@ import { Group, Panel, Separator } from "react-resizable-panels";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChatAviso, ChatPanel } from "@/components/operator/chat-panel";
 import { ColunasSeguras } from "@/components/operator/colunas-seguras";
+import { useColunasCabem } from "@/lib/largura-da-cabine";
 import { LogoDialog } from "@/components/operator/logo-dialog";
 import { ArtesDialog } from "@/features/artes/componentes/artes-dialog";
 import { VfxDialog } from "@/features/vfx/componentes/vfx-dialog";
@@ -96,6 +97,10 @@ export function OperatorApp() {
   // O chat só entra na fileira quando é coluna: flutuante mora por cima e
   // oculto não mora em lugar nenhum.
   const ordemVisivel = ordemPaineis.filter((id) => id !== "chat" || chatEhColuna(chatPosicao));
+  // Um desenho de cada vez. Antes os dois ficavam montados e o CSS
+  // escondia um; o escondido rodava com largura zero, e numa tela que cai
+  // em cima do corte ele ficava aparecendo e sumindo.
+  const colunasCabem = useColunasCabem();
   const tourTab = useOpsStore((s) => s.tourTab);
   useEffect(() => {
     if (tourTab) setMobileTab(tourTab);
@@ -413,8 +418,8 @@ export function OperatorApp() {
         <ReorganizeBar />
         <TourBanner />
 
-        {!bibleOpen && (
-          <div className="border-b border-border bg-surface px-2 py-1.5 xl:hidden">
+        {!bibleOpen && !colunasCabem && (
+          <div className="border-b border-border bg-surface px-2 py-1.5">
             <Segmented
               label="Área da cabine"
               full
@@ -444,7 +449,8 @@ export function OperatorApp() {
             <BibleWorkspace previewFrame={previewFrame} onBack={() => setBibleOpen(false)} />
           ) : (
             <>
-          <div className="hidden h-full xl:block">
+          {colunasCabem && (
+          <div className="h-full">
             <ColunasSeguras
               alternativa={
                 // Sem divisória móvel, mas com as mesmas colunas e as
@@ -493,7 +499,9 @@ export function OperatorApp() {
             </Group>
             </ColunasSeguras>
           </div>
-          <div className="h-full xl:hidden">
+          )}
+          {!colunasCabem && (
+          <div className="h-full">
             {mobileTab === "lib" && (
               <LibraryPanel
                 onNewSong={() => setSongEd(true)}
@@ -513,6 +521,7 @@ export function OperatorApp() {
             )}
             {mobileTab === "culto" && <PlaylistPanel showThemes />}
           </div>
+          )}
             </>
           )}
           </div>
