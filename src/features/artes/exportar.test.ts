@@ -24,7 +24,12 @@ describe("svgComoUrl", () => {
   });
 
   test("acento e símbolo sobrevivem à codificação", () => {
-    assert.match(decodeURIComponent(svgComoUrl(arte("Ação & Louvor"))), /Ação &amp; Louvor/);
+    // Juntando as linhas: o título é grande e pode quebrar em duas, o que
+    // não tem nada a ver com codificação. O "&" continua tendo que sair
+    // escapado, e é isso que a busca verifica.
+    const svg = decodeURIComponent(svgComoUrl(arte("Ação & Louvor")));
+    const texto = [...svg.matchAll(/<tspan[^>]*>([^<]*)<\/tspan>/g)].map((m) => m[1]).join(" ");
+    assert.match(texto, /Ação &amp; Louvor/);
   });
 });
 

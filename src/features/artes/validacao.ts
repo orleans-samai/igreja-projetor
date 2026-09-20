@@ -1,5 +1,6 @@
 import { margemSegura, type Feitio } from "./formatos.ts";
-import type { Documento, Elemento } from "./types.ts";
+import { LARGURA_MEDIA_PADRAO } from "./largura-do-texto.ts";
+import { temCaixa, type Documento, type Elemento } from "./types.ts";
 
 /**
  * O que impede uma arte de sair feia ou ilegível.
@@ -50,6 +51,17 @@ export function contrasteSuficiente(cor: string, fundo: string, tamanho: number)
 }
 
 /** Preto ou branco — o que ler melhor sobre esta cor. */
+/**
+ * Se o fundo é claro.
+ *
+ * A atmosfera precisa saber: sobre fundo escuro a luz clareia, sobre
+ * fundo claro ela tem que escurecer — branco sobre branco não é luz,
+ * é nada.
+ */
+export function ehClara(fundo: string): boolean {
+  return textoLegivelSobre(fundo) !== "#ffffff";
+}
+
 export function textoLegivelSobre(fundo: string): string {
   return contraste("#ffffff", fundo) >= contraste("#111111", fundo) ? "#ffffff" : "#111111";
 }
@@ -73,19 +85,21 @@ export interface Achado {
  * seguro: avisa de aperto que talvez não aconteça, em vez de deixar passar
  * um corte que vai acontecer.
  */
-const LARGURA_MEDIA_DO_CARACTERE = 0.52;
+const LARGURA_MEDIA_DO_CARACTERE = LARGURA_MEDIA_PADRAO;
 
 export function linhasEstimadas(
   texto: string,
   larguraDaCaixa: number,
   tamanho: number,
   proporcao: number,
+  /** Largura média do caractere. Tem que ser a mesma que a do desenho. */
+  larguraDoCaractere = LARGURA_MEDIA_DO_CARACTERE,
 ): number {
   const limpo = String(texto ?? "").trim();
   if (!limpo) return 0;
   const larguraEmCaracteres = Math.max(
     1,
-    (larguraDaCaixa * proporcao) / (tamanho * LARGURA_MEDIA_DO_CARACTERE),
+    (larguraDaCaixa * proporcao) / (tamanho * larguraDoCaractere),
   );
   // Quebra por palavra, como o navegador faz — contar caracteres direto
   // partiria palavra no meio e daria menos linhas do que a realidade.
@@ -113,7 +127,7 @@ export function conferir(doc: Documento): Achado[] {
   const margem = margemSegura(feitioDoDoc(doc));
 
   for (const el of doc.elementos) {
-    if (el.tipo === "fundo" || el.oculto) continue;
+    if (!temCaixa(el) || el.oculto) continue;
 
     const { x, y, largura, altura } = el.caixa;
     if (x < margem - 0.001 || y < margem - 0.001 || x + largura > 1 - margem + 0.001 || y + altura > 1 - margem + 0.001) {
@@ -180,7 +194,7 @@ export function consertar(doc: Documento): Documento {
   const margem = margemSegura(feitioDoDoc(doc));
 
   const elementos = doc.elementos.map((el): Elemento => {
-    if (el.tipo === "fundo" || el.oculto || el.travado) return el;
+    if (!temCaixa(el) || el.oculto || el.travado) return el;
 
     let caixa = { ...el.caixa };
     caixa.x = Math.min(Math.max(caixa.x, margem), 1 - margem - caixa.largura);

@@ -1,3 +1,4 @@
+import { ATMOSFERAS, NOME_ATMOSFERA, serveParaLetra, type Atmosfera } from "../atmosfera.ts";
 import {
   AlignCenter,
   AlignLeft,
@@ -24,7 +25,13 @@ import { FORMATOS } from "../formatos.ts";
 import { nomeDeArquivo, paraPng } from "../exportar.ts";
 import { paraSvg } from "../render.ts";
 import { useArtesStore } from "../store.ts";
-import type { Documento, Elemento, ElementoTexto } from "../types.ts";
+import {
+  temCaixa,
+  type Documento,
+  type Elemento,
+  type ElementoAtmosfera,
+  type ElementoTexto,
+} from "../types.ts";
 import { conferir, consertar } from "../validacao.ts";
 import { montar } from "../variacoes.ts";
 
@@ -43,6 +50,7 @@ function rotuloDoElemento(el: Elemento): string {
   if (el.tipo === "fundo") return "Fundo";
   if (el.tipo === "imagem") return el.id === "logo" ? "Logo" : "Imagem";
   if (el.tipo === "forma") return "Enfeite";
+  if (el.tipo === "atmosfera") return NOME_ATMOSFERA[el.atmosfera];
   return el.texto.slice(0, 28) || "Texto";
 }
 
@@ -221,10 +229,69 @@ export function EditorDeArte({ aoSair }: { aoSair: () => void }) {
         </div>
 
         {texto && <PropriedadesDoTexto el={texto} aoMudar={(p) => mexer(texto.id, p)} />}
+        {el?.tipo === "atmosfera" && (
+          <PropriedadesDaAtmosfera el={el} aoMudar={(p) => mexer(el.id, p)} />
+        )}
         {el && el.tipo !== "texto" && el.tipo !== "fundo" && (
           <Posicao el={el} aoMudar={(p) => mexer(el.id, p)} />
         )}
       </div>
+    </div>
+  );
+}
+
+/**
+ * A atmosfera, à mão.
+ *
+ * O sorteio escolhe uma; daqui em diante é o operador que escolhe. Sem
+ * isto, trocar a luz de uma arte exigia gerar de novo e torcer — e perder
+ * todo o resto do ajuste no caminho.
+ */
+function PropriedadesDaAtmosfera({
+  el,
+  aoMudar,
+}: {
+  el: ElementoAtmosfera;
+  aoMudar: (patch: Partial<ElementoAtmosfera>) => void;
+}) {
+  return (
+    <div className="grid gap-2 border-t border-border pt-3">
+      <Label htmlFor="atm">Atmosfera</Label>
+      <select
+        id="atm"
+        value={el.atmosfera}
+        onChange={(e) => aoMudar({ atmosfera: e.target.value as Atmosfera })}
+        className="rounded-md bg-elevated px-2 py-1.5 text-secondary text-fg shadow-[var(--shadow-border)]"
+      >
+        {ATMOSFERAS.map((a) => (
+          <option key={a} value={a}>
+            {NOME_ATMOSFERA[a]}
+            {serveParaLetra(a) ? "" : " · enche o centro"}
+          </option>
+        ))}
+      </select>
+      <p className="text-caption text-subtle">
+        {serveParaLetra(el.atmosfera)
+          ? "Deixa o meio livre — serve de fundo para letra de música."
+          : "Ocupa o centro. Boa para cartaz, atrapalha atrás de letra."}
+      </p>
+      <div className="flex items-center justify-between gap-2">
+        <Label htmlFor="atmcor">Cor da luz</Label>
+        <input
+          id="atmcor"
+          type="color"
+          value={/^#[0-9a-f]{6}$/i.test(el.cor) ? el.cor : "#ffffff"}
+          onChange={(e) => aoMudar({ cor: e.target.value })}
+          className="h-7 w-12 cursor-pointer rounded-md bg-elevated p-0.5"
+        />
+      </div>
+      <Button
+        size="sm"
+        variant="ghost"
+        onClick={() => aoMudar({ semente: Math.floor(Math.random() * 100000) })}
+      >
+        Sortear outro desenho
+      </Button>
     </div>
   );
 }
@@ -315,7 +382,8 @@ function PropriedadesDoTexto({
 
 /** Posição em porcento do quadro — é assim que o documento guarda. */
 function Posicao({ el, aoMudar }: { el: Elemento; aoMudar: (p: Partial<Elemento>) => void }) {
-  if (el.tipo === "fundo") return null;
+  // Fundo e atmosfera cobrem o quadro inteiro: não há posição para mexer.
+  if (!temCaixa(el)) return null;
   const campos = [
     ["x", "Esquerda"],
     ["y", "Topo"],

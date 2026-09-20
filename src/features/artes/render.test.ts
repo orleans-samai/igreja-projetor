@@ -5,6 +5,18 @@ import { montar } from "./variacoes.ts";
 import { FORMATOS } from "./formatos.ts";
 import { dadosVazios, type DadosDoEvento } from "./types.ts";
 
+/**
+ * O texto do SVG, com as linhas juntas.
+ *
+ * O título é quebrado em `<tspan>` — um por linha — e agora ele é grande
+ * o bastante para caber em duas. Procurar a frase inteira no SVG cru
+ * passou a falhar por causa da quebra, que é o comportamento certo. O que
+ * interessa é que as palavras estejam lá, na ordem, e escapadas.
+ */
+function textoDoSvg(svg: string): string {
+  return [...svg.matchAll(/<tspan[^>]*>([^<]*)<\/tspan>/g)].map((m) => m[1]).join(" ");
+}
+
 function dados(extra: Partial<DadosDoEvento> = {}): DadosDoEvento {
   return { ...dadosVazios(), titulo: "Culto da Benção", data: "12 de março", ...extra };
 }
@@ -78,7 +90,7 @@ describe("paraSvg", () => {
   });
 
   test("o título aparece no desenho", () => {
-    assert.match(paraSvg(arte()), /Culto da Benção/);
+    assert.match(textoDoSvg(paraSvg(arte())), /Culto da Benção/);
   });
 
   test("texto do formulário não injeta marcação no arquivo", () => {
@@ -95,7 +107,7 @@ describe("paraSvg", () => {
         e.tipo === "texto" && e.campo === "titulo" ? { ...e, oculto: true } : e,
       ),
     };
-    assert.ok(!paraSvg(comOculto).includes("Culto da Benção"));
+    assert.ok(!textoDoSvg(paraSvg(comOculto)).includes("Culto da Benção"));
   });
 
   test("todo formato desenha, e nenhum sai vazio", () => {

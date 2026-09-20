@@ -136,7 +136,46 @@ export interface ElementoFundo {
   veu: number;
 }
 
-export type Elemento = ElementoFundo | ElementoImagem | ElementoForma | ElementoTexto;
+/**
+ * Luz e profundidade por cima do fundo, por baixo do texto.
+ *
+ * É uma camada própria, e não um campo do fundo, porque ela se liga e se
+ * desliga sozinha: a mesma paleta com névoa e sem névoa são duas artes, e
+ * o editor precisa poder apagar só a atmosfera.
+ */
+export interface ElementoAtmosfera {
+  tipo: "atmosfera";
+  id: string;
+  atmosfera: import("./atmosfera.ts").Atmosfera;
+  /** A cor que a luz empresta — normalmente o destaque da paleta. */
+  cor: string;
+  /** O mesmo desenho sai da mesma semente, sempre. */
+  semente: number;
+  /** Fundo claro inverte a luz: ela escurece em vez de clarear. */
+  clara: boolean;
+  oculto?: boolean;
+  travado?: boolean;
+}
+
+/**
+ * Os elementos que ocupam um retângulo na arte.
+ *
+ * Fundo e atmosfera não entram: os dois cobrem o quadro inteiro por
+ * definição, e perguntar onde eles estão não faz sentido. Quem verifica
+ * margem, arrasta e corrige posição trabalha só com estes.
+ */
+export type ElementoComCaixa = ElementoImagem | ElementoForma | ElementoTexto;
+
+export function temCaixa(el: Elemento): el is ElementoComCaixa {
+  return el.tipo === "imagem" || el.tipo === "forma" || el.tipo === "texto";
+}
+
+export type Elemento =
+  | ElementoFundo
+  | ElementoAtmosfera
+  | ElementoImagem
+  | ElementoForma
+  | ElementoTexto;
 
 export interface Documento {
   v: typeof VERSAO_DOCUMENTO;

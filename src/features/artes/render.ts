@@ -1,3 +1,5 @@
+import { pintarAtmosfera } from "./atmosfera.ts";
+import { LARGURA_MEDIA_PADRAO, larguraMediaDoCaractere } from "./largura-do-texto.ts";
 import type { Documento, Elemento, ElementoTexto } from "./types.ts";
 
 /**
@@ -34,7 +36,7 @@ export function escapar(bruto: string): string {
 }
 
 /** A mesma largura média de caractere que a validação usa. */
-const LARGURA_MEDIA_DO_CARACTERE = 0.52;
+const LARGURA_MEDIA_DO_CARACTERE = LARGURA_MEDIA_PADRAO;
 
 /**
  * Parte o texto em linhas que cabem na largura dada.
@@ -42,10 +44,16 @@ const LARGURA_MEDIA_DO_CARACTERE = 0.52;
  * Respeita a quebra que a pessoa digitou — um endereço em duas linhas foi
  * escrito assim de propósito.
  */
-export function quebrarTexto(texto: string, larguraPx: number, corpoPx: number): string[] {
+export function quebrarTexto(
+  texto: string,
+  larguraPx: number,
+  corpoPx: number,
+  /** Largura média do caractere, em fração do corpo. Ver largura-do-texto. */
+  larguraDoCaractere = LARGURA_MEDIA_DO_CARACTERE,
+): string[] {
   const limpo = String(texto ?? "").trim();
   if (!limpo) return [];
-  const cabem = Math.max(1, Math.floor(larguraPx / (corpoPx * LARGURA_MEDIA_DO_CARACTERE)));
+  const cabem = Math.max(1, Math.floor(larguraPx / (corpoPx * larguraDoCaractere)));
   const saida: string[] = [];
   for (const paragrafo of limpo.split("\n")) {
     let atual = "";
@@ -80,7 +88,12 @@ function desenharTexto(el: ElementoTexto, L: number, A: number): string {
   const texto = el.maiuscula ? el.texto.toLocaleUpperCase("pt-BR") : el.texto;
   const corpo = el.tamanho * A;
   const larguraPx = el.caixa.largura * L;
-  const linhas = quebrarTexto(texto, larguraPx, corpo);
+  const linhas = quebrarTexto(
+    texto,
+    larguraPx,
+    corpo,
+    larguraMediaDoCaractere(el.fonte, el.peso, el.maiuscula, el.espacamento),
+  );
   if (linhas.length === 0) return "";
 
   const { anchor, dx } = ancoraDe(el.alinhamento);
@@ -165,6 +178,14 @@ function desenharElemento(el: Elemento, L: number, A: number): string {
         `width="${(largura * L).toFixed(2)}" height="${(altura * A).toFixed(2)}" ` +
         `preserveAspectRatio="${modo}" opacity="${el.opacidade}"/>`
       );
+    }
+    case "atmosfera": {
+      // Os ids de gradiente e filtro levam o id do elemento: duas camadas
+      // na mesma arte disputariam o mesmo nome, e a segunda venceria.
+      const marca = el.id.replace(/[^a-zA-Z0-9]/g, "").slice(0, 12) || "atm";
+      const p = pintarAtmosfera(el.atmosfera, L, A, el.cor, el.semente, `a${marca}`, el.clara);
+      if (!p.corpo) return "";
+      return `${p.defs ? `<defs>${p.defs}</defs>` : ""}${p.corpo}`;
     }
     case "texto":
       return desenharTexto(el, L, A);

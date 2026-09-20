@@ -1,5 +1,7 @@
+import { ATMOSFERAS, type Atmosfera } from "./atmosfera.ts";
+import { larguraMediaDoCaractere } from "./largura-do-texto.ts";
 import { feitioDe, margemSegura, type Feitio } from "./formatos.ts";
-import { consertar, linhasEstimadas, textoLegivelSobre } from "./validacao.ts";
+import { consertar, ehClara, linhasEstimadas, textoLegivelSobre } from "./validacao.ts";
 import {
   VERSAO_DOCUMENTO,
   type Alinhamento,
@@ -70,6 +72,29 @@ export const PALETAS: readonly Paleta[] = [
   { id: "areia", nome: "Areia", fundo: ["#f3e7d3", "#e2cfae"], texto: "#2a2015", destaque: "#8a5a2b", painel: "#eaddc3" },
   { id: "tinta", nome: "Tinta", fundo: ["#111111", "#242424"], texto: "#fafafa", destaque: "#c9a227", painel: "#1a1a1a" },
   { id: "mar", nome: "Maré", fundo: ["#07222b", "#0f3b49"], texto: "#eafaff", destaque: "#5fd0d8", painel: "#0b2e3a" },
+
+  // As do calendário da igreja. Sem elas, "Natal" e "Congresso de jovens"
+  // saíam com a mesma cara — que era a queixa, e com razão: cor é a
+  // primeira coisa que diz de que culto a arte é.
+  { id: "natal", nome: "Natal", fundo: ["#0a1f18", "#12402c"], texto: "#f4fbf6", destaque: "#e0b352", painel: "#0e2a1f" },
+  { id: "natal-noite", nome: "Noite de Natal", fundo: ["#0a1128", "#17265c"], texto: "#eef2ff", destaque: "#e8c979", painel: "#0e1838" },
+  { id: "pascoa", nome: "Páscoa", fundo: ["#1b0f1f", "#4a2350"], texto: "#faf3fb", destaque: "#f2d08a", painel: "#271431" },
+  // O tom de amanhecer entrou claro demais e o texto dava 2,7:1 — o teste
+  // de contraste pegou antes de virar cartaz ilegível. Escurecido até
+  // 5,6:1, e o dourado do destaque devolve o calor que se perdeu.
+  { id: "manha", nome: "Manhã de Páscoa", fundo: ["#2b1830", "#96512f"], texto: "#fff6ec", destaque: "#ffd79a", painel: "#3a2038" },
+  { id: "ceia", nome: "Santa Ceia", fundo: ["#1a0b10", "#4d1822"], texto: "#fbf0ef", destaque: "#d9a441", painel: "#260f16" },
+  { id: "trigo", nome: "Pão e trigo", fundo: ["#2a1e0f", "#6b4a1f"], texto: "#fdf6e6", destaque: "#efc677", painel: "#38280f" },
+  { id: "jovens", nome: "Jovens", fundo: ["#16062e", "#4a17a8"], texto: "#f6f0ff", destaque: "#57e6c3", painel: "#210a40" },
+  { id: "neon", nome: "Neon", fundo: ["#07030f", "#22104d"], texto: "#f3efff", destaque: "#ff5fa2", painel: "#120724" },
+  { id: "missoes", nome: "Missões", fundo: ["#0b1a1c", "#1c4038"], texto: "#effaf4", destaque: "#e8a33d", painel: "#102526" },
+  { id: "sertao", nome: "Sertão", fundo: ["#2b1c10", "#7a4a22"], texto: "#fdf3e5", destaque: "#f0b95f", painel: "#38240f" },
+  { id: "familia", nome: "Família", fundo: ["#1b1410", "#4a3524"], texto: "#fbf4ec", destaque: "#e7a765", painel: "#261b14" },
+  { id: "aurora", nome: "Aurora", fundo: ["#0d1030", "#5b2a6e"], texto: "#f5f0ff", destaque: "#ffb3c7", painel: "#161038" },
+  { id: "cedro", nome: "Cedro", fundo: ["#0e1512", "#2b4034"], texto: "#eef4ef", destaque: "#c7a86a", painel: "#141d18" },
+  { id: "ardosia", nome: "Ardósia", fundo: ["#12151a", "#2c333d"], texto: "#f1f4f8", destaque: "#9bb4cc", painel: "#1a1f26" },
+  { id: "campanha", nome: "Campanha", fundo: ["#1a0505", "#6e1111"], texto: "#fff0ee", destaque: "#ffc75a", painel: "#280808" },
+  { id: "vigilia", nome: "Vigília", fundo: ["#05060d", "#141a33"], texto: "#eaeeff", destaque: "#7f9cff", painel: "#0a0d1a" },
 ] as const;
 
 export interface Tipografia {
@@ -90,6 +115,14 @@ export const TIPOGRAFIAS: readonly Tipografia[] = [
   { id: "limpa", titulo: "sans", corpo: "sans", pesoTitulo: 700, espacamento: -0.01, maiuscula: false },
   { id: "editorial", titulo: "display", corpo: "sans", pesoTitulo: 600, espacamento: 0.01, maiuscula: false },
   { id: "cartaz", titulo: "sans", corpo: "sans", pesoTitulo: 900, espacamento: 0.04, maiuscula: true },
+  // A terceira família estava instalada e não era usada por ninguém. Mono
+  // no corpo dá o ar técnico de cartaz de congresso, e mono no título dá
+  // o de contagem regressiva.
+  { id: "tecnica", titulo: "sans", corpo: "mono", pesoTitulo: 800, espacamento: 0.01, maiuscula: true },
+  { id: "manifesto", titulo: "display", corpo: "mono", pesoTitulo: 700, espacamento: 0, maiuscula: false },
+  { id: "cronometro", titulo: "mono", corpo: "sans", pesoTitulo: 700, espacamento: 0.06, maiuscula: true },
+  { id: "serena", titulo: "display", corpo: "display", pesoTitulo: 500, espacamento: 0.02, maiuscula: false },
+  { id: "compacta", titulo: "sans", corpo: "sans", pesoTitulo: 800, espacamento: -0.02, maiuscula: false },
 ] as const;
 
 export type Disposicao = "centro" | "alto" | "baixo" | "faixa" | "lateral";
@@ -98,8 +131,27 @@ export const DISPOSICOES: readonly Disposicao[] = ["centro", "alto", "baixo", "f
 export type EstiloDeFundo = "solido" | "gradiente" | "radial";
 export const FUNDOS: readonly EstiloDeFundo[] = ["solido", "gradiente", "radial"];
 
-export type Enfeite = "nenhum" | "linha" | "cantos" | "circulo" | "barra";
-export const ENFEITES: readonly Enfeite[] = ["nenhum", "linha", "cantos", "circulo", "barra"];
+export type Enfeite =
+  | "nenhum"
+  | "linha"
+  | "cantos"
+  | "circulo"
+  | "barra"
+  | "moldura"
+  | "rodape"
+  | "coluna"
+  | "selo";
+export const ENFEITES: readonly Enfeite[] = [
+  "nenhum",
+  "linha",
+  "cantos",
+  "circulo",
+  "barra",
+  "moldura",
+  "rodape",
+  "coluna",
+  "selo",
+];
 
 /** Quanto texto secundário a arte mostra. */
 export type Densidade = "enxuta" | "media" | "cheia";
@@ -113,11 +165,19 @@ export interface Receita {
   fundo: EstiloDeFundo;
   enfeite: Enfeite;
   densidade: Densidade;
+  /** A camada de luz. É ela que separa uma arte de um retângulo colorido. */
+  atmosfera: Atmosfera;
 }
 
 /** Quantas combinações diferentes existem, de verdade. */
 export const COMBINACOES =
-  PALETAS.length * TIPOGRAFIAS.length * DISPOSICOES.length * FUNDOS.length * ENFEITES.length * DENSIDADES.length;
+  PALETAS.length *
+  TIPOGRAFIAS.length *
+  DISPOSICOES.length *
+  FUNDOS.length *
+  ENFEITES.length *
+  DENSIDADES.length *
+  ATMOSFERAS.length;
 
 export function receitaDe(semente: number): Receita {
   const r = sorteio(semente);
@@ -129,6 +189,7 @@ export function receitaDe(semente: number): Receita {
     fundo: escolher(FUNDOS, r),
     enfeite: escolher(ENFEITES, r),
     densidade: escolher(DENSIDADES, r),
+    atmosfera: escolher(ATMOSFERAS, r),
   };
 }
 
@@ -180,11 +241,45 @@ function linhasDe(dados: DadosDoEvento, densidade: Densidade): Linha[] {
 }
 
 /** Corpo de letra por nível, já ajustado ao feitio do quadro. */
-function corpoDe(nivel: 1 | 2 | 3, feitio: Feitio): number {
-  const base = nivel === 3 ? 0.082 : nivel === 2 ? 0.038 : 0.024;
-  // Em quadro deitado sobra largura e falta altura: a letra encolhe um
-  // pouco para caberem as mesmas linhas.
-  return feitio === "deitado" ? base * 0.82 : feitio === "empe" ? base * 1.05 : base;
+/**
+ * O corpo do título sai do tamanho do título.
+ *
+ * Era um número fixo — 8,2% da altura do quadro, fosse "Páscoa" ou fosse
+ * "Conferência de Jovens da Região Metropolitana". Oito por cento é corpo
+ * de legenda: por isso as artes pareciam slide, e não cartaz.
+ *
+ * Num cartaz, o tamanho do título é consequência de quanto ele tem a
+ * dizer. Duas palavras ocupam a folha; uma frase longa se comporta. É a
+ * conta que um diagramador faz sem pensar, e que aqui precisava estar
+ * escrita.
+ *
+ * A escada também abriu. Antes o título era 3,4 vezes o rodapé — perto
+ * demais para mandar em alguma coisa. Agora vai de 4 a 9 vezes, conforme
+ * ele possa crescer.
+ */
+export function corpoDoTitulo(texto: string, feitio: Feitio): number {
+  const n = String(texto ?? "").trim().length;
+  const base =
+    n === 0 ? 0.082
+    : n <= 12 ? 0.185
+    : n <= 20 ? 0.150
+    : n <= 32 ? 0.120
+    : n <= 50 ? 0.098
+    : 0.082;
+  return base * fatorDoFeitio(feitio);
+}
+
+/** Em quadro deitado falta altura; em pé sobra. */
+function fatorDoFeitio(feitio: Feitio): number {
+  return feitio === "deitado" ? 0.82 : feitio === "empe" ? 1.05 : 1;
+}
+
+function corpoDe(nivel: 1 | 2 | 3, feitio: Feitio, titulo = ""): number {
+  if (nivel === 3) return corpoDoTitulo(titulo, feitio);
+  // Apoio um pouco menor que antes, de propósito: a escada precisa de
+  // degrau, e quem sobe é o título.
+  const base = nivel === 2 ? 0.034 : 0.021;
+  return base * fatorDoFeitio(feitio);
 }
 
 function alinhamentoDe(d: Disposicao): Alinhamento {
@@ -213,25 +308,118 @@ function montarTextos(
    * três, e o remendo depois só encolhia a letra até ela ficar ilegível. A
    * composição precisa saber quanto texto há.
    */
-  const alturaDe = (l: Linha, escala: number) => {
-    const corpo = corpoDe(l.nivel, feitio) * escala;
+  const titulo = String(dados.titulo ?? "").trim();
+
+  /**
+   * O estilo de cada nível, num lugar só.
+   *
+   * A estimativa de linhas e o desenho têm que usar exatamente o mesmo
+   * peso, a mesma caixa e a mesma fonte. Quando divergiam, o título saía
+   * cortado pelos dois lados: a conta dizia que cabia numa linha e a
+   * letra, em caixa alta e peso 800, ocupava vinte por cento a mais.
+   */
+  const estiloDe = (nivel: 1 | 2 | 3) => ({
+    fonte: nivel === 3 ? tipografia.titulo : tipografia.corpo,
+    peso: nivel === 3 ? tipografia.pesoTitulo : nivel === 2 ? 600 : 500,
+    maiuscula: nivel === 3 ? tipografia.maiuscula : nivel === 1,
+    espacamento: nivel === 3 ? tipografia.espacamento : nivel === 1 ? 0.06 : 0,
+  });
+
+  const larguraDo = (nivel: 1 | 2 | 3) => {
+    const e = estiloDe(nivel);
+    return larguraMediaDoCaractere(e.fonte, e.peso, e.maiuscula, e.espacamento);
+  };
+
+  /**
+   * O título encolhe menos que o resto.
+   *
+   * Antes tudo encolhia junto, na mesma proporção. Parece justo e é
+   * errado: quando a arte fica cheia, quem tem que ceder é a informação
+   * de apoio — o endereço, o contato — e não a manchete. Um diagramador
+   * aperta o rodapé e protege o título; era isso que faltava.
+   *
+   * A raiz é o quanto ele cede: com o apoio em 50%, o título ainda está
+   * em 73%. Nunca abaixo de um piso, senão a escada se desfaz.
+   */
+  const PISO_DO_TITULO = 0.62;
+  const escalaDoTitulo = (apoio: number) => Math.max(PISO_DO_TITULO, Math.pow(apoio, 0.45));
+
+  const alturaDe = (l: Linha, apoio: number) => {
+    const escala = l.nivel === 3 ? escalaDoTitulo(apoio) : apoio;
+    const corpo = corpoDe(l.nivel, feitio, titulo) * escala;
     const entrelinha = l.nivel === 3 ? 1.08 : 1.35;
-    const n = linhasEstimadas(String(dados[l.campo] ?? ""), larguraCaixa, corpo, proporcao);
+    const n = linhasEstimadas(String(dados[l.campo] ?? ""), larguraCaixa, corpo, proporcao, larguraDo(l.nivel));
     const folga = l.nivel === 3 ? 0.55 : 0.35;
     return corpo * entrelinha * Math.max(1, n) + corpo * folga;
   };
 
-  // Se o conjunto não cabe, tudo encolhe junto — proporção preservada é o
-  // que mantém a hierarquia de pé. Duas voltas bastam: a primeira estima, a
-  // segunda confere depois de o texto reflowar no tamanho novo.
-  let escala = 1;
-  for (let volta = 0; volta < 3; volta += 1) {
-    const soma = linhas.reduce((a, l) => a + alturaDe(l, escala), 0);
+  const somaCom = (apoio: number) => linhas.reduce((a, l) => a + alturaDe(l, apoio), 0);
+
+  // Cada volta reestima depois de o texto reflowar no tamanho novo: mudar
+  // o corpo muda quantas linhas o título ocupa, e isso muda a soma.
+  let apoio = 1;
+  for (let volta = 0; volta < 5; volta += 1) {
+    const soma = somaCom(apoio);
     if (soma <= util) break;
-    escala = Math.max(0.42, escala * (util / soma) * 0.98);
+    apoio = Math.max(0.34, apoio * (util / soma) * 0.98);
   }
 
-  const alturas = linhas.map((l) => alturaDe(l, escala));
+  /**
+   * Sobrou folga? O título cresce e ocupa.
+   *
+   * Um cartaz com três informações e um título pequeno no meio de muito
+   * branco é um cartaz mal resolvido. O espaço que sobra pertence à
+   * manchete — até um teto, porque título que toma o quadro inteiro
+   * também não é cartaz.
+   */
+  let crescimento = 1;
+  if (titulo && somaCom(apoio) < util * 0.82) {
+    for (let volta = 0; volta < 6; volta += 1) {
+      const tentativa = crescimento * 1.12;
+      const soma = linhas.reduce((a, l) => {
+        const escala = l.nivel === 3 ? escalaDoTitulo(apoio) * tentativa : apoio;
+        const corpo = corpoDe(l.nivel, feitio, titulo) * escala;
+        const entrelinha = l.nivel === 3 ? 1.08 : 1.35;
+        const n = linhasEstimadas(String(dados[l.campo] ?? ""), larguraCaixa, corpo, proporcao, larguraDo(l.nivel));
+        return a + corpo * entrelinha * Math.max(1, n) + corpo * (l.nivel === 3 ? 0.55 : 0.35);
+      }, 0);
+      if (soma > util * 0.94 || tentativa > 1.6) break;
+      crescimento = tentativa;
+    }
+  }
+
+  /**
+   * O teto imposto pela maior palavra.
+   *
+   * Quebrar linha resolve frase comprida; não resolve palavra comprida.
+   * "Páscoa" é uma palavra só: se o corpo pedir mais largura do que o
+   * quadro tem, ela sai cortada pelos dois lados, e foi exatamente isso
+   * que apareceu quando o título cresceu. A saída é a mesma do
+   * diagramador — diminuir até a maior palavra caber.
+   */
+  const corpoQueCabe = (l: Linha, corpo: number) => {
+    const palavras = String(dados[l.campo] ?? "").trim().split(/\s+/);
+    const maior = palavras.reduce((m, p) => Math.max(m, p.length), 0);
+    if (maior <= 0) return corpo;
+    const teto = (larguraCaixa * proporcao) / (maior * larguraDo(l.nivel));
+    return Math.min(corpo, teto);
+  };
+
+  const corpoFinal = (l: Linha) =>
+    corpoQueCabe(
+      l,
+      corpoDe(l.nivel, feitio, titulo) *
+        (l.nivel === 3 ? escalaDoTitulo(apoio) * crescimento : apoio),
+    );
+
+  const alturaFinal = (l: Linha) => {
+    const corpo = corpoFinal(l);
+    const entrelinha = l.nivel === 3 ? 1.08 : 1.35;
+    const n = linhasEstimadas(String(dados[l.campo] ?? ""), larguraCaixa, corpo, proporcao, larguraDo(l.nivel));
+    return corpo * entrelinha * Math.max(1, n) + corpo * (l.nivel === 3 ? 0.55 : 0.35);
+  };
+
+  const alturas = linhas.map(alturaFinal);
   const total = alturas.reduce((a, b) => a + b, 0);
   const respiro = Math.max(0, util - total);
   const inicio =
@@ -245,7 +433,7 @@ function montarTextos(
 
   let y = inicio;
   return linhas.map((l, i) => {
-    const tamanho = corpoDe(l.nivel, feitio) * escala;
+    const tamanho = corpoFinal(l);
     const altura = alturas[i];
     const el: ElementoTexto = {
       tipo: "texto",
@@ -254,13 +442,20 @@ function montarTextos(
       texto: String(dados[l.campo] ?? "").trim(),
       caixa: { x, y, largura: larguraCaixa, altura },
       tamanho,
-      peso: l.nivel === 3 ? tipografia.pesoTitulo : l.nivel === 2 ? 600 : 500,
+      peso: estiloDe(l.nivel).peso,
       cor: l.destaque ? paleta.destaque : paleta.texto,
       alinhamento,
       entrelinha: l.nivel === 3 ? 1.08 : 1.35,
-      espacamento: l.nivel === 3 ? tipografia.espacamento : l.nivel === 1 ? 0.06 : 0,
-      maiuscula: l.nivel === 3 ? tipografia.maiuscula : l.nivel === 1,
-      fonte: l.nivel === 3 ? tipografia.titulo : tipografia.corpo,
+      // Título grande com a mesma entreletra de título pequeno fica solto:
+      // quanto maior o corpo, mais fechado o espaçamento precisa ser. Só
+      // aperta, nunca abre — abrir mudaria a largura para mais do que a
+      // estimativa contou, e a palavra sairia cortada.
+      espacamento:
+        l.nivel === 3
+          ? estiloDe(3).espacamento - (tamanho > 0.12 ? 0.015 : 0)
+          : estiloDe(l.nivel).espacamento,
+      maiuscula: estiloDe(l.nivel).maiuscula,
+      fonte: estiloDe(l.nivel).fonte,
       sombra: receita.fundo === "radial" ? false : false,
     };
     y += altura;
@@ -330,6 +525,64 @@ function montarEnfeite(receita: Receita, feitio: Feitio): Elemento[] {
           raio: 1,
         },
       ];
+    case "moldura":
+      // Quatro filetes finos encostando na margem segura. Emoldura sem
+      // roubar área: o texto continua com o quadro inteiro por dentro.
+      return [
+        { lado: "topo", caixa: { x: margem * 0.5, y: margem * 0.5, largura: 1 - margem, altura: 0.0035 } },
+        { lado: "base", caixa: { x: margem * 0.5, y: 1 - margem * 0.5, largura: 1 - margem, altura: 0.0035 } },
+        { lado: "esq", caixa: { x: margem * 0.5, y: margem * 0.5, largura: 0.0035, altura: 1 - margem } },
+        { lado: "dir", caixa: { x: 1 - margem * 0.5, y: margem * 0.5, largura: 0.0035, altura: 1 - margem } },
+      ].map(({ lado, caixa }) => ({
+        tipo: "forma" as const,
+        id: `enf-moldura-${lado}`,
+        forma: "retangulo" as const,
+        caixa,
+        cor,
+        opacidade: 0.6,
+        raio: 0,
+      }));
+    case "rodape":
+      // Uma faixa cheia no pé. É onde a data e o endereço pousam em
+      // cartaz de congresso, e dá peso à base sem encostar no título.
+      return [
+        {
+          tipo: "forma",
+          id: "enf-rodape",
+          forma: "retangulo",
+          caixa: { x: 0, y: 1 - 0.085, largura: 1, altura: 0.085 },
+          cor,
+          opacidade: 0.92,
+          raio: 0,
+        },
+      ];
+    case "coluna":
+      // Um bloco vertical na lateral, translúcido: dá onde o texto pousar
+      // quando a disposição é lateral, e vira textura quando não é.
+      return [
+        {
+          tipo: "forma",
+          id: "enf-coluna",
+          forma: "retangulo",
+          caixa: { x: 0, y: 0, largura: 0.34, altura: 1 },
+          cor: paleta.painel,
+          opacidade: 0.72,
+          raio: 0,
+        },
+      ];
+    case "selo":
+      // Um disco no canto de cima, como carimbo de série de sermão.
+      return [
+        {
+          tipo: "forma",
+          id: "enf-selo",
+          forma: "circulo",
+          caixa: { x: 1 - margem - 0.14, y: margem, largura: 0.14, altura: 0.14 },
+          cor,
+          opacidade: 0.85,
+          raio: 1,
+        },
+      ];
     default:
       return [];
   }
@@ -369,6 +622,24 @@ export function montar(opcoes: {
     veu: temFoto ? 0.45 : 0,
   };
 
+  // A atmosfera vem logo acima do fundo e abaixo de todo o resto: ela é
+  // luz sobre a cor, nunca por cima do texto. Sobre foto ela não entra —
+  // a fotografia já traz a própria luz, e somar as duas vira sujeira.
+  const clara = ehClara(paleta.fundo[0]);
+  const atmosfera: Elemento[] =
+    temFoto || receita.atmosfera === "nenhuma"
+      ? []
+      : [
+          {
+            tipo: "atmosfera",
+            id: "atmosfera",
+            atmosfera: receita.atmosfera,
+            cor: paleta.destaque,
+            semente: opcoes.semente,
+            clara,
+          },
+        ];
+
   const linhas = linhasDe(opcoes.dados, receita.densidade);
   const textos = montarTextos(linhas, opcoes.dados, receita, feitio);
   if (temFoto) {
@@ -407,7 +678,7 @@ export function montar(opcoes: {
     templateId: opcoes.templateId ?? receita.disposicao,
     semente: opcoes.semente,
     dados: opcoes.dados,
-    elementos: [elementoFundo, ...montarEnfeite(receita, feitio), ...textos, ...logo],
+    elementos: [elementoFundo, ...atmosfera, ...montarEnfeite(receita, feitio), ...textos, ...logo],
     criadoEm: Date.now(),
     atualizadoEm: Date.now(),
   };
