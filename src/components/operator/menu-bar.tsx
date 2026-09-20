@@ -3,6 +3,7 @@ import {
   GraduationCap,
   ImageUp,
   Smartphone,
+  Sparkles,
   Menu as MenuIcon,
   Play,
   Search,
@@ -52,6 +53,7 @@ export function MenuBar({
   onRemoteControl,
   onLogo,
   onPermissoes,
+  onIa,
   onOptimize,
 }: {
   onNewSong: () => void;
@@ -66,6 +68,7 @@ export function MenuBar({
   onRemoteControl: () => void;
   onLogo: () => void;
   onPermissoes: () => void;
+  onIa: () => void;
   onOptimize: () => void;
 }) {
   const church = useLumenStore((s) => s.settings.churchName);
@@ -460,6 +463,21 @@ export function MenuBar({
           <ImageUp className="size-3.5" aria-hidden /> Logo
         </button>
 
+        {/* O assistente fica à mão, mas não em destaque: ele ajuda, e a
+            cabine nunca depende dele para projetar. */}
+        <button
+          type="button"
+          onClick={onIa}
+          className={cn(
+            "flex items-center gap-1.5 rounded-md px-2 py-1 text-secondary text-muted",
+            "transition-colors duration-[var(--motion-fast)] ease-[var(--ease-out)]",
+            "hover:bg-elevated hover:text-fg",
+            "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring",
+          )}
+        >
+          <Sparkles className="size-3.5" aria-hidden /> IA
+        </button>
+
         {/* Auto-Slide e YouTube são recursos extras, não um modo permanente
             como Reorganizar — por isso ficam escondidos atrás de um clique
             em vez de ocupar a barra o tempo todo. O ponto aceso no gatilho
@@ -534,6 +552,7 @@ export function MenuBar({
           <Section first={false} label="Igreja">
             <MenuItem onSelect={onLogo}>Logo e nome da igreja</MenuItem>
             <MenuItem onSelect={onPermissoes}>Permissões do celular</MenuItem>
+            <MenuItem onSelect={onIa}>Assistente Lúmen</MenuItem>
           </Section>
         </MenuContent>
       </Menu>

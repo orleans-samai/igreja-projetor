@@ -2,6 +2,7 @@ import { Group, Panel, Separator } from "react-resizable-panels";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChatAviso, ChatPanel } from "@/components/operator/chat-panel";
 import { LogoDialog } from "@/components/operator/logo-dialog";
+import { IaDialog } from "@/components/operator/ia-dialog";
 import { PermissoesDialog } from "@/components/operator/permissoes-dialog";
 import { ControlBar } from "@/components/operator/control-bar";
 import {
@@ -45,6 +46,7 @@ import { buildLiveFrame, useLumenStore } from "@/store/lumen-store";
 import { useAutoSlideStore } from "@/store/auto-slide-store";
 import { useYoutubeStore } from "@/store/youtube-store";
 import { useChatStore } from "@/store/chat-store";
+import { useIaStore } from "@/store/ia-store";
 import { useOpsStore } from "@/store/ops-store";
 
 function isTypingTarget(el: EventTarget | null) {
@@ -391,6 +393,7 @@ export function OperatorApp() {
           onRemoteControl={() => setRemoteControl(true)}
           onLogo={() => setLogoAberto(true)}
           onPermissoes={() => setPermissoesAberto(true)}
+          onIa={() => useIaStore.getState().abrir(true)}
           onOptimize={() => void runOptimize()}
         />
         <WindowsRuntime />
@@ -504,6 +507,7 @@ export function OperatorApp() {
       <RemoteControlDialog open={remoteControl} onOpenChange={setRemoteControl} />
       <LogoDialog open={logoAberto} onOpenChange={setLogoAberto} />
       <PermissoesDialog open={permissoesAberto} onOpenChange={setPermissoesAberto} />
+      <IaDialog onConfiguracoes={() => setSettings(true)} />
       <DisplayDialog open={display} onOpenChange={setDisplay} />
       <CountdownDialog open={countdown} onOpenChange={setCountdown} />
       <LyricsSearchDialog

@@ -11,6 +11,7 @@ const { YoutubeHost } = require("./youtube-host.cjs");
 const { RemoteControl } = require("./remote-control.cjs");
 const { CofreRemoto } = require("./remote-store.cjs");
 const { Anunciante } = require("./mdns.cjs");
+const { AssistenteLocal } = require("./ia.cjs");
 const updater = require("./updater.cjs");
 
 
@@ -23,6 +24,11 @@ const smokeTest = !!process.env.LUMEN_TEST_DATA && (!app.isPackaged || process.a
 if (smokeTest) app.setPath("userData", path.resolve(process.env.LUMEN_TEST_DATA));
 const dataDir = app.getPath("userData");
 const recognition = new Recognition(dataDir);
+/**
+ * O assistente local. Nasce desativado: num PC de igreja, carregar modelo
+ * sem ninguém pedir é tirar memória da projeção.
+ */
+const assistente = new AssistenteLocal(dataDir);
 const youtubeHost = new YoutubeHost(path.join(__dirname, "www"));
 const remoteControl = new RemoteControl(
   path.join(__dirname, "www"),
@@ -428,6 +434,8 @@ async function restoreBackup() {
 app.on("before-quit", (event) => {
   recognition.cancel();
   remoteControl.desligar();
+  // Um llama-server pendurado segura gigabytes depois que a igreja já foi.
+  void assistente.desligar();
   if (quitting || !storage) return;
   event.preventDefault();
   quitting = true;
@@ -459,6 +467,31 @@ onEvent("lumen:remote-control-media", (lista) => remoteControl.atualizarMidia(li
 onEvent("lumen:remote-control-church", (dados) => remoteControl.atualizarIgreja(dados));
 handle("lumen:remote-control-dirigente-password", (senha) => remoteControl.definirSenhaDirigente(senha));
 onEvent("lumen:remote-control-answer", (pedido, resposta) => remoteControl.responderPedido(pedido, resposta));
+handle("lumen:ia-estado", () => assistente.estado());
+handle("lumen:ia-configurar", (patch) => assistente.configurar(patch ?? {}));
+handle("lumen:ia-modelos", () => assistente.listarModelos());
+handle("lumen:ia-escolher-modelo", (caminho) => assistente.escolherModelo(String(caminho || "")));
+handle("lumen:ia-ligar", () => assistente.ligar());
+handle("lumen:ia-desligar", () => assistente.desligar());
+handle("lumen:ia-perguntar", (mensagens) => assistente.perguntar(mensagens));
+handle("lumen:ia-cancelar", () => assistente.cancelar());
+handle("lumen:ia-importar-modelo", async () => {
+  // O seletor de arquivo é do processo principal: a janela nunca abre
+  // caminho no disco por conta própria.
+  const escolha = await dialog.showOpenDialog(cabine ?? undefined, {
+    title: "Escolher um modelo .gguf",
+    properties: ["openFile"],
+    filters: [{ name: "Modelo GGUF", extensions: ["gguf"] }],
+  });
+  const caminho = escolha.filePaths?.[0];
+  if (!caminho) return { ok: false, cancelado: true };
+  return assistente.importarModelo(caminho);
+});
+handle("lumen:ia-abrir-pasta", async () => {
+  await fs.promises.mkdir(assistente.pastaRuntime, { recursive: true }).catch(() => {});
+  await fs.promises.mkdir(assistente.pastaModelos, { recursive: true }).catch(() => {});
+  return shell.openPath(path.join(dataDir, "ia"));
+});
 handle("lumen:remote-control-devices", () => remoteControl.listarDispositivos());
 handle("lumen:remote-control-permission", (id, permissao) => remoteControl.definirPermissao(id, permissao));
 handle("lumen:remote-control-default-permission", (permissao) => remoteControl.definirPermissaoPadrao(permissao));

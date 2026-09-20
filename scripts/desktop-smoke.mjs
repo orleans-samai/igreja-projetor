@@ -217,6 +217,47 @@ try {
     { timeout: 10000 },
   );
 
+  // ---- O assistente existe, nasce desligado, e não é pré-requisito de nada ----
+  const iaInicial = await page.evaluate(() => window.lumenDesktop.iaEstado());
+  assert.equal(iaInicial.modo, "desativado", "a IA devia nascer desativada num PC de igreja");
+  assert.equal(iaInicial.situacao, "desativada");
+  assert.equal(iaInicial.modelo, null);
+
+  await page.getByRole("button", { name: "IA", exact: true }).click();
+  const dialogoIa = page.getByRole("dialog", { name: "Assistente Lúmen" });
+  await dialogoIa.waitFor({ state: "visible", timeout: 10000 });
+  // Diz o que falta, em vez de rodar uma barra sem explicação.
+  await dialogoIa.getByText(/desativado|llama-server/i).first().waitFor({ timeout: 10000 });
+  // E promete o que o código cumpre.
+  await dialogoIa.getByText(/nenhum dado é enviado para a internet/i).waitFor({ timeout: 10000 });
+  await page.keyboard.press("Escape");
+  await dialogoIa.waitFor({ state: "hidden", timeout: 10000 });
+
+  // Com a IA desligada, a projeção continua inteira: é a regra que não se
+  // negocia — o culto nunca depende do modelo.
+  const semModelo = await page.evaluate(() =>
+    window.lumenDesktop.iaPerguntar([{ role: "user", content: "oi" }]),
+  );
+  assert.equal(semModelo.ok, false);
+  await fetch(`${remoteBase}/comando`, {
+    method: "POST",
+    body: JSON.stringify({ token: pareado.token, acao: "preto" }),
+  });
+  await page.waitForFunction(
+    () => JSON.parse(localStorage.getItem("lumen-live-frame") ?? "null")?.status === "black",
+    null,
+    { timeout: 10000 },
+  );
+  await fetch(`${remoteBase}/comando`, {
+    method: "POST",
+    body: JSON.stringify({ token: pareado.token, acao: "parar" }),
+  });
+  await page.waitForFunction(
+    () => JSON.parse(localStorage.getItem("lumen-live-frame") ?? "null")?.status === "idle",
+    null,
+    { timeout: 10000 },
+  );
+
   // ---- Permissões: quem entrou pelo celular, e o que pode fazer ----
   // Entrar deixou de pedir senha; esta lista virou a única barreira.
   await page.getByRole("button", { name: "Permissões", exact: true }).click();
@@ -678,7 +719,7 @@ try {
   assert.deepEqual(errors, []);
   const disk = JSON.parse(await readFile(path.join(profile, "data", "library.json"), "utf8"));
   assert.ok(disk.values["lumen-v2"]);
-  console.log(`PASS: offline, fonts, Bible, restart persistence, projector, media ranges, preflight, Auto-Slide, remote control (LAN, entrada por nome, nome fixo na rede), update check, review before apply, 1366×768 at 100/125/150% and 800×600, no scroll at seven sizes from 800×600 to 2560×1440 and the chat stays on screen, church logo and name reachable from the menu bar, dirigente upload page, video as a theme background, find a song by a lyric excerpt, right-click on lyrics edits or removes, double-click to project, fixed text only in the footer, YouTube collapses the lyrics strip, phone has one play/pause button and the screen volume, sees the media folder, projects from it and searches lyrics through the cabine. Evidence: ${evidence}`);
+  console.log(`PASS: offline, fonts, Bible, restart persistence, projector, media ranges, preflight, Auto-Slide, remote control (LAN, entrada por nome, nome fixo na rede), update check, review before apply, 1366×768 at 100/125/150% and 800×600, no scroll at seven sizes from 800×600 to 2560×1440 and the chat stays on screen, church logo and name reachable from the menu bar, local AI off by default and the cabine independent of it, dirigente upload page, video as a theme background, find a song by a lyric excerpt, right-click on lyrics edits or removes, double-click to project, fixed text only in the footer, YouTube collapses the lyrics strip, phone has one play/pause button and the screen volume, sees the media folder, projects from it and searches lyrics through the cabine. Evidence: ${evidence}`);
 } finally {
   if (app) await app.close();
   console.log(`Isolated test profile: ${profile}`);

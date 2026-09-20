@@ -246,6 +246,28 @@ declare global {
         senha: string,
       ) => Promise<import("./remote-control").RemoteStatus>;
       remoteControlAnswer: (pedido: number, resposta: unknown) => void;
+      iaEstado: () => Promise<import("./ia/tipos").EstadoIA>;
+      iaConfigurar: (patch: {
+        modo?: import("./ia/tipos").ModoIA;
+        minutos?: number;
+      }) => Promise<import("./ia/tipos").EstadoIA>;
+      iaModelos: () => Promise<import("./ia/tipos").ModeloIA[]>;
+      iaEscolherModelo: (
+        caminho: string,
+      ) => Promise<{ ok: boolean; erro?: string; modelo?: import("./ia/tipos").ModeloIA }>;
+      iaLigar: () => Promise<{ ok: boolean; erro?: string }>;
+      iaDesligar: () => Promise<{ ok: boolean }>;
+      iaPerguntar: (
+        mensagens: import("./ia/conversa").MensagemModelo[],
+      ) => Promise<{ ok: boolean; texto?: string; erro?: string; cancelado?: boolean }>;
+      iaCancelar: () => Promise<{ ok: boolean }>;
+      iaImportarModelo: () => Promise<{
+        ok: boolean;
+        erro?: string;
+        cancelado?: boolean;
+        modelo?: import("./ia/tipos").ModeloIA;
+      }>;
+      iaAbrirPasta: () => Promise<string>;
       remoteControlDevices: () => Promise<import("./remote-control").DispositivoRemoto[]>;
       remoteControlSetPermission: (
         id: string,

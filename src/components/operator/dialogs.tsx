@@ -6,6 +6,7 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Segmented } from "@/components/ui/segmented";
 import { Input, Label, Textarea } from "@/components/ui/input";
 import { FundoDeVideo } from "@/components/operator/fundo-video";
+import { IaConfiguracoes } from "@/components/operator/ia-configuracoes";
 import { IdentidadeDaIgreja } from "@/components/operator/logo-dialog";
 import { MediaFoldersSection } from "@/components/operator/media-folders-section";
 import { ACCENT_PRESETS } from "@/lib/accent-presets";
@@ -459,6 +460,12 @@ export function SettingsDialog({
         <div className="mt-4 space-y-2 border-t border-border pt-4">
           <p className="text-secondary font-medium text-subtle">Pasta de armazenamento de mídias</p>
           <MediaFoldersSection />
+        </div>
+
+        {/* O assistente vem por último e desativado: é o que menos importa
+            para projetar um culto, e o que mais custa numa máquina fraca. */}
+        <div className="mt-4 border-t border-border pt-4">
+          <IaConfiguracoes />
         </div>
 
         <div className="mt-4 space-y-2 border-t border-border pt-4">

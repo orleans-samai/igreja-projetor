@@ -12,6 +12,7 @@ import { FONT_SCALE_PASSO, fontScaleDe, limitarFontScale } from "@/lib/font-scal
 import { indiceNaProgramacao } from "@/lib/culto-etapas";
 import { COPYRIGHT_DE_EXEMPLO } from "@/lib/seed";
 import { letraContem } from "@/lib/busca-trecho";
+import { DIAS_DA_SEMANA as DIAS_RECORRENCIA } from "@/lib/ia/ferramentas";
 import { fold, nid } from "@/lib/fold";
 import { parseLyrics } from "@/lib/lyrics";
 import { publishLiveFrame } from "@/lib/live-channel";
@@ -168,6 +169,8 @@ export interface LumenState {
   goLiveIndex: (i: number) => void;
   presentPlaylistItem: (index: number) => void;
   projetarDaBiblioteca: (type: SlideKind, refId: string) => void;
+  /** Cria um culto que se repete toda semana. Recusa nome repetido. */
+  criarServicoRecorrente: (nome: string, diaDaSemana: number) => { ok: boolean; motivo?: string };
   previewPlaylistItem: (index: number) => void;
   nextPlaylistItem: () => void;
   setThemeForKind: (kind: "songs" | "bible" | "stage", themeId: string) => void;
@@ -389,6 +392,7 @@ const empty = (): Omit<
   | "goLiveIndex"
   | "presentPlaylistItem"
   | "projetarDaBiblioteca"
+  | "criarServicoRecorrente"
   | "previewPlaylistItem"
   | "nextPlaylistItem"
   | "setThemeForKind"
@@ -745,6 +749,32 @@ export const useLumenStore = create<LumenState>()(
       presentPlaylistItem: (index) => {
         if (!loadPlaylistItem(get, index)) return;
         queueMicrotask(() => get().presentPreview());
+      },
+
+      /**
+       * Um culto que se repete toda semana.
+       *
+       * Ação de domínio, e não a IA escrevendo na store: quem decide o que é
+       * um culto válido — nome que não repete, dia que existe — é a cabine,
+       * mesmo quando o pedido veio de um modelo.
+       */
+      criarServicoRecorrente: (nome, diaDaSemana) => {
+        const limpo = String(nome ?? "").trim().slice(0, 60);
+        if (limpo.length < 2) return { ok: false, motivo: "O culto precisa de um nome." };
+        if (!Number.isInteger(diaDaSemana) || diaDaSemana < 0 || diaDaSemana > 6) {
+          return { ok: false, motivo: "Dia da semana inválido." };
+        }
+        const s = get();
+        const igual = s.services.find((x) => fold(x.name) === fold(limpo));
+        if (igual) return { ok: false, motivo: `Já existe um culto chamado “${igual.name}”.` };
+        const dia = DIAS_RECORRENCIA[diaDaSemana];
+        set({
+          services: [
+            ...s.services,
+            { id: nid(), name: limpo, recurrence: `Toda ${dia}` },
+          ],
+        });
+        return { ok: true };
       },
 
       /**
