@@ -11,113 +11,549 @@
   computador da igreja é bem mais arriscado que mandar recado no chat, e aqui
   não há operador olhando quem entrou. Sem senha definida na cabine, a página
   não abre.
+
+  O fundo é desenhado em CSS, não é foto: esta página é servida pela cabine
+  numa Wi-Fi de igreja, para celular que pode estar no 3G, e uma fotografia
+  de tela cheia custaria mais que a página inteira. Gradiente pesa zero.
 -->
 <style>
   :root {
-    --bg: #0f1115; --surface: #171a21; --elevada: #1e222b; --borda: #2a2f3a;
-    --fg: #e8eaee; --muted: #a3aab8; --subtle: #6f7784;
-    --accent: #7d9bb8; --ok: #6ea97f; --perigo: #d2564c;
+    --bg: #0a0b0e; --surface: rgba(21, 24, 30, .84); --elevada: #191d25; --borda: #2a2f3a;
+    --fg: #e9ebef; --muted: #9aa2b1; --subtle: #6b7380;
+    --accent: #5b8fc7; --ok: #6ea97f; --perigo: #d2564c;
+    --feixe: #f0b045;
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); }
+  /* A cor de base vive no html, não no body: o feixe é um elemento com
+     z-index negativo, e fundo pintado no body o esconderia por completo. */
+  html { background: var(--bg); }
+  html, body { margin: 0; min-height: 100%; color: var(--fg); }
+  body { background: transparent; }
   body {
     font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-    display: flex; flex-direction: column; align-items: center;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    min-height: 100dvh;
     padding: 24px 16px calc(24px + env(safe-area-inset-bottom));
   }
-  main { width: 100%; max-width: 420px; display: flex; flex-direction: column; gap: 18px; }
-  .marca { display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; }
-  .marca img { max-width: 190px; max-height: 110px; object-fit: contain; }
-  .marca .semLogo {
-    width: 72px; height: 72px; border-radius: 18px; background: var(--elevada);
-    display: grid; place-items: center; font-size: 30px;
+
+  /* ── o feixe do projetor, em camadas de gradiente ─────────────── */
+  .fundo { position: fixed; inset: 0; z-index: -1; overflow: hidden; background: #08090c; }
+  .fundo::before {
+    /* O cone de luz. O ângulo é absoluto num gradiente cônico: 90deg
+       aponta para a direita, então o feixe abre de 74 a 106. */
+    content: ""; position: absolute; inset: 0;
+    background:
+      conic-gradient(from 74deg at 7% 50%,
+        transparent 0deg,
+        rgba(240, 176, 69, .26) 7deg,
+        rgba(240, 176, 69, .09) 20deg,
+        transparent 32deg);
+    filter: blur(26px);
   }
-  .marca h1 { margin: 0; font-size: 21px; font-weight: 600; }
-  .marca p { margin: 0; color: var(--muted); font-size: 13px; }
-  label.rotulo { display: block; font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 6px; }
+  .fundo::after {
+    /* A lente acesa e o escuro da sala em volta dela. */
+    content: ""; position: absolute; inset: 0;
+    background:
+      radial-gradient(4.5vmin 4.5vmin at 7% 50%, rgba(255, 201, 116, .62), transparent 72%),
+      radial-gradient(55vmax 45vmax at 26% 48%, rgba(122, 86, 34, .16), transparent 70%),
+      radial-gradient(120vmax 90vmax at 52% 50%, transparent 26%, rgba(0, 0, 0, .8) 100%);
+  }
+
+  /* ── o cartão ─────────────────────────────────────────────────── */
+  main { width: 100%; max-width: 440px; }
+  .cartao {
+    display: flex; flex-direction: column; gap: 18px;
+    padding: 28px 26px 24px; border-radius: 18px;
+    background: var(--surface);
+    border: 1px solid rgba(255, 255, 255, .07);
+    box-shadow: 0 28px 70px rgba(0, 0, 0, .55);
+    -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px);
+  }
+  .risco { height: 1px; background: rgba(255, 255, 255, .08); }
+
+  .marca { display: flex; align-items: center; justify-content: center; gap: 14px; }
+  .marca img { max-width: 76px; max-height: 60px; object-fit: contain; }
+  .marca .lente { color: var(--fg); flex: none; }
+  .marca .lente .luz { color: var(--feixe); }
+  .marca .textos { min-width: 0; }
+  .marca h1 {
+    margin: 0; font-size: 30px; line-height: 1.05; font-weight: 600; letter-spacing: -0.01em;
+    /* Serifada como a marca da cabine. Fonte do sistema de propósito: a
+       página é servida na rede da igreja, e baixar uma fonte para desenhar
+       uma palavra é peso que o celular paga à toa. */
+    font-family: Georgia, "Times New Roman", "Noto Serif", serif;
+  }
+  .marca p { margin: 3px 0 0; color: var(--muted); font-size: 13px; }
+
+  h2.titulo { margin: 0; font-size: 26px; font-weight: 700; letter-spacing: -0.01em; }
+
+  label.rotulo { display: block; font-size: 13px; font-weight: 600; margin-bottom: 7px; }
+  .grupo { display: flex; flex-direction: column; gap: 14px; }
+
+  /* Campo com ícone dentro, como no desenho. */
+  .caixa { position: relative; display: flex; align-items: center; }
+  .caixa > svg { position: absolute; left: 15px; color: var(--subtle); pointer-events: none; }
   .campo {
-    width: 100%; padding: 14px; font-size: 17px; color: var(--fg);
-    background: var(--elevada); border: 1px solid var(--borda); border-radius: 10px;
+    width: 100%; padding: 14px 14px 14px 46px; font-size: 16px; color: var(--fg);
+    background: rgba(12, 14, 18, .55); border: 1px solid var(--borda); border-radius: 11px;
   }
-  .campo:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .campo::placeholder { color: var(--subtle); }
+  .campo:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(91, 143, 199, .18); }
+  .campo:disabled { opacity: .55; }
+  .olho {
+    position: absolute; right: 8px; display: grid; place-items: center;
+    width: 38px; height: 38px; border: 0; border-radius: 9px;
+    background: transparent; color: var(--subtle); cursor: pointer;
+  }
+  .olho:hover { color: var(--muted); }
+  .senha .campo { padding-right: 50px; }
+
+  .linha-entre {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    font-size: 14px; flex-wrap: wrap;
+  }
+  .lembrar { display: inline-flex; align-items: center; gap: 9px; cursor: pointer; color: var(--fg); }
+  .lembrar input { width: 18px; height: 18px; accent-color: var(--accent); margin: 0; }
+  .elo {
+    background: none; border: 0; padding: 0; cursor: pointer;
+    color: var(--accent); font: inherit; text-decoration: underline;
+  }
+
   .botao {
     width: 100%; padding: 15px; font-size: 16px; font-weight: 600; color: var(--fg);
-    background: var(--elevada); border: 1px solid var(--borda); border-radius: 10px;
+    background: var(--elevada); border: 1px solid var(--borda); border-radius: 11px;
     cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;
   }
   .botao:disabled { opacity: .5; cursor: default; }
-  .principal { background: var(--accent); border-color: var(--accent); color: #0f1115; }
+  .principal { background: #eef0f3; border-color: #eef0f3; color: #0f1115; }
+  .principal:hover:not(:disabled) { background: #fff; }
+
+  .selo {
+    display: flex; align-items: center; justify-content: center; gap: 9px;
+    color: var(--muted); font-size: 13.5px;
+  }
+  .assinatura {
+    position: fixed; right: 18px; bottom: 14px;
+    display: flex; align-items: center; gap: 10px;
+    color: rgba(233, 235, 239, .38); font-size: 11.5px; letter-spacing: .18em;
+  }
+  .assinatura .traco { width: 26px; height: 1px; background: currentColor; }
+
+  /* ── barra de cima, depois de entrar ─────────────────────────── */
+  .topo {
+    position: fixed; inset: 0 0 auto 0; z-index: 3;
+    display: flex; align-items: center; gap: 14px;
+    padding: 12px 18px; background: rgba(10, 11, 14, .72);
+    border-bottom: 1px solid rgba(255, 255, 255, .07);
+    -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+  }
+  .topo .marca-linha { display: flex; align-items: center; gap: 12px; min-width: 0; flex: 1; }
+  .topo .nome {
+    font-family: Georgia, "Times New Roman", "Noto Serif", serif;
+    font-size: 21px; font-weight: 600; letter-spacing: -0.01em;
+  }
+  .topo .barra-vertical { width: 1px; height: 22px; background: rgba(255, 255, 255, .13); }
+  .topo .frase { color: var(--muted); font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .topo .direita { display: flex; align-items: center; gap: 12px; flex: none; }
+  .topo .direita .quem { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 14px; }
+  .sair {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 7px 10px; border: 0; border-radius: 9px;
+    background: transparent; color: var(--muted); font: inherit; font-size: 14px; cursor: pointer;
+  }
+  .sair:hover { background: rgba(255, 255, 255, .06); color: var(--fg); }
+
+  /* ── a folha de envio ────────────────────────────────────────── */
+  body.dentro { justify-content: flex-start; padding-top: 86px; }
+  body.dentro main { max-width: 760px; }
+  /* A marca já está na barra de cima; repetida no cartão é a mesma coisa
+     duas vezes na mesma tela. */
+  body.dentro .marca, body.dentro .marca + .risco, body.dentro .assinatura { display: none; }
+  .cabecalho-folha { text-align: center; }
+  .cabecalho-folha h2 {
+    margin: 0; font-size: 34px; font-weight: 600; letter-spacing: -0.01em;
+    font-family: Georgia, "Times New Roman", "Noto Serif", serif;
+  }
+  .cabecalho-folha p { margin: 6px 0 0; color: var(--muted); font-size: 14.5px; }
+
+  .solta {
+    display: block; border: 1.6px dashed rgba(91, 143, 199, .55); border-radius: 14px;
+    padding: 30px 18px; text-align: center; color: var(--muted);
+    background: rgba(12, 14, 18, .45); cursor: pointer;
+  }
+  .solta.sobre { border-color: var(--accent); background: rgba(91, 143, 199, .10); color: var(--fg); }
+  .solta .glifo { margin-bottom: 12px; filter: drop-shadow(0 10px 22px rgba(224, 122, 60, .28)); }
+  .solta strong { display: block; color: var(--fg); font-size: 20px; font-weight: 600; }
+  .solta .ou { margin-top: 5px; font-size: 15px; }
+  .solta .ou span { color: var(--accent); text-decoration: underline; }
+  .solta .escolher {
+    display: inline-flex; align-items: center; justify-content: center;
+    margin: 16px 0 14px; padding: 13px 26px; border-radius: 10px;
+    background: #eef0f3; color: #0f1115; font-size: 15px; font-weight: 600;
+  }
+  .solta .formatos { font-size: 13.5px; }
+  .solta .nota { display: flex; align-items: center; justify-content: center; gap: 7px; margin-top: 8px; font-size: 13px; color: var(--subtle); }
+
+  .subtitulo-lista { font-size: 13.5px; color: var(--muted); }
+  ul.lista { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+  ul.lista li {
+    display: flex; align-items: center; gap: 13px;
+    background: rgba(12, 14, 18, .5); border: 1px solid var(--borda); border-radius: 12px;
+    padding: 11px 12px; font-size: 14px;
+  }
+  ul.lista .glifo-min { flex: none; }
+  ul.lista .quem-e { min-width: 0; flex: 1.2; }
+  ul.lista .nome { display: block; font-weight: 600; word-break: break-word; }
+  ul.lista .detalhe { font-size: 12.5px; color: var(--muted); }
+  ul.lista .andamento { flex: 1; min-width: 90px; display: flex; align-items: center; gap: 9px; }
+  ul.lista .andamento .textos { flex: 1; min-width: 0; }
+  ul.lista .estado { display: block; font-size: 12.5px; color: var(--muted); }
+  ul.lista .trilho { height: 4px; margin-top: 6px; border-radius: 999px; background: rgba(255, 255, 255, .10); overflow: hidden; }
+  ul.lista .trilho i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .15s linear; }
+  ul.lista .feito i { background: var(--ok); }
+  ul.lista .falhou i { background: var(--perigo); }
+  ul.lista .ok { color: var(--ok); }
+  ul.lista .ruim { color: var(--perigo); }
+  .mini-botao {
+    flex: none; padding: 10px 14px; border-radius: 9px; font-size: 14px; font-weight: 600;
+    background: #eef0f3; border: 1px solid #eef0f3; color: #0f1115; cursor: pointer;
+  }
+  .mini-botao:disabled { opacity: .45; cursor: default; }
+  .tirar {
+    flex: none; display: grid; place-items: center; width: 34px; height: 34px;
+    border: 0; border-radius: 9px; background: transparent; color: var(--subtle); cursor: pointer;
+  }
+  .tirar:hover { background: rgba(255, 255, 255, .06); color: var(--fg); }
+
+  .grande {
+    width: 100%; display: flex; align-items: center; justify-content: center; gap: 12px;
+    padding: 18px; border-radius: 12px; cursor: pointer;
+    background: rgba(91, 143, 199, .10); border: 1.6px solid rgba(91, 143, 199, .55);
+    color: var(--fg); font-size: 19px; font-weight: 600; letter-spacing: .01em;
+  }
+  .grande:hover:not(:disabled) { background: rgba(91, 143, 199, .18); }
+  .grande:disabled { opacity: .45; cursor: default; }
+  .grande svg { color: var(--accent); }
+
+  /* ── as quatro abas de baixo ─────────────────────────────────── */
+  .abas { display: grid; grid-template-columns: repeat(5, 1fr); }
+  .abas button {
+    position: relative;
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+    padding: 12px 4px; border: 0; border-right: 1px solid rgba(255, 255, 255, .08);
+    background: transparent; color: var(--muted); font: inherit; font-size: 13.5px; cursor: pointer;
+  }
+  .abas button:last-child { border-right: 0; }
+  .abas button:hover { color: var(--fg); }
+  .abas button[aria-selected="true"] { color: var(--accent); }
+  .abas .contador {
+    /* Preso ao próprio botão: solto, ele se ancorava na página e ia parar
+       no canto da tela. */
+    position: absolute; top: 7px; right: calc(50% - 30px);
+    min-width: 17px; padding: 1px 5px; border-radius: 999px;
+    background: var(--accent); color: #0b0d11; font-size: 11px; font-weight: 700;
+  }
+
+  /* ── chat ────────────────────────────────────────────────────── */
+  #listaChat {
+    display: flex; flex-direction: column; gap: 9px;
+    max-height: 46dvh; min-height: 140px; overflow-y: auto; padding-right: 2px;
+  }
+  .msg { padding: 10px 12px; border-radius: 11px; background: rgba(12, 14, 18, .55); border: 1px solid var(--borda); }
+  .msg.minha { background: rgba(91, 143, 199, .12); border-color: rgba(91, 143, 199, .4); }
+  .msg.cabine { background: rgba(110, 169, 127, .10); border-color: rgba(110, 169, 127, .35); }
+  .msg .de { margin: 0 0 3px; font-size: 12px; font-weight: 600; color: var(--muted); }
+  .msg .texto { margin: 0; white-space: pre-wrap; word-break: break-word; font-size: 14.5px; }
+  #formChat { display: flex; gap: 10px; align-items: flex-end; }
+  #textoChat { flex: 1; min-height: 52px; max-height: 26dvh; resize: none; padding-left: 14px; }
+
   .aviso { margin: 0; font-size: 13px; color: var(--muted); }
   .erro { margin: 0; font-size: 13px; color: var(--perigo); min-height: 1.2em; }
   .ok { color: var(--ok); }
-  .solta {
-    border: 2px dashed var(--borda); border-radius: 14px; padding: 26px 16px;
-    text-align: center; color: var(--muted); background: var(--surface);
-  }
-  .solta.sobre { border-color: var(--accent); color: var(--fg); }
-  .solta strong { display: block; color: var(--fg); font-size: 16px; margin-bottom: 4px; }
-  ul.lista { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
-  ul.lista li {
-    background: var(--surface); border: 1px solid var(--borda); border-radius: 10px;
-    padding: 10px 12px; font-size: 14px;
-  }
-  ul.lista .nome { display: block; word-break: break-word; }
-  ul.lista .estado { font-size: 12px; color: var(--muted); }
   [hidden] { display: none !important; }
+
+  /* Numa tela baixa a assinatura do rodapé encosta no cartão. */
+  @media (max-height: 640px) { .assinatura { display: none; } }
 </style>
 
-<main>
-  <div class="marca">
-    <div id="logoCaixa"><div class="semLogo">✝</div></div>
-    <h1 id="nomeIgreja">Lúmen</h1>
-    <p>Enviar arquivos para o culto</p>
+<div class="fundo" aria-hidden="true"></div>
+
+<header class="topo" id="topo" hidden>
+  <div class="marca-linha">
+    <svg class="lente" width="40" height="26" viewBox="0 0 54 34" fill="none" aria-hidden="true">
+      <rect x="1.2" y="8.5" width="38" height="19" rx="6.5" fill="currentColor"/>
+      <circle cx="28.5" cy="18" r="6.6" fill="#0a0b0e"/>
+      <circle cx="28.5" cy="18" r="3.1" fill="currentColor"/>
+      <circle cx="9.5" cy="14.5" r="2.1" fill="#0a0b0e"/>
+      <circle cx="45.5" cy="15" r="2.6" fill="#f0b045"/>
+    </svg>
+    <span class="nome" id="nomeTopo">Lúmen</span>
+    <span class="barra-vertical"></span>
+    <span class="frase">Cabine de projeção para o culto</span>
   </div>
+  <div class="direita">
+    <span class="quem">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="8" r="3.6"/><path d="M4.8 20a7.2 7.2 0 0 1 14.4 0"/>
+      </svg>
+      <span id="quemTopo">Dirigente</span>
+    </span>
+    <span class="barra-vertical"></span>
+    <button class="sair" id="sair" type="button">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M14 20H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h8"/><path d="m16 15 4-3-4-3"/><path d="M20 12H10"/>
+      </svg>
+      Sair
+    </button>
+  </div>
+</header>
 
-  <!-- ─ Senha ─ -->
-  <section id="entrada">
-    <label class="rotulo" for="senha">Senha</label>
-    <input id="senha" class="campo" type="password" autocomplete="current-password" placeholder="Senha do culto">
-    <p class="erro" id="erro"></p>
-    <button class="botao principal" id="entrar">Entrar</button>
-  </section>
+<main>
+  <div class="cartao">
+    <div class="marca">
+      <div id="logoCaixa">
+        <!-- O projetor aceso: a mesma ideia do nome da casa. -->
+        <svg class="lente" width="54" height="34" viewBox="0 0 54 34" fill="none" aria-hidden="true">
+          <rect x="1.2" y="8.5" width="38" height="19" rx="6.5" fill="currentColor"/>
+          <circle cx="28.5" cy="18" r="6.6" fill="#0a0b0e"/>
+          <circle cx="28.5" cy="18" r="3.1" fill="currentColor"/>
+          <circle cx="9.5" cy="14.5" r="2.1" fill="#0a0b0e"/>
+          <circle class="luz" cx="45.5" cy="15" r="2.6" fill="currentColor"/>
+        </svg>
+      </div>
+      <div class="textos">
+        <h1 id="nomeIgreja">Lúmen</h1>
+        <p>Cabine de projeção para o culto</p>
+      </div>
+    </div>
 
-  <!-- ─ Envio ─ -->
-  <section id="envio" hidden style="display:flex;flex-direction:column;gap:14px">
-    <label class="solta" id="solta" for="arquivo">
-      <strong>Escolher arquivos</strong>
-      PowerPoint, PDF, vídeo, áudio ou imagem
-      <input id="arquivo" type="file" multiple hidden
-             accept=".pptx,.ppt,.odp,.pdf,video/*,audio/*,image/*">
-    </label>
-    <ul class="lista" id="fila"></ul>
-    <p class="erro" id="erroEnvio"></p>
-    <button class="botao principal" id="enviar" disabled>ENVIAR PARA O CULTO</button>
-    <p class="aviso">
-      O que chega aparece na cabine. Vídeo, áudio e imagem entram direto na
-      programação do culto; apresentação e PDF ficam guardados para o operador
-      abrir — o Lúmen ainda não projeta esses dois sozinho.
+    <div class="risco"></div>
+
+    <!-- ─ Entrar ─ -->
+    <section id="entrada" class="grupo">
+      <h2 class="titulo">Dirigente</h2>
+
+      <div>
+        <label class="rotulo" for="usuario">Usuário</label>
+        <div class="caixa">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="8" r="3.6"/><path d="M4.8 20a7.2 7.2 0 0 1 14.4 0"/>
+          </svg>
+          <input id="usuario" class="campo" maxlength="32" autocomplete="username"
+                 placeholder="Digite seu usuário">
+        </div>
+      </div>
+
+      <div>
+        <label class="rotulo" for="senha">Senha</label>
+        <div class="caixa senha">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="4.5" y="10.5" width="15" height="9.5" rx="2.6"/>
+            <path d="M8.2 10.5V7.8a3.8 3.8 0 0 1 7.6 0v2.7"/>
+          </svg>
+          <input id="senha" class="campo" type="password" autocomplete="current-password"
+                 placeholder="Digite sua senha">
+          <button class="olho" id="verSenha" type="button" aria-label="Mostrar a senha" aria-pressed="false">
+            <svg id="olhoFechado" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M3 3l18 18"/>
+              <path d="M10.6 6.3A9.6 9.6 0 0 1 12 6.2c5 0 9 5.8 9 5.8a17 17 0 0 1-3.1 3.6"/>
+              <path d="M6.3 8.1A17.6 17.6 0 0 0 3 12s4 5.8 9 5.8a8.9 8.9 0 0 0 3.6-.76"/>
+              <path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/>
+            </svg>
+            <svg id="olhoAberto" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" hidden>
+              <path d="M3 12s4-5.8 9-5.8 9 5.8 9 5.8-4 5.8-9 5.8S3 12 3 12Z"/>
+              <circle cx="12" cy="12" r="2.9"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="linha-entre">
+        <label class="lembrar" for="lembrar">
+          <input type="checkbox" id="lembrar">
+          Lembrar de mim
+        </label>
+        <button type="button" class="elo" id="esqueci">Esqueci minha senha</button>
+      </div>
+
+      <p class="erro" id="erro"></p>
+      <button class="botao principal" id="entrar">Entrar</button>
+    </section>
+
+    <!-- ─ Envio ─ -->
+    <section id="envio" hidden style="display:flex;flex-direction:column;gap:18px">
+      <div class="cabecalho-folha">
+        <h2 id="tituloFolha">Enviar arquivos</h2>
+        <p id="fraseFolha">Adicione apresentações e mídias para preparar a projeção.</p>
+      </div>
+
+      <div id="painelArquivos" style="display:flex;flex-direction:column;gap:14px">
+        <label class="solta" id="solta" for="arquivo">
+          <!-- Um glifo de apresentação, desenhado aqui: a marca do
+               PowerPoint é de outra empresa e não entra no produto. -->
+          <svg class="glifo" width="76" height="86" viewBox="0 0 76 86" fill="none" aria-hidden="true">
+            <path d="M6 6.5A4.5 4.5 0 0 1 10.5 2h33L70 28.5v51a4.5 4.5 0 0 1-4.5 4.5h-55A4.5 4.5 0 0 1 6 79.5Z" fill="#f4f5f7"/>
+            <path d="M43.5 2 70 28.5H48a4.5 4.5 0 0 1-4.5-4.5Z" fill="#c9ccd3"/>
+            <rect x="14" y="30" width="34" height="34" rx="6" fill="#e07a3c"/>
+            <path d="M31 36.5a10.5 10.5 0 1 1-10.5 10.5H31Z" fill="#fff"/>
+            <path d="M35 33a10.5 10.5 0 0 1 10.5 10.5H35Z" fill="#fff" opacity=".82"/>
+            <rect x="14" y="70" width="26" height="4" rx="2" fill="#c9ccd3"/>
+          </svg>
+          <strong id="arraste">Arraste sua apresentação aqui</strong>
+          <div class="ou">ou <span>escolha um arquivo no computador</span></div>
+          <div class="escolher">Selecionar arquivos</div>
+          <div class="formatos" id="formatos">PowerPoint .pptx e .ppt • PDF • imagens • vídeos</div>
+          <div class="nota">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 7.6v.1"/>
+            </svg>
+            Vídeo, áudio e imagem entram na programação; apresentação e PDF ficam guardados.
+          </div>
+          <input id="arquivo" type="file" multiple hidden
+                 accept=".pptx,.ppt,.odp,.pdf,video/*,audio/*,image/*">
+        </label>
+
+        <div id="blocoFila" hidden style="display:flex;flex-direction:column;gap:8px">
+          <div class="subtitulo-lista" id="subtituloFila">Arquivo selecionado</div>
+          <ul class="lista" id="fila"></ul>
+        </div>
+        <p class="erro" id="erroEnvio"></p>
+        <button class="grande" id="enviar" disabled>
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="2.5" y="4" width="19" height="12.5" rx="2.5"/><path d="M8.5 20.5h7"/><path d="M12 16.5v4"/>
+          </svg>
+          ENVIAR PARA O CULTO
+        </button>
+      </div>
+
+      <!-- ─ Aviso escrito ─ -->
+      <div id="painelTexto" hidden style="display:flex;flex-direction:column;gap:12px">
+        <div>
+          <label class="rotulo" for="avisoTitulo">Título do aviso</label>
+          <div class="caixa">
+            <input id="avisoTitulo" class="campo" maxlength="120" style="padding-left:14px"
+                   placeholder="Ex.: Reunião de oração">
+          </div>
+        </div>
+        <div>
+          <label class="rotulo" for="avisoTexto">Texto</label>
+          <textarea id="avisoTexto" class="campo" rows="6" maxlength="4000" style="padding-left:14px;resize:none"
+                    placeholder="Linha em branco separa um slide do outro."></textarea>
+        </div>
+        <p class="erro" id="erroAviso"></p>
+        <button class="grande" id="enviarAviso">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M4 5.5h16"/><path d="M4 11h16"/><path d="M4 16.5h9"/>
+          </svg>
+          ENVIAR O AVISO
+        </button>
+        <p class="aviso">
+          O aviso chega à cabine como texto na biblioteca. Quem decide se ele
+          entra no culto é o operador — e é ele quem lê antes.
+        </p>
+      </div>
+
+      <!-- ─ Chat ─ -->
+      <div id="painelChat" hidden style="display:flex;flex-direction:column;gap:12px">
+        <div id="listaChat"></div>
+        <form id="formChat">
+          <textarea id="textoChat" class="campo" maxlength="500" placeholder="Escrever para a equipe…"></textarea>
+          <button class="mini-botao" type="submit" id="mandarChat" style="padding:15px 18px">Enviar</button>
+        </form>
+        <p class="erro" id="erroChat"></p>
+      </div>
+
+      <div class="abas" id="abas" role="tablist">
+        <button type="button" role="tab" data-aba="apresentacao" aria-selected="false">
+          <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="3" y="4" width="18" height="12.5" rx="2.5"/><path d="M8.5 20.5h7"/><path d="M12 16.5v4"/>
+          </svg>
+          Apresentação
+        </button>
+        <button type="button" role="tab" data-aba="texto" aria-selected="false">
+          <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M6 2.5h7L19 8.5v13H6Z"/><path d="M13 2.5v6h6"/><path d="M9 13h7"/><path d="M9 17h5"/>
+          </svg>
+          Texto
+        </button>
+        <button type="button" role="tab" data-aba="imagem" aria-selected="false">
+          <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="8.5" cy="9.5" r="1.6"/><path d="m21 16-5-5L6 20"/>
+          </svg>
+          Imagem
+        </button>
+        <button type="button" role="tab" data-aba="video" aria-selected="false">
+          <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="3" y="4.5" width="18" height="15" rx="3"/><path d="m10.5 9 5 3-5 3z"/>
+          </svg>
+          Vídeo
+        </button>
+        <button type="button" role="tab" data-aba="chat" aria-selected="false">
+          <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M21 12a8 8 0 0 1-8 8H4l2-3.2A8 8 0 1 1 21 12Z"/>
+          </svg>
+          Chat
+          <span class="contador" id="seloChat" hidden>0</span>
+        </button>
+      </div>
+    </section>
+
+    <div class="risco"></div>
+    <p class="selo">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M12 3.2 5 6v5.4c0 4.3 2.9 7.6 7 9.4 4.1-1.8 7-5.1 7-9.4V6Z"/>
+      </svg>
+      Ambiente local e protegido
     </p>
-    <button class="botao" id="sair">Sair</button>
-  </section>
+  </div>
 </main>
+
+<div class="assinatura" aria-hidden="true"><span class="traco"></span>PLANEJAR · PROJETAR · SERVIR</div>
 
 <script>
 (function () {
   "use strict";
   var $ = function (id) { return document.getElementById(id); };
   var CHAVE = "lumen-dirigente-token";
+  /**
+   * Só o nome fica guardado, nunca a senha.
+   *
+   * "Lembrar de mim" numa página aberta no computador da secretaria seria,
+   * com a senha junto, deixar a porta destrancada para quem sentar depois.
+   * O nome poupa a digitação e não abre nada.
+   */
+  var CHAVE_USUARIO = "lumen-dirigente-usuario";
+  /**
+   * O nome de quem está nesta sessão, só enquanto a aba vive.
+   *
+   * Separado do "lembrar de mim": este volta depois de um F5 no meio do
+   * envio, para o arquivo seguinte não chegar à cabine sem dono. O outro
+   * atravessa o fechar do navegador, e só existe se a pessoa pediu.
+   */
+  var CHAVE_QUEM = "lumen-dirigente-quem";
   var token = null;
   var escolhidos = [];
+  var abaAtual = "apresentacao";
+  var fonte = null;
+  var naoLidas = 0;
 
   function mostrar(qual) {
-    $("entrada").hidden = qual !== "entrada";
-    $("envio").hidden = qual !== "envio";
+    var dentro = qual === "envio";
+    $("entrada").hidden = dentro;
+    $("envio").hidden = !dentro;
+    $("topo").hidden = !dentro;
+    document.body.classList.toggle("dentro", dentro);
+    if (dentro) ouvirCabine();
+    else pararDeOuvir();
   }
 
   fetch("/dirigente/igreja")
     .then(function (r) { return r.json(); })
     .then(function (d) {
-      if (d.nome) $("nomeIgreja").textContent = d.nome;
+      if (d.nome) {
+        $("nomeIgreja").textContent = d.nome;
+        $("nomeTopo").textContent = d.nome;
+      }
       if (d.logo) {
         var img = document.createElement("img");
         img.src = d.logo;
@@ -129,13 +565,41 @@
         $("erro").textContent = "O envio de arquivos está desligado na cabine.";
         $("entrar").disabled = true;
         $("senha").disabled = true;
+        $("usuario").disabled = true;
       }
     })
     .catch(function () { /* sem rede: a senha ainda pode ser tentada */ });
 
+  // ─────────────────────────────────────────── entrar
+
+  // Ver o que se digitou: num celular, no escuro da igreja, errar a senha
+  // três vezes sem poder conferir é o que trava o envio na hora do culto.
+  $("verSenha").addEventListener("click", function () {
+    var mostrando = $("senha").type === "text";
+    $("senha").type = mostrando ? "password" : "text";
+    $("verSenha").setAttribute("aria-pressed", String(!mostrando));
+    $("verSenha").setAttribute("aria-label", mostrando ? "Mostrar a senha" : "Esconder a senha");
+    $("olhoAberto").hidden = mostrando;
+    $("olhoFechado").hidden = !mostrando;
+  });
+
+  // Não há recuperação por e-mail, e fingir que há seria pior que não ter:
+  // a senha vive cozida no computador da cabine, e quem a redefine é quem
+  // está lá. A página diz isso em vez de abrir um formulário que não leva
+  // a lugar nenhum.
+  $("esqueci").addEventListener("click", function () {
+    $("erro").textContent =
+      "A senha é definida na cabine, em Permissões. Peça ao operador para trocar.";
+  });
+
+  function usuario() {
+    return $("usuario").value.trim();
+  }
+
   function entrar() {
     var senha = $("senha").value;
-    if (!senha) { $("erro").textContent = "Escreva a senha."; return; }
+    if (!usuario()) { $("erro").textContent = "Escreva o seu usuário."; $("usuario").focus(); return; }
+    if (!senha) { $("erro").textContent = "Escreva a senha."; $("senha").focus(); return; }
     $("entrar").disabled = true;
     $("erro").textContent = "";
     fetch("/dirigente/entrar", { method: "POST", body: JSON.stringify({ senha: senha }) })
@@ -143,8 +607,16 @@
       .then(function (r) {
         if (!r.d.ok) { $("erro").textContent = r.d.erro || "Não consegui entrar."; return; }
         token = r.d.token;
-        try { sessionStorage.setItem(CHAVE, token); } catch (e) { /* aba privada */ }
+        try {
+          sessionStorage.setItem(CHAVE, token);
+          sessionStorage.setItem(CHAVE_QUEM, usuario());
+        } catch (e) { /* aba privada */ }
+        try {
+          if ($("lembrar").checked) localStorage.setItem(CHAVE_USUARIO, usuario());
+          else localStorage.removeItem(CHAVE_USUARIO);
+        } catch (e) { /* aba privada */ }
         $("senha").value = "";
+        $("quemTopo").textContent = usuario();
         mostrar("envio");
       })
       .catch(function () { $("erro").textContent = "Sem conexão com a cabine."; })
@@ -152,31 +624,148 @@
   }
 
   $("entrar").addEventListener("click", entrar);
-  $("senha").addEventListener("keydown", function (ev) {
-    if (ev.key === "Enter") { ev.preventDefault(); entrar(); }
+  ["usuario", "senha"].forEach(function (id) {
+    $(id).addEventListener("keydown", function (ev) {
+      if (ev.key === "Enter") { ev.preventDefault(); entrar(); }
+    });
   });
+
+  // ─────────────────────────────────────────── arquivos
+
+  function tamanho(bytes) {
+    if (bytes >= 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1).replace(".", ",") + " MB";
+    return Math.max(1, Math.round(bytes / 1024)) + " KB";
+  }
+
+  /**
+   * Quantos slides tem um .pptx, sem descompactar nada.
+   *
+   * Um .pptx é um ZIP, e o índice do ZIP fica no fim do arquivo com os
+   * nomes de dentro escritos em texto puro. Basta ler esse pedaço e contar
+   * os "slide1.xml", "slide2.xml"… Nada é aberto nem inflado: é o número
+   * de verdade, e sai instantâneo mesmo num arquivo de 60 MB.
+   */
+  function contarSlides(file) {
+    if (!/\.pptx$/i.test(file.name)) return Promise.resolve(0);
+    var rabo = file.slice(Math.max(0, file.size - 2 * 1024 * 1024));
+    return rabo
+      .arrayBuffer()
+      .then(function (buf) {
+        var texto = new TextDecoder("latin1").decode(new Uint8Array(buf));
+        var vistos = {};
+        var re = /ppt\/slides\/slide(\d+)\.xml/g;
+        var m;
+        while ((m = re.exec(texto))) vistos[m[1]] = true;
+        return Object.keys(vistos).length;
+      })
+      .catch(function () { return 0; });
+  }
+
+  function glifoDoArquivo(nome) {
+    var doc = /\.(pptx|ppt|odp|pdf)$/i.test(nome);
+    var cor = doc ? "#e07a3c" : "#5b8fc7";
+    return (
+      '<svg class="glifo-min" width="34" height="38" viewBox="0 0 34 38" fill="none" aria-hidden="true">' +
+      '<path d="M2 3.5A2.5 2.5 0 0 1 4.5 1h15L32 13.5v21a2.5 2.5 0 0 1-2.5 2.5h-25A2.5 2.5 0 0 1 2 34.5Z" fill="#e6e8ec"/>' +
+      '<path d="M19.5 1 32 13.5h-10a2.5 2.5 0 0 1-2.5-2.5Z" fill="#b9bdc6"/>' +
+      '<rect x="6" y="15" width="16" height="16" rx="3" fill="' + cor + '"/>' +
+      "</svg>"
+    );
+  }
 
   function desenharFila() {
     var ul = $("fila");
     ul.innerHTML = "";
-    escolhidos.forEach(function (item) {
+    escolhidos.forEach(function (item, i) {
       var li = document.createElement("li");
+
+      var glifo = document.createElement("span");
+      glifo.innerHTML = glifoDoArquivo(item.file.name);
+      li.appendChild(glifo.firstChild);
+
+      var quem = document.createElement("div");
+      quem.className = "quem-e";
       var nome = document.createElement("span");
       nome.className = "nome";
       nome.textContent = item.file.name;
+      var detalhe = document.createElement("span");
+      detalhe.className = "detalhe";
+      detalhe.textContent =
+        (item.slides ? item.slides + " slides • " : "") + tamanho(item.file.size);
+      quem.appendChild(nome);
+      quem.appendChild(detalhe);
+      li.appendChild(quem);
+
+      var andamento = document.createElement("div");
+      andamento.className = "andamento";
+      if (item.estado === "enviado") {
+        var certo = document.createElement("span");
+        certo.className = "ok";
+        certo.innerHTML =
+          '<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+          'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+          '<circle cx="12" cy="12" r="9"/><path d="m8.5 12.2 2.4 2.4 4.6-4.9"/></svg>';
+        andamento.appendChild(certo);
+      }
+      var textos = document.createElement("div");
+      textos.className = "textos";
       var estado = document.createElement("span");
-      estado.className = "estado" + (item.estado === "enviado" ? " ok" : "");
-      estado.textContent = item.mensagem || (Math.round(item.file.size / 1024) + " KB");
-      li.appendChild(nome);
-      li.appendChild(estado);
+      estado.className = "estado" + (item.estado === "enviado" ? " ok" : item.estado === "erro" ? " ruim" : "");
+      estado.textContent = item.mensagem || "Pronto para enviar";
+      var trilho = document.createElement("div");
+      trilho.className =
+        "trilho" + (item.estado === "enviado" ? " feito" : item.estado === "erro" ? " falhou" : "");
+      var barra = document.createElement("i");
+      barra.style.width = (item.estado === "enviado" ? 100 : item.pct || 0) + "%";
+      trilho.appendChild(barra);
+      textos.appendChild(estado);
+      textos.appendChild(trilho);
+      andamento.appendChild(textos);
+      li.appendChild(andamento);
+
+      var manda = document.createElement("button");
+      manda.className = "mini-botao";
+      manda.type = "button";
+      manda.textContent = item.estado === "enviado" ? "Enviado" : "Enviar";
+      manda.disabled = item.estado === "enviado" || item.estado === "enviando";
+      manda.onclick = function () { void enviarUm(item).catch(function () {}); };
+      li.appendChild(manda);
+
+      var tirar = document.createElement("button");
+      tirar.className = "tirar";
+      tirar.type = "button";
+      tirar.setAttribute("aria-label", "Tirar “" + item.file.name + "” da lista");
+      tirar.innerHTML =
+        '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+        'stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12"/>' +
+        '<path d="M18 6 6 18"/></svg>';
+      tirar.onclick = function () {
+        if (item.estado === "enviando") return;
+        escolhidos.splice(i, 1);
+        desenharFila();
+      };
+      li.appendChild(tirar);
+
       ul.appendChild(li);
     });
-    $("enviar").disabled = escolhidos.length === 0;
+    $("blocoFila").hidden = escolhidos.length === 0;
+    $("subtituloFila").textContent =
+      escolhidos.length === 1 ? "Arquivo selecionado" : escolhidos.length + " arquivos selecionados";
+    $("enviar").disabled = !escolhidos.some(function (i) { return i.estado !== "enviado"; });
   }
 
   function receber(lista) {
     for (var i = 0; i < lista.length; i += 1) {
-      escolhidos.push({ file: lista[i], estado: "pronto", mensagem: "" });
+      var item = { file: lista[i], estado: "pronto", mensagem: "", pct: 0, slides: 0 };
+      escolhidos.push(item);
+      // A contagem chega depois; a linha já apareceu com o nome.
+      (function (alvo) {
+        void contarSlides(alvo.file).then(function (n) {
+          if (!n) return;
+          alvo.slides = n;
+          desenharFila();
+        });
+      })(item);
     }
     desenharFila();
   }
@@ -201,42 +790,63 @@
     });
   });
 
+  /**
+   * Um arquivo de cada vez, com a barra andando de verdade.
+   *
+   * XMLHttpRequest e não fetch por um motivo só: fetch não conta quanto já
+   * subiu, e uma apresentação de 40 MB numa Wi-Fi de igreja leva tempo o
+   * bastante para a pessoa achar que travou e clicar de novo.
+   */
   function enviarUm(item) {
+    if (item.estado === "enviado" || item.estado === "enviando") return Promise.resolve();
     item.estado = "enviando";
-    item.mensagem = "enviando…";
+    item.mensagem = "Enviando…";
+    item.pct = 0;
     desenharFila();
-    return fetch("/dirigente/enviar", {
-      method: "POST",
-      headers: {
-        "x-lumen-dirigente": token,
-        // O nome vai codificado: cabeçalho HTTP não carrega acento cru.
-        "x-lumen-arquivo": encodeURIComponent(item.file.name),
-        "content-type": "application/octet-stream",
-      },
-      body: item.file,
-    })
-      .then(function (r) { return r.json().then(function (d) { return { s: r.status, d: d }; }); })
-      .then(function (r) {
-        if (r.s === 401) {
+    return new Promise(function (resolve, reject) {
+      var xhr = new XMLHttpRequest();
+      xhr.open("POST", "/dirigente/enviar");
+      xhr.setRequestHeader("x-lumen-dirigente", token);
+      // O nome vai codificado: cabeçalho HTTP não carrega acento cru.
+      xhr.setRequestHeader("x-lumen-arquivo", encodeURIComponent(item.file.name));
+      // Quem mandou, para o aviso na cabine não ser um arquivo órfão.
+      xhr.setRequestHeader("x-lumen-de", encodeURIComponent(usuario()));
+      xhr.setRequestHeader("content-type", "application/octet-stream");
+      xhr.upload.onprogress = function (ev) {
+        if (!ev.lengthComputable) return;
+        item.pct = Math.round((ev.loaded / ev.total) * 100);
+        item.mensagem = "Enviando… " + item.pct + "%";
+        desenharFila();
+      };
+      xhr.onerror = function () {
+        item.estado = "erro";
+        item.mensagem = "Sem conexão";
+        desenharFila();
+        resolve();
+      };
+      xhr.onload = function () {
+        var d = {};
+        try { d = JSON.parse(xhr.responseText); } catch (e) { d = {}; }
+        if (xhr.status === 401) {
           token = null;
           mostrar("entrada");
           $("erro").textContent = "A sessão expirou. Entre novamente.";
-          throw new Error("sessao");
-        }
-        if (!r.d.ok) {
-          item.estado = "erro";
-          item.mensagem = r.d.erro || "não deu";
+          reject(new Error("sessao"));
           return;
         }
-        item.estado = "enviado";
-        item.mensagem = r.d.projetavel ? "no culto ✓" : "guardado na cabine ✓";
-      })
-      .catch(function (e) {
-        if (e.message === "sessao") throw e;
-        item.estado = "erro";
-        item.mensagem = "sem conexão";
-      })
-      .finally(desenharFila);
+        if (!d.ok) {
+          item.estado = "erro";
+          item.mensagem = d.erro || "Não deu";
+        } else {
+          item.estado = "enviado";
+          item.pct = 100;
+          item.mensagem = d.projetavel ? "No culto" : "Guardado na cabine";
+        }
+        desenharFila();
+        resolve();
+      };
+      xhr.send(item.file);
+    });
   }
 
   $("enviar").addEventListener("click", function () {
@@ -250,20 +860,232 @@
         return antes.then(function () { return enviarUm(item); });
       }, Promise.resolve())
       .catch(function () { /* sessão caiu; a tela já avisou */ })
-      .finally(function () {
-        $("enviar").disabled = escolhidos.length === 0;
-      });
+      .finally(desenharFila);
   });
 
   $("sair").addEventListener("click", function () {
     token = null;
     escolhidos = [];
     desenharFila();
-    try { sessionStorage.removeItem(CHAVE); } catch (e) { /* aba privada */ }
+    try {
+      sessionStorage.removeItem(CHAVE);
+      sessionStorage.removeItem(CHAVE_QUEM);
+    } catch (e) { /* aba privada */ }
     mostrar("entrada");
   });
 
-  try { token = sessionStorage.getItem(CHAVE); } catch (e) { token = null; }
+  // ─────────────────────────────────────────── abas
+
+  /**
+   * Cada aba é um tipo do que se manda, e não um lugar diferente.
+   *
+   * São cinco e não quatro por um motivo prático: sem a primeira, quem
+   * abrisse Texto ou Chat não tinha como voltar para a tela de arquivos.
+   */
+  var FILTROS = {
+    apresentacao: ".pptx,.ppt,.odp,.pdf",
+    imagem: "image/*",
+    video: "video/*,audio/*",
+  };
+  var FORMATOS = {
+    apresentacao: "PowerPoint .pptx e .ppt • PDF • OpenDocument .odp",
+    imagem: "JPG, PNG, WebP, AVIF e GIF",
+    video: "MP4, WebM, MOV • MP3, M4A, WAV",
+  };
+  var ARRASTE = {
+    apresentacao: "Arraste sua apresentação aqui",
+    imagem: "Arraste suas imagens aqui",
+    video: "Arraste o vídeo ou o áudio aqui",
+  };
+  var TITULOS = {
+    apresentacao: ["Enviar arquivos", "Adicione apresentações e mídias para preparar a projeção."],
+    imagem: ["Enviar imagens", "Fotos e fundos entram direto na programação do culto."],
+    video: ["Enviar vídeo ou áudio", "O que chega já fica pronto para tocar no telão."],
+    texto: ["Escrever um aviso", "O texto vira um item na biblioteca da cabine."],
+    chat: ["Conversar com a equipe", "O mesmo mural que aparece nos celulares e na cabine."],
+  };
+
+  function trocarAba(nome) {
+    abaAtual = nome;
+    var arquivo = !!FILTROS[nome];
+    $("painelArquivos").hidden = !arquivo;
+    $("painelTexto").hidden = nome !== "texto";
+    $("painelChat").hidden = nome !== "chat";
+    $("tituloFolha").textContent = TITULOS[nome][0];
+    $("fraseFolha").textContent = TITULOS[nome][1];
+    if (arquivo) {
+      $("arquivo").accept = FILTROS[nome];
+      $("formatos").textContent = FORMATOS[nome];
+      $("arraste").textContent = ARRASTE[nome];
+    }
+    [].forEach.call($("abas").querySelectorAll("[data-aba]"), function (b) {
+      b.setAttribute("aria-selected", String(b.dataset.aba === nome));
+    });
+    if (nome === "chat") {
+      naoLidas = 0;
+      $("seloChat").hidden = true;
+      rolarChat();
+    }
+  }
+
+  [].forEach.call(document.querySelectorAll("[data-aba]"), function (b) {
+    b.addEventListener("click", function () {
+      // Tocar de novo na aba de arquivo já aberta abre o seletor: é o que a
+      // pessoa quer na segunda vez que toca em "Imagem".
+      var repetiu = abaAtual === b.dataset.aba;
+      trocarAba(b.dataset.aba);
+      if (repetiu && FILTROS[b.dataset.aba]) $("arquivo").click();
+    });
+  });
+
+  // ─────────────────────────────────────────── aviso escrito
+
+  $("enviarAviso").addEventListener("click", function () {
+    var titulo = $("avisoTitulo").value.trim();
+    var texto = $("avisoTexto").value.trim();
+    if (!titulo) { $("erroAviso").textContent = "Falta o título."; return; }
+    if (!texto) { $("erroAviso").textContent = "Falta o texto."; return; }
+    $("enviarAviso").disabled = true;
+    $("erroAviso").textContent = "";
+    fetch("/dirigente/aviso", {
+      method: "POST",
+      headers: { "x-lumen-dirigente": token },
+      body: JSON.stringify({ titulo: titulo, texto: texto, de: usuario() }),
+    })
+      .then(function (r) { return r.json().then(function (d) { return { s: r.status, d: d }; }); })
+      .then(function (r) {
+        if (r.s === 401) {
+          token = null;
+          mostrar("entrada");
+          $("erro").textContent = "A sessão expirou. Entre novamente.";
+          return;
+        }
+        if (!r.d.ok) { $("erroAviso").textContent = r.d.erro || "Não deu."; return; }
+        $("avisoTitulo").value = "";
+        $("avisoTexto").value = "";
+        $("erroAviso").textContent = "Guardado na cabine, em Textos.";
+      })
+      .catch(function () { $("erroAviso").textContent = "Sem conexão com a cabine."; })
+      .finally(function () { $("enviarAviso").disabled = false; });
+  });
+
+  // ─────────────────────────────────────────── chat
+
+  function hora(ms) {
+    try {
+      return new Date(ms).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+    } catch (e) { return ""; }
+  }
+
+  function rolarChat() {
+    var l = $("listaChat");
+    l.scrollTop = l.scrollHeight;
+  }
+
+  function desenharMensagem(m) {
+    var div = document.createElement("div");
+    div.className = "msg" + (m.daCabine ? " cabine" : m.de === usuario() ? " minha" : "");
+    var de = document.createElement("p");
+    de.className = "de";
+    de.textContent = (m.daCabine ? "Cabine" : m.de) + " · " + hora(m.em);
+    var texto = document.createElement("p");
+    texto.className = "texto";
+    texto.textContent = m.texto;
+    div.appendChild(de);
+    div.appendChild(texto);
+    $("listaChat").appendChild(div);
+  }
+
+  /**
+   * O mural, em tempo real.
+   *
+   * Pelo mesmo cano do celular: recado escrito na cabine ou por quem está
+   * com o aparelho na mão aparece aqui sem recarregar a página.
+   */
+  function ouvirCabine() {
+    if (fonte || !token) return;
+    fonte = new EventSource("/dirigente/estado?token=" + encodeURIComponent(token));
+    fonte.onmessage = function (ev) {
+      var d;
+      try { d = JSON.parse(ev.data); } catch (e) { return; }
+      if (d.tipo === "inicio") {
+        $("listaChat").innerHTML = "";
+        (d.chat || []).forEach(desenharMensagem);
+        rolarChat();
+        return;
+      }
+      if (d.tipo === "chat" && d.mensagem) {
+        desenharMensagem(d.mensagem);
+        rolarChat();
+        if (abaAtual !== "chat") {
+          naoLidas += 1;
+          $("seloChat").textContent = String(naoLidas);
+          $("seloChat").hidden = false;
+        }
+      }
+    };
+    fonte.onerror = function () { /* o navegador reconecta sozinho */ };
+  }
+
+  function pararDeOuvir() {
+    if (!fonte) return;
+    fonte.close();
+    fonte = null;
+  }
+
+  $("formChat").addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    var texto = $("textoChat").value.trim();
+    if (!texto) return;
+    $("mandarChat").disabled = true;
+    $("erroChat").textContent = "";
+    fetch("/dirigente/chat", {
+      method: "POST",
+      headers: { "x-lumen-dirigente": token },
+      body: JSON.stringify({ texto: texto, de: usuario() }),
+    })
+      .then(function (r) { return r.json().then(function (d) { return { s: r.status, d: d }; }); })
+      .then(function (r) {
+        if (r.s === 401) {
+          token = null;
+          mostrar("entrada");
+          $("erro").textContent = "A sessão expirou. Entre novamente.";
+          return;
+        }
+        if (!r.d.ok) { $("erroChat").textContent = r.d.erro || "Não deu."; return; }
+        $("textoChat").value = "";
+      })
+      .catch(function () { $("erroChat").textContent = "Sem conexão com a cabine."; })
+      .finally(function () { $("mandarChat").disabled = false; });
+  });
+
+  $("textoChat").addEventListener("keydown", function (ev) {
+    if (ev.key === "Enter" && !ev.shiftKey) {
+      ev.preventDefault();
+      $("formChat").requestSubmit();
+    }
+  });
+
+  // ─────────────────────────────────────────── partida
+
+  try {
+    var lembrado = localStorage.getItem(CHAVE_USUARIO);
+    if (lembrado) {
+      $("usuario").value = lembrado;
+      $("lembrar").checked = true;
+      $("quemTopo").textContent = lembrado;
+    }
+  } catch (e) { /* aba privada */ }
+
+  try {
+    token = sessionStorage.getItem(CHAVE);
+    var quem = sessionStorage.getItem(CHAVE_QUEM);
+    if (quem) {
+      $("usuario").value = quem;
+      $("quemTopo").textContent = quem;
+    }
+  } catch (e) { token = null; }
+  trocarAba("apresentacao");
   mostrar(token ? "envio" : "entrada");
 })();
 </script>
