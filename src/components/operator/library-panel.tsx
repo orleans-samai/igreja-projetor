@@ -28,6 +28,7 @@ import {
   searchVerses,
 } from "@/lib/bible";
 import { cn } from "@/lib/cn";
+import { trechoQueBate } from "@/lib/busca-trecho";
 import { fold, nid } from "@/lib/fold";
 import { importarMusicasJsonDoDisco } from "@/lib/import-songs-json";
 import { fetchAndImportWebSong } from "@/lib/import-web-song";
@@ -286,6 +287,13 @@ function SongsList({
             ]
               .filter(Boolean)
               .join(" · ");
+            // Só vale mostrar o verso quando foi ele que trouxe a música
+            // para a lista; se o nome já bate, o verso é ruído.
+            const achouPeloNome =
+              !search ||
+              fold(song.title).includes(fold(search)) ||
+              fold(song.artist).includes(fold(search));
+            const trecho = achouPeloNome ? null : trechoQueBate(song.lyricsRaw, search);
             return (
               <li key={song.id} className="group/song relative">
                 <LibraryRow
@@ -296,7 +304,18 @@ function SongsList({
                 >
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-body font-medium text-fg">{song.title}</p>
-                    {meta && <p className="truncate text-secondary text-muted">{meta}</p>}
+                    {/* Quando o que casou foi a letra, o motivo aparece: sem
+                        isto a música surge na busca e o operador não sabe por
+                        quê — o nome não bate, o autor não bate, e a razão está
+                        escondida no meio do verso. */}
+                    {trecho ? (
+                      <p className="truncate text-secondary text-muted">
+                        <span className="text-subtle">letra · </span>
+                        {trecho}
+                      </p>
+                    ) : (
+                      meta && <p className="truncate text-secondary text-muted">{meta}</p>
+                    )}
                   </div>
                   {/* O grupo só informa quando a lista não está filtrada por ele. */}
                   {groupId === "all" && (

@@ -11,6 +11,7 @@ import { bookById } from "@/lib/bible-books";
 import { FONT_SCALE_PASSO, fontScaleDe, limitarFontScale } from "@/lib/font-scale";
 import { indiceNaProgramacao } from "@/lib/culto-etapas";
 import { COPYRIGHT_DE_EXEMPLO } from "@/lib/seed";
+import { letraContem } from "@/lib/busca-trecho";
 import { fold, nid } from "@/lib/fold";
 import { parseLyrics } from "@/lib/lyrics";
 import { publishLiveFrame } from "@/lib/live-channel";
@@ -1462,8 +1463,11 @@ export function searchSongs(songs: Song[], query: string, groupId: string | "all
     return (
       fold(song.title).includes(q) ||
       fold(song.artist).includes(q) ||
-      fold(song.lyricsRaw).includes(q) ||
-      fold(song.key).includes(q)
+      fold(song.key).includes(q) ||
+      // Por trecho: a letra é achatada numa linha antes de comparar, senão
+      // uma frase que atravessa duas linhas nunca casaria — e é assim que
+      // as pessoas lembram um louvor.
+      letraContem(song.lyricsRaw, query)
     );
   });
 }

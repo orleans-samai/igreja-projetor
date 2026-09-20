@@ -1,4 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
+import { consultasDoTrecho, ordenarPeloTrecho } from "./busca-web-trecho";
 import { formatImportedLyrics } from "./lyrics";
 
 export interface LyricsHit {
@@ -199,12 +200,19 @@ async function searchOvhSuggest(query: string): Promise<LyricsHit[]> {
 }
 
 async function searchCatalog(query: string, artist: string, title: string): Promise<LyricsHit[]> {
-  const [lrclib, ovhDirect, ovhSuggest] = await Promise.all([
-    searchLrclib(query, artist, title),
+  // Os catálogos procuram por nome, não por letra. Quando o operador digita
+  // um verso, tentamos também pedaços mais curtos dele: em louvor, a linha
+  // que a pessoa lembra costuma ser o próprio nome da música.
+  const consultas = artist && title ? [query] : consultasDoTrecho(query);
+  const alvos = consultas.length > 0 ? consultas : [query];
+  const [porConsulta, ovhDirect, ovhSuggest] = await Promise.all([
+    Promise.all(alvos.map((c) => searchLrclib(c, artist, title))),
     artist ? searchLyricsOvh(artist, title) : Promise.resolve(null),
-    artist ? Promise.resolve([] as LyricsHit[]) : searchOvhSuggest(query),
+    artist ? Promise.resolve([] as LyricsHit[]) : searchOvhSuggest(alvos[0]),
   ]);
-  return mergeHits(lrclib, ovhDirect ? [ovhDirect] : [], ovhSuggest);
+  const juntos = mergeHits(...porConsulta, ovhDirect ? [ovhDirect] : [], ovhSuggest);
+  // Quem de fato traz o trecho na letra vai para o topo, e diz por quê.
+  return ordenarPeloTrecho(juntos, query);
 }
 
 async function searchWithXai(query: string): Promise<{ hits: LyricsHit[]; error?: string }> {

@@ -126,6 +126,50 @@ try {
   // diferente de idle) atrapalhar o relançamento do Electron mais abaixo.
   await fetch(`${remoteBase}/comando`, { method: "POST", body: JSON.stringify({ token: pareado.token, acao: "parar" }) });
   await page.waitForFunction(() => JSON.parse(localStorage.getItem("lumen-live-frame") ?? "null")?.status === "idle");
+  // ---- Achar a música pelo trecho que se lembra ----
+  // Numa largura de cabine: a janela mantém os dois layouts montados, e sem
+  // fixar o tamanho o teste pode acabar olhando para o que está escondido.
+  const cdpBusca = await page.context().newCDPSession(page);
+  await cdpBusca.send("Emulation.setDeviceMetricsOverride", {
+    width: 1600,
+    height: 900,
+    deviceScaleFactor: 1,
+    mobile: false,
+  });
+  await page.waitForTimeout(500);
+  // O verso "Levantamos os olhos / Do vale até o monte" está partido em duas
+  // linhas no acervo: era exatamente isso que fazia a busca por trecho falhar.
+  await page.evaluate(async () => {
+    const esperar = (ms) => new Promise((r) => setTimeout(r, ms));
+    const clicar = (t) => {
+      [...document.querySelectorAll("button,[role=tab]")]
+        .find((x) => (x.textContent || "").trim() === t)
+        ?.click();
+    };
+    clicar("Biblioteca");
+    await esperar(300);
+    clicar("Letras");
+    await esperar(400);
+  });
+  // A cabine mantém o layout de colunas e o de abas montados; o campo existe
+  // duas vezes, e só um deles está à vista.
+  const buscaRepertorio = page
+    .locator('input[placeholder="Pesquisar no repertório"]:visible')
+    .first();
+  await buscaRepertorio.fill("os olhos do vale");
+  await page.waitForFunction(
+    () => document.body.textContent.includes("Luz sobre o vale"),
+    null,
+    { timeout: 10000 },
+  );
+  // E a lista diz por que aquela música apareceu: o nome não bate com o que
+  // foi digitado, o motivo está no meio do verso.
+  await page.getByText(/letra ·/).first().waitFor({ timeout: 10000 });
+  await buscaRepertorio.fill("");
+  await page.waitForTimeout(400);
+  await cdpBusca.send("Emulation.clearDeviceMetricsOverride");
+  await page.waitForTimeout(400);
+
   // ---- Botão direito na letra: digitar e remover ----
   await page.evaluate(async () => {
     const esperar = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -601,7 +645,7 @@ try {
   assert.deepEqual(errors, []);
   const disk = JSON.parse(await readFile(path.join(profile, "data", "library.json"), "utf8"));
   assert.ok(disk.values["lumen-v2"]);
-  console.log(`PASS: offline, fonts, Bible, restart persistence, projector, media ranges, preflight, Auto-Slide, remote control (LAN, entrada por nome, nome fixo na rede), update check, review before apply, 1366×768 at 100/125/150% and 800×600, no scroll at seven sizes from 800×600 to 2560×1440 and the chat stays on screen, church logo and name reachable from the menu bar, right-click on lyrics edits or removes, double-click to project, fixed text only in the footer, YouTube collapses the lyrics strip, phone has one play/pause button and the screen volume, sees the media folder, projects from it and searches lyrics through the cabine. Evidence: ${evidence}`);
+  console.log(`PASS: offline, fonts, Bible, restart persistence, projector, media ranges, preflight, Auto-Slide, remote control (LAN, entrada por nome, nome fixo na rede), update check, review before apply, 1366×768 at 100/125/150% and 800×600, no scroll at seven sizes from 800×600 to 2560×1440 and the chat stays on screen, church logo and name reachable from the menu bar, find a song by a lyric excerpt, right-click on lyrics edits or removes, double-click to project, fixed text only in the footer, YouTube collapses the lyrics strip, phone has one play/pause button and the screen volume, sees the media folder, projects from it and searches lyrics through the cabine. Evidence: ${evidence}`);
 } finally {
   if (app) await app.close();
   console.log(`Isolated test profile: ${profile}`);
