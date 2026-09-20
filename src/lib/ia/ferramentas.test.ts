@@ -84,6 +84,42 @@ function acoesDeMentira(): AcoesIA & { feito: string[] } {
       feito.push("desfazer");
       return true;
     },
+    listarMidia: async () => [{ id: "midia:video:x.mp4", titulo: "Chamada", tipo: "video" }],
+    projetarMidia: async (id) => {
+      feito.push("midia:" + id);
+      return id === "midia:video:x.mp4";
+    },
+    controlarVideo: (acao) => {
+      feito.push("video:" + acao);
+      return acao !== "parar";
+    },
+    volumeDoVideo: (p) => {
+      feito.push("vol:" + p);
+      return true;
+    },
+    repetirVideo: (l) => {
+      feito.push("laco:" + l);
+      return true;
+    },
+    projetarYoutube: (endereco, titulo) => {
+      feito.push(`yt:${endereco}:${titulo}`);
+      return endereco.includes("youtu");
+    },
+    controlarYoutube: (acao) => {
+      feito.push("ytc:" + acao);
+      return true;
+    },
+    listarVersoesBiblia: () => [{ id: "almeida-1819", nome: "Almeida 1819" }],
+    trocarVersaoBiblia: (id) => {
+      feito.push("versao:" + id);
+      return id === "almeida-1819";
+    },
+    tamanhoDaLetra: (passos) => {
+      feito.push("letra:" + passos);
+      return 1.3;
+    },
+    mostrarRelogio: (l) => feito.push("relogio:" + l),
+    mostrarPapelDeParede: (l) => feito.push("fundo:" + l),
   };
 }
 
@@ -175,51 +211,51 @@ describe("risco decide se pergunta antes", () => {
 });
 
 describe("executar", () => {
-  test("o pedido do exemplo do prompt funciona de ponta a ponta", () => {
+  test("o pedido do exemplo do prompt funciona de ponta a ponta", async () => {
     const acoes = acoesDeMentira();
     const p = planejar({
       ferramenta: "create_recurring_service",
       argumentos: { nome: "Culto da Benção", weekday: undefined, diaDaSemana: 3, recorrencia: "semanal" },
     });
     assert.equal(p.ok, true);
-    const r = executarPlano(p as Extract<typeof p, { ok: true }>, acoes);
+    const r = await executarPlano(p as Extract<typeof p, { ok: true }>, acoes);
     assert.equal(r.ok, true);
     assert.deepEqual(acoes.feito, ["culto:Culto da Benção:3"]);
   });
 
-  test("a mensagem conta o que aconteceu, não o que se queria", () => {
+  test("a mensagem conta o que aconteceu, não o que se queria", async () => {
     const acoes = acoesDeMentira();
     const p = planejar({ ferramenta: "projetar_musica", argumentos: { id: "nao-existe" } });
-    const r = executarPlano(p as Extract<typeof p, { ok: true }>, acoes);
+    const r = await executarPlano(p as Extract<typeof p, { ok: true }>, acoes);
     assert.equal(r.ok, false);
     assert.match(r.mensagem, /Não achei/);
   });
 
-  test("busca sem resultado não mente dizendo que achou", () => {
+  test("busca sem resultado não mente dizendo que achou", async () => {
     const acoes = acoesDeMentira();
     const p = planejar({ ferramenta: "buscar_musica", argumentos: { termo: "inexistente" } });
-    const r = executarPlano(p as Extract<typeof p, { ok: true }>, acoes);
+    const r = await executarPlano(p as Extract<typeof p, { ok: true }>, acoes);
     assert.equal(r.ok, false);
   });
 
-  test("ferramenta que explode não derruba a cabine", () => {
+  test("ferramenta que explode não derruba a cabine", async () => {
     const acoes = acoesDeMentira();
     acoes.telaPreta = () => {
       throw new Error("placa de vídeo sumiu");
     };
     const p = planejar({ ferramenta: "tela_preta", argumentos: {} });
-    const r = executarPlano(p as Extract<typeof p, { ok: true }>, acoes);
+    const r = await executarPlano(p as Extract<typeof p, { ok: true }>, acoes);
     assert.equal(r.ok, false);
     assert.match(r.mensagem, /Não consegui/);
   });
 
-  test("culto repetido é recusado pela cabine, não pelo modelo", () => {
+  test("culto repetido é recusado pela cabine, não pelo modelo", async () => {
     const acoes = acoesDeMentira();
     const p = planejar({
       ferramenta: "criar_culto_recorrente",
       argumentos: { nome: "Repetido", diaDaSemana: 0, recorrencia: "semanal" },
     });
-    const r = executarPlano(p as Extract<typeof p, { ok: true }>, acoes);
+    const r = await executarPlano(p as Extract<typeof p, { ok: true }>, acoes);
     assert.equal(r.ok, false);
     assert.match(r.mensagem, /Já existe/);
   });
@@ -274,10 +310,10 @@ describe("programação do culto", () => {
     assert.equal(rm.ok && rm.precisaConfirmar, true);
   });
 
-  test("as posições que o operador conta viram as que o código usa", () => {
+  test("as posições que o operador conta viram as que o código usa", async () => {
     const acoes = acoesDeMentira();
     const p = planejar({ ferramenta: "mover_item_do_culto", argumentos: { de: 1, para: 2 } });
-    const r = executarPlano(p as Extract<typeof p, { ok: true }>, acoes);
+    const r = await executarPlano(p as Extract<typeof p, { ok: true }>, acoes);
     assert.equal(r.ok, true);
     assert.ok(acoes.feito.includes("mv:0:1"), acoes.feito.join(" | "));
   });
@@ -290,10 +326,10 @@ describe("programação do culto", () => {
     );
   });
 
-  test("posição que não existe é recusada pela cabine, não pelo modelo", () => {
+  test("posição que não existe é recusada pela cabine, não pelo modelo", async () => {
     const acoes = acoesDeMentira();
     const p = planejar({ ferramenta: "remover_do_culto", argumentos: { posicao: 9 } });
-    const r = executarPlano(p as Extract<typeof p, { ok: true }>, acoes);
+    const r = await executarPlano(p as Extract<typeof p, { ok: true }>, acoes);
     assert.equal(r.ok, false);
     assert.match(r.mensagem, /não existe/i);
   });
@@ -328,22 +364,67 @@ describe("letra", () => {
     );
   });
 
-  test("ver a letra é consulta: acontece sem perguntar", () => {
+  test("ver a letra é consulta: acontece sem perguntar", async () => {
     const acoes = acoesDeMentira();
     const p = planejar({ ferramenta: "ver_letra", argumentos: {} });
     assert.equal(p.ok && p.precisaConfirmar, false);
-    const r = executarPlano(p as Extract<typeof p, { ok: true }>, acoes);
+    const r = await executarPlano(p as Extract<typeof p, { ok: true }>, acoes);
     assert.equal(r.ok, true);
     assert.equal((r.dados as { slideId: string }[])[0].slideId, "sl1");
   });
 });
 
+/** Um argumento plausível por ferramenta, para percorrer o catálogo inteiro. */
+const ARGUMENTOS_VALIDOS: Record<string, Record<string, unknown>> = {
+  buscar_musica: { termo: "vale" },
+  projetar_musica: { id: "s1" },
+  preparar_musica: { id: "s1" },
+  versiculo: { referencia: "João 3:16" },
+  criar_aviso: { texto: "oi" },
+  contagem_regressiva: { segundos: 60 },
+  linhas_por_slide: { quantas: 4 },
+  criar_culto_recorrente: { nome: "Culto", diaDaSemana: 3 },
+  aplicar_tema: { id: "t1" },
+  ajustar_tema: { tamanho: 72 },
+  adicionar_ao_culto: { id: "s1" },
+  mover_item_do_culto: { de: 1, para: 2 },
+  remover_do_culto: { posicao: 1 },
+  criar_playlist: { nome: "Domingo" },
+  editar_letra: { slideId: "sl1", texto: "nova" },
+  dividir_slide: { slideId: "sl1", naLinha: 2 },
+  projetar_midia: { id: "midia:video:x.mp4" },
+  controlar_video: { acao: "tocar" },
+  volume_do_video: { porcento: 50 },
+  repetir_video: { ligado: true },
+  projetar_youtube: { endereco: "https://youtu.be/abc" },
+  controlar_youtube: { acao: "tocar" },
+  trocar_versao_biblia: { id: "almeida-1819" },
+  tamanho_da_letra: { passos: 1 },
+  relogio_no_telao: { ligado: true },
+  papel_de_parede: { ligado: false },
+};
+
 describe("o catálogo ampliado continua fechado", () => {
-  test("toda ferramenta que mexe no guardado pede confirmação", () => {
+  test("o risco declarado é o que o planejador aplica", () => {
+    // Confere o caminho inteiro, não a definição: é `planejar` que a cabine
+    // consulta antes de agir, e é ele que pode divergir do que a ferramenta
+    // diz de si mesma.
     for (const f of FERRAMENTAS) {
-      const pede = f.risco === "edit" || f.risco === "destructive";
-      const confirma = f.risco === "edit" || f.risco === "destructive";
-      assert.equal(pede, confirma, f.nome);
+      const p = planejar({ ferramenta: f.nome, argumentos: ARGUMENTOS_VALIDOS[f.nome] ?? {} });
+      if (!p.ok) continue;
+      const deveriaPerguntar = f.risco === "edit" || f.risco === "destructive";
+      assert.equal(p.precisaConfirmar, deveriaPerguntar, f.nome);
+    }
+  });
+
+  test("toda ferramenta que apaga ou tira tem risco de mexer no guardado", () => {
+    // Um verbo de perda classificado como "live" passaria sem perguntar.
+    for (const f of FERRAMENTAS) {
+      if (!/^(remover|apagar|excluir|limpar)/.test(f.nome)) continue;
+      assert.ok(
+        f.risco === "edit" || f.risco === "destructive",
+        `${f.nome} tira alguma coisa e não pergunta antes`,
+      );
     }
   });
 
@@ -366,5 +447,101 @@ describe("o catálogo ampliado continua fechado", () => {
     for (const f of FERRAMENTAS) {
       assert.match(f.nome, /^[a-z][a-z_]*$/, f.nome);
     }
+  });
+});
+
+describe("mídia da pasta", () => {
+  test("listar a pasta é consulta, e é assíncrono porque é disco", async () => {
+    const acoes = acoesDeMentira();
+    const p = planejar({ ferramenta: "listar_midia", argumentos: {} });
+    assert.equal(p.ok && p.precisaConfirmar, false);
+    const r = await executarPlano(p as Extract<typeof p, { ok: true }>, acoes);
+    assert.equal(r.ok, true);
+    assert.equal((r.dados as { tipo: string }[])[0].tipo, "video");
+  });
+
+  test("arquivo que não está na pasta não vai ao telão", async () => {
+    const acoes = acoesDeMentira();
+    const p = planejar({ ferramenta: "projetar_midia", argumentos: { id: "midia:video:some.mp4" } });
+    const r = await executarPlano(p as Extract<typeof p, { ok: true }>, acoes);
+    assert.equal(r.ok, false);
+    assert.match(r.mensagem, /pasta/i);
+  });
+
+  test("mandar parar sem vídeo no ar diz a verdade", async () => {
+    // O dublê devolve falso para "parar": é o caso de não haver vídeo.
+    const acoes = acoesDeMentira();
+    const p = planejar({ ferramenta: "controlar_video", argumentos: { acao: "parar" } });
+    const r = await executarPlano(p as Extract<typeof p, { ok: true }>, acoes);
+    assert.equal(r.ok, false);
+    assert.match(r.mensagem, /Não há vídeo/);
+  });
+
+  test("ação de vídeo fora das três não existe", () => {
+    assert.equal(planejar({ ferramenta: "controlar_video", argumentos: { acao: "rebobinar" } }).ok, false);
+  });
+
+  test("volume vive entre 0 e 100", () => {
+    assert.equal(planejar({ ferramenta: "volume_do_video", argumentos: { porcento: 101 } }).ok, false);
+    assert.equal(planejar({ ferramenta: "volume_do_video", argumentos: { porcento: -1 } }).ok, false);
+    assert.equal(planejar({ ferramenta: "volume_do_video", argumentos: { porcento: 0 } }).ok, true);
+  });
+});
+
+describe("YouTube", () => {
+  test("endereço que não é do YouTube é recusado pela cabine", async () => {
+    const acoes = acoesDeMentira();
+    const p = planejar({
+      ferramenta: "projetar_youtube",
+      argumentos: { endereco: "https://exemplo.com/video" },
+    });
+    const r = await executarPlano(p as Extract<typeof p, { ok: true }>, acoes);
+    assert.equal(r.ok, false);
+    assert.match(r.mensagem, /YouTube/);
+  });
+
+  test("o título é opcional, e o endereço não", () => {
+    assert.equal(planejar({ ferramenta: "projetar_youtube", argumentos: {} }).ok, false);
+    assert.equal(
+      planejar({ ferramenta: "projetar_youtube", argumentos: { endereco: "https://youtu.be/a" } }).ok,
+      true,
+    );
+  });
+});
+
+describe("Bíblia e telão", () => {
+  test("trocar a tradução pergunta antes: muda o texto que a igreja lê", () => {
+    const p = planejar({ ferramenta: "trocar_versao_biblia", argumentos: { id: "almeida-1819" } });
+    assert.equal(p.ok && p.precisaConfirmar, true);
+  });
+
+  test("aumentar e diminuir a letra não interrompe ninguém para confirmar", async () => {
+    // Um passo se desfaz com o passo contrário.
+    const acoes = acoesDeMentira();
+    const p = planejar({ ferramenta: "tamanho_da_letra", argumentos: { passos: 1 } });
+    assert.equal(p.ok && p.precisaConfirmar, false);
+    const r = await executarPlano(p as Extract<typeof p, { ok: true }>, acoes);
+    assert.equal(r.ok, true);
+    assert.match(r.mensagem, /130%/);
+  });
+
+  test("zero passos não é aumentar nem diminuir", async () => {
+    const acoes = acoesDeMentira();
+    const p = planejar({ ferramenta: "tamanho_da_letra", argumentos: { passos: 0 } });
+    const r = await executarPlano(p as Extract<typeof p, { ok: true }>, acoes);
+    assert.equal(r.ok, false);
+    assert.match(r.mensagem, /aumentar ou diminuir/);
+  });
+
+  test("relógio e fundo são interruptores, não decisões", async () => {
+    const acoes = acoesDeMentira();
+    for (const nome of ["relogio_no_telao", "papel_de_parede"]) {
+      const p = planejar({ ferramenta: nome, argumentos: { ligado: false } });
+      assert.equal(p.ok && p.precisaConfirmar, false, nome);
+      const r = await executarPlano(p as Extract<typeof p, { ok: true }>, acoes);
+      assert.equal(r.ok, true, nome);
+    }
+    assert.ok(acoes.feito.includes("relogio:false"));
+    assert.ok(acoes.feito.includes("fundo:false"));
   });
 });

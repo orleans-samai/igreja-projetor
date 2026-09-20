@@ -1,3 +1,7 @@
+import { listVersions } from "@/lib/bible";
+import { fontScaleDe } from "@/lib/font-scale";
+import { MEDIA_KINDS, listMedia } from "@/lib/media-library";
+import { idDoVideo } from "@/lib/youtube";
 import { searchSongs, useLumenStore } from "@/store/lumen-store";
 import { useOpsStore } from "@/store/ops-store";
 import type { AcoesIA } from "./ferramentas.ts";
@@ -175,6 +179,94 @@ export function acoesReais(): AcoesIA {
 
     desfazer() {
       return useOpsStore.getState().undoCulto();
+    },
+
+    async listarMidia() {
+      const listas = await Promise.all(MEDIA_KINDS.map((k) => listMedia(k.value)));
+      return listas.flatMap((lista, i) =>
+        (lista.items ?? []).map((item) => ({
+          id: item.id,
+          titulo: item.title,
+          tipo: MEDIA_KINDS[i].value,
+        })),
+      );
+    },
+
+    async projetarMidia(id) {
+      const s = st();
+      if (!s.media.some((m) => m.id === id)) {
+        // Arquivo de disco só existe na store depois de tocado uma vez; sem
+        // isto, projetar acharia um id que não existe.
+        for (const k of MEDIA_KINDS) {
+          const lista = await listMedia(k.value);
+          const achado = (lista.items ?? []).find((m) => m.id === id);
+          if (!achado) continue;
+          s.addMedia({ id: achado.id, type: k.value, title: achado.title, path: achado.url });
+          break;
+        }
+      }
+      if (!useLumenStore.getState().media.some((m) => m.id === id)) return false;
+      useLumenStore.getState().projetarDaBiblioteca("media", id);
+      return true;
+    },
+
+    controlarVideo(acao) {
+      const s = st();
+      if (s.live?.mediaType !== "video" && s.live?.mediaType !== "audio") return false;
+      s.comandarMedia({ mediaAcao: acao === "parar" ? "parar" : acao });
+      return true;
+    },
+
+    volumeDoVideo(porcento) {
+      const s = st();
+      if (s.live?.mediaType !== "video" && s.live?.mediaType !== "audio") return false;
+      s.comandarMedia({ mediaVolume: porcento / 100, mediaMudo: porcento === 0 });
+      return true;
+    },
+
+    repetirVideo(ligado) {
+      const s = st();
+      if (s.live?.mediaType !== "video") return false;
+      s.comandarMedia({ mediaLoop: ligado });
+      return true;
+    },
+
+    projetarYoutube(endereco, titulo) {
+      const id = idDoVideo(endereco);
+      if (!id) return false;
+      st().projetarYoutube(id, titulo || "Vídeo do YouTube");
+      return true;
+    },
+
+    controlarYoutube(acao) {
+      const s = st();
+      if (!s.youtube) return false;
+      s.comandarYoutube({ acao: acao === "parar" ? "parar" : acao });
+      return true;
+    },
+
+    listarVersoesBiblia() {
+      return listVersions().map((v) => ({ id: v.id, nome: v.name }));
+    },
+
+    trocarVersaoBiblia(id) {
+      if (!listVersions().some((v) => v.id === id)) return false;
+      st().changeVersion(id);
+      return true;
+    },
+
+    tamanhoDaLetra(passos) {
+      const s = st();
+      s.bumpFontScale(passos);
+      return fontScaleDe(useLumenStore.getState().settings);
+    },
+
+    mostrarRelogio(ligado) {
+      st().updateSettings({ showClock: ligado });
+    },
+
+    mostrarPapelDeParede(ligado) {
+      st().updateSettings({ showWallpaper: ligado });
     },
   };
 }

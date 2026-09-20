@@ -70,6 +70,20 @@ export interface AcoesIA {
   dividirSlide(slideId: string, naLinha: number): boolean;
   abrirProjecao(): void;
   desfazer(): boolean;
+
+  // ─── mídia, YouTube e telão ───
+  listarMidia(): Promise<{ id: string; titulo: string; tipo: string }[]>;
+  projetarMidia(id: string): Promise<boolean>;
+  controlarVideo(acao: "tocar" | "pausar" | "parar"): boolean;
+  volumeDoVideo(porcento: number): boolean;
+  repetirVideo(ligado: boolean): boolean;
+  projetarYoutube(endereco: string, titulo: string): boolean;
+  controlarYoutube(acao: "tocar" | "pausar" | "parar"): boolean;
+  listarVersoesBiblia(): { id: string; nome: string }[];
+  trocarVersaoBiblia(id: string): boolean;
+  tamanhoDaLetra(passos: number): number;
+  mostrarRelogio(ligado: boolean): void;
+  mostrarPapelDeParede(ligado: boolean): void;
 }
 
 /** Só o que faz sentido a IA mexer — nada de id de tema nem de arquivo. */
@@ -101,7 +115,12 @@ export interface Ferramenta {
    */
   antes?: (args: Record<string, unknown>) => Record<string, unknown>;
   previa: (args: never) => string;
-  executar: (args: never, acoes: AcoesIA) => ResultadoFerramenta;
+  /**
+   * Pode devolver promessa: ler a pasta de mídia é ida ao disco, e fingir
+   * que não é obrigaria a manter uma cópia da pasta em memória só para o
+   * catálogo parecer síncrono.
+   */
+  executar: (args: never, acoes: AcoesIA) => ResultadoFerramenta | Promise<ResultadoFerramenta>;
 }
 
 function ferramenta<T extends z.ZodType>(f: {
@@ -113,7 +132,10 @@ function ferramenta<T extends z.ZodType>(f: {
   podeDesfazer: boolean;
   antes?: (args: Record<string, unknown>) => Record<string, unknown>;
   previa: (args: z.infer<T>) => string;
-  executar: (args: z.infer<T>, acoes: AcoesIA) => ResultadoFerramenta;
+  executar: (
+    args: z.infer<T>,
+    acoes: AcoesIA,
+  ) => ResultadoFerramenta | Promise<ResultadoFerramenta>;
 }): Ferramenta {
   return f as unknown as Ferramenta;
 }
@@ -576,6 +598,194 @@ export const FERRAMENTAS: readonly Ferramenta[] = [
         : { ok: false, mensagem: "Não há nada para desfazer." },
   }),
 
+
+  // ─────────────────────────── mídia da pasta
+
+  ferramenta({
+    nome: "listar_midia",
+    apelidos: ["list_media"],
+    descricao: "Lista os vídeos, áudios e imagens da pasta de mídia da igreja.",
+    risco: "read",
+    entrada: semArgumentos,
+    podeDesfazer: false,
+    previa: () => "ver a pasta de mídia",
+    executar: async (_a, acoes) => {
+      const itens = await acoes.listarMidia();
+      return itens.length === 0
+        ? { ok: false, mensagem: "A pasta de mídia está vazia." }
+        : { ok: true, mensagem: `${itens.length} arquivo(s) na pasta.`, dados: itens.slice(0, 20) };
+    },
+  }),
+
+  ferramenta({
+    nome: "projetar_midia",
+    apelidos: ["project_media"],
+    descricao: "Manda um arquivo da pasta de mídia para o telão. Use o id de listar_midia.",
+    risco: "live",
+    entrada: z.object({ id: z.string().min(1).max(200) }).strict(),
+    podeDesfazer: false,
+    previa: (a) => `projetar a mídia ${a.id}`,
+    executar: async (a, acoes) =>
+      (await acoes.projetarMidia(a.id))
+        ? { ok: true, mensagem: "Mídia no telão." }
+        : { ok: false, mensagem: "Não achei esse arquivo na pasta." },
+  }),
+
+  ferramenta({
+    nome: "controlar_video",
+    apelidos: ["control_video", "media_transport"],
+    descricao: "Toca, pausa ou para o vídeo que está no telão.",
+    risco: "live",
+    entrada: z.object({ acao: z.enum(["tocar", "pausar", "parar"]) }).strict(),
+    podeDesfazer: false,
+    previa: (a) => `${a.acao} o vídeo do telão`,
+    executar: (a, acoes) =>
+      acoes.controlarVideo(a.acao)
+        ? { ok: true, mensagem: `Vídeo: ${a.acao}.` }
+        : { ok: false, mensagem: "Não há vídeo no telão agora." },
+  }),
+
+  ferramenta({
+    nome: "volume_do_video",
+    apelidos: ["set_volume"],
+    descricao: "Muda o volume do vídeo do telão, de 0 a 100.",
+    risco: "live",
+    entrada: z.object({ porcento: z.number().int().min(0).max(100) }).strict(),
+    podeDesfazer: false,
+    previa: (a) => `pôr o volume em ${a.porcento}%`,
+    executar: (a, acoes) =>
+      acoes.volumeDoVideo(a.porcento)
+        ? { ok: true, mensagem: `Volume em ${a.porcento}%.` }
+        : { ok: false, mensagem: "Não há vídeo no telão agora." },
+  }),
+
+  ferramenta({
+    nome: "repetir_video",
+    apelidos: ["loop_video"],
+    descricao: "Liga ou desliga o laço do vídeo, para ele recomeçar sozinho.",
+    risco: "live",
+    entrada: z.object({ ligado: z.boolean() }).strict(),
+    podeDesfazer: false,
+    previa: (a) => (a.ligado ? "repetir o vídeo em laço" : "parar de repetir o vídeo"),
+    executar: (a, acoes) =>
+      acoes.repetirVideo(a.ligado)
+        ? { ok: true, mensagem: a.ligado ? "Vídeo em laço." : "Laço desligado." }
+        : { ok: false, mensagem: "Não há vídeo no telão agora." },
+  }),
+
+  // ─────────────────────────── YouTube
+
+  ferramenta({
+    nome: "projetar_youtube",
+    apelidos: ["project_youtube"],
+    descricao: "Projeta um vídeo do YouTube a partir do endereço colado pelo operador.",
+    risco: "live",
+    entrada: z
+      .object({
+        endereco: z.string().min(8).max(300),
+        titulo: z.string().max(120).default(""),
+      })
+      .strict(),
+    podeDesfazer: false,
+    previa: (a) => `projetar o vídeo do YouTube${a.titulo ? ` “${a.titulo}”` : ""}`,
+    executar: (a, acoes) =>
+      acoes.projetarYoutube(a.endereco, a.titulo)
+        ? { ok: true, mensagem: "Vídeo do YouTube preparado no telão." }
+        : { ok: false, mensagem: "Não reconheci um vídeo do YouTube nesse endereço." },
+  }),
+
+  ferramenta({
+    nome: "controlar_youtube",
+    apelidos: ["control_youtube"],
+    descricao: "Toca, pausa ou para o vídeo do YouTube que está no telão.",
+    risco: "live",
+    entrada: z.object({ acao: z.enum(["tocar", "pausar", "parar"]) }).strict(),
+    podeDesfazer: false,
+    previa: (a) => `${a.acao} o vídeo do YouTube`,
+    executar: (a, acoes) =>
+      acoes.controlarYoutube(a.acao)
+        ? { ok: true, mensagem: `YouTube: ${a.acao}.` }
+        : { ok: false, mensagem: "Não há vídeo do YouTube no telão." },
+  }),
+
+  // ─────────────────────────── Bíblia e telão
+
+  ferramenta({
+    nome: "listar_versoes_biblia",
+    apelidos: ["list_bible_versions"],
+    descricao: "Lista as traduções da Bíblia instaladas, com o id de cada uma.",
+    risco: "read",
+    entrada: semArgumentos,
+    podeDesfazer: false,
+    previa: () => "ver as traduções da Bíblia",
+    executar: (_a, acoes) => {
+      const v = acoes.listarVersoesBiblia();
+      return v.length === 0
+        ? { ok: false, mensagem: "Nenhuma tradução instalada." }
+        : { ok: true, mensagem: `${v.length} tradução(ões).`, dados: v };
+    },
+  }),
+
+  ferramenta({
+    nome: "trocar_versao_biblia",
+    apelidos: ["set_bible_version"],
+    descricao: "Troca a tradução da Bíblia usada na projeção. Use o id de listar_versoes_biblia.",
+    // Muda o texto que a igreja vai ler, e fica guardado.
+    risco: "edit",
+    entrada: z.object({ id: z.string().min(1).max(60) }).strict(),
+    podeDesfazer: true,
+    previa: (a) => `passar a projetar a Bíblia na tradução ${a.id}`,
+    executar: (a, acoes) =>
+      acoes.trocarVersaoBiblia(a.id)
+        ? { ok: true, mensagem: "Tradução trocada." }
+        : { ok: false, mensagem: "Não achei essa tradução." },
+  }),
+
+  ferramenta({
+    nome: "tamanho_da_letra",
+    apelidos: ["font_scale"],
+    descricao: "Aumenta ou diminui a letra no telão. Use 1 para aumentar e -1 para diminuir.",
+    // Um passo de letra se desfaz com o passo contrário: não vale interromper
+    // o operador para confirmar.
+    risco: "live",
+    entrada: z.object({ passos: z.number().int().min(-5).max(5) }).strict(),
+    podeDesfazer: false,
+    previa: (a) => (a.passos > 0 ? "aumentar a letra do telão" : "diminuir a letra do telão"),
+    executar: (a, acoes) => {
+      if (a.passos === 0) return { ok: false, mensagem: "Diga se é para aumentar ou diminuir." };
+      const agora = acoes.tamanhoDaLetra(a.passos);
+      return { ok: true, mensagem: `Letra do telão em ${Math.round(agora * 100)}%.` };
+    },
+  }),
+
+  ferramenta({
+    nome: "relogio_no_telao",
+    apelidos: ["show_clock"],
+    descricao: "Liga ou desliga o relógio no canto do telão.",
+    risco: "live",
+    entrada: z.object({ ligado: z.boolean() }).strict(),
+    podeDesfazer: false,
+    previa: (a) => (a.ligado ? "mostrar o relógio no telão" : "tirar o relógio do telão"),
+    executar: (a, acoes) => {
+      acoes.mostrarRelogio(a.ligado);
+      return { ok: true, mensagem: a.ligado ? "Relógio ligado." : "Relógio desligado." };
+    },
+  }),
+
+  ferramenta({
+    nome: "papel_de_parede",
+    apelidos: ["show_wallpaper"],
+    descricao: "Liga ou desliga o fundo do telão, deixando o texto sobre cor sólida.",
+    risco: "live",
+    entrada: z.object({ ligado: z.boolean() }).strict(),
+    podeDesfazer: false,
+    previa: (a) => (a.ligado ? "mostrar o fundo do telão" : "tirar o fundo do telão"),
+    executar: (a, acoes) => {
+      acoes.mostrarPapelDeParede(a.ligado);
+      return { ok: true, mensagem: a.ligado ? "Fundo ligado." : "Fundo desligado." };
+    },
+  }),
+
 ] as const;
 
 /** O inglês do prompt também é aceito: modelo pequeno troca de idioma sozinho. */
@@ -636,12 +846,17 @@ export function planejar(pedido: { ferramenta: string; argumentos: unknown }): P
 }
 
 /** Executa um plano já conferido. Nunca recebe texto do modelo. */
-export function executarPlano(plano: Extract<Plano, { ok: true }>, acoes: AcoesIA): ResultadoFerramenta {
+export async function executarPlano(
+  plano: Extract<Plano, { ok: true }>,
+  acoes: AcoesIA,
+): Promise<ResultadoFerramenta> {
   try {
-    return (plano.ferramenta.executar as (a: unknown, ac: AcoesIA) => ResultadoFerramenta)(
-      plano.argumentos,
-      acoes,
-    );
+    return await (
+      plano.ferramenta.executar as (
+        a: unknown,
+        ac: AcoesIA,
+      ) => ResultadoFerramenta | Promise<ResultadoFerramenta>
+    )(plano.argumentos, acoes);
   } catch {
     // Uma ferramenta que explode não pode derrubar a cabine no meio do culto.
     return { ok: false, mensagem: "Não consegui fazer isso agora." };

@@ -80,10 +80,11 @@ export const useIaStore = create<IaState>()((set, get) => ({
     if (plano.ferramenta.podeDesfazer) {
       useOpsStore.getState().pushUndo(useLumenStore.getState().captureNow(false));
     }
-    const r = executarPlano(plano, acoesReais());
-    set((s) => ({
-      recados: [...s.recados, { id: nid(), papel: "sistema", texto: r.mensagem, feito: r.ok }],
-    }));
+    void executarPlano(plano, acoesReais()).then((r) =>
+      set((s) => ({
+        recados: [...s.recados, { id: nid(), papel: "sistema", texto: r.mensagem, feito: r.ok }],
+      })),
+    );
   },
 
   desfazer: () => {
@@ -174,7 +175,7 @@ export const useIaStore = create<IaState>()((set, get) => ({
     }
 
     // Só depois de acontecer é que se diz que aconteceu.
-    const r = executarPlano(plano, acoesReais());
+    const r = await executarPlano(plano, acoesReais());
     set((s) => ({
       pensando: false,
       recados: [

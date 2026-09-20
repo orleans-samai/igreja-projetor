@@ -1,6 +1,12 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { instrucao, montarMensagens, peneirarSegredos, AVISO_PRIVACIDADE } from "./conversa.ts";
+import {
+  AVISO_PRIVACIDADE,
+  instrucao,
+  montarMensagens,
+  peneirarSegredos,
+  tetoDaInstrucao,
+} from "./conversa.ts";
 import { FERRAMENTAS } from "./ferramentas.ts";
 
 describe("peneirarSegredos", () => {
@@ -56,13 +62,13 @@ describe("a instrução do sistema", () => {
     assert.match(t, /Nunca peça nem repita senhas/i);
   });
 
-  test("cabe com folga no contexto, deixando espaço para a conversa", () => {
-    // 2048 tokens de contexto, ~4 caracteres por token: a instrução não pode
-    // passar de um terço, senão o modelo esquece a pergunta antes de
-    // responder. Se este teste quebrar ao crescer o catálogo, a saída é
-    // encurtar descrição — não aumentar o contexto, que sai da projeção.
-    const limite = Math.round((2048 * 4) / 3);
-    assert.ok(instrucao().length < limite, `${instrucao().length} de ${limite}`);
+  test("cabe no contexto junto com a conversa e a resposta", () => {
+    // A conta, não um número inventado: instrução + seis falas guardadas +
+    // a resposta máxima têm que caber nos 2048 tokens. Se quebrar ao crescer
+    // o catálogo, a saída é encurtar descrição — aumentar o contexto sai da
+    // memória da projeção.
+    const teto = tetoDaInstrucao();
+    assert.ok(instrucao().length < teto, `${instrucao().length} de ${teto}`);
   });
 });
 

@@ -24,7 +24,35 @@ export interface MensagemModelo {
 }
 
 /** Quantas falas de trás vão junto. Contexto curto é o que o PC aguenta. */
-const LEMBRANCA = 6;
+export const LEMBRANCA = 6;
+
+/**
+ * O orçamento de contexto, em tokens.
+ *
+ * Tem que bater com CONTEXTO_PADRAO e MAX_TOKENS_RESPOSTA em desktop/ia.cjs —
+ * há um teste de cada lado conferindo, porque os dois arquivos não se falam
+ * (um é CommonJS do processo principal, o outro é a janela).
+ *
+ * A conta que importa: instrução + histórico + resposta tem que caber. Se a
+ * instrução crescer além disso, o modelo passa a esquecer o começo da
+ * conversa — e a saída é encurtar descrição de ferramenta, não aumentar o
+ * contexto, que sai da memória da projeção.
+ */
+export const ORCAMENTO = {
+  contexto: 2048,
+  resposta: 320,
+  /** Estimativa grosseira do que cada fala guardada ocupa. */
+  tokensPorFala: 60,
+  /** Português em UTF-8 dá mais ou menos isto por token. */
+  caracteresPorToken: 4,
+};
+
+/** Quantos caracteres a instrução pode ter sem apertar a conversa. */
+export function tetoDaInstrucao(): number {
+  const sobra =
+    ORCAMENTO.contexto - ORCAMENTO.resposta - LEMBRANCA * ORCAMENTO.tokensPorFala;
+  return sobra * ORCAMENTO.caracteresPorToken;
+}
 
 export const AVISO_PRIVACIDADE = "Assistente local — nenhum dado é enviado para a internet";
 
@@ -103,7 +131,7 @@ export function instrucao(): string {
 /**
  * Monta as mensagens que vão ao modelo.
  *
- * Só as últimas falas: a conversa inteira não cabe em 1024 tokens, e o que
+ * Só as últimas falas: a conversa inteira não cabe no contexto, e o que
  * importa num culto é o que se acabou de pedir.
  */
 export function montarMensagens(historico: readonly Fala[], pergunta: string): MensagemModelo[] {

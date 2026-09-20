@@ -61,6 +61,16 @@ describe("o modelo só escuta esta máquina", () => {
   });
 });
 
+describe("o orçamento de contexto bate dos dois lados", () => {
+  test("o processo principal e a janela combinam os mesmos números", () => {
+    // conversa.ts monta a instrução contando com estes valores, e os dois
+    // arquivos não se falam — um é CommonJS do processo principal, o outro é
+    // a janela. Sem este par de testes, mudar um lado passaria batido.
+    assert.equal(iaModule.CONTEXTO_PADRAO, 2048, "conversa.ts conta com 2048 de contexto");
+    assert.equal(iaModule.MAX_TOKENS_RESPOSTA, 320, "conversa.ts conta com 320 de resposta");
+  });
+});
+
 describe("ler a resposta do llama-server", () => {
   test("aceita os dois formatos que as versões devolvem", () => {
     assert.equal(textoDaResposta({ choices: [{ message: { content: "oi" } }] }), "oi");
