@@ -1,6 +1,7 @@
 import { Group, Panel, Separator } from "react-resizable-panels";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChatAviso, ChatPanel } from "@/components/operator/chat-panel";
+import { LogoDialog } from "@/components/operator/logo-dialog";
 import { ControlBar } from "@/components/operator/control-bar";
 import {
   CountdownDialog,
@@ -70,6 +71,7 @@ export function OperatorApp() {
   const [bibleOpen, setBibleOpen] = useState(false);
   const [autoSlide, setAutoSlide] = useState(false);
   const [remoteControl, setRemoteControl] = useState(false);
+  const [logoAberto, setLogoAberto] = useState(false);
   const [mobileTab, setMobileTab] = useState<"lib" | "preview" | "culto">("preview");
   const liveMode = useOpsStore((s) => s.liveMode);
   const chatPosicao = useChatStore((s) => s.posicao);
@@ -380,6 +382,7 @@ export function OperatorApp() {
           onDisplay={() => setDisplay(true)}
           onAutoSlide={() => setAutoSlide(true)}
           onRemoteControl={() => setRemoteControl(true)}
+          onLogo={() => setLogoAberto(true)}
           onOptimize={() => void runOptimize()}
         />
         <WindowsRuntime />
@@ -508,6 +511,7 @@ export function OperatorApp() {
       <SettingsDialog open={settings} onOpenChange={setSettings} />
       <AutoSlideDialog open={autoSlide} onOpenChange={setAutoSlide} />
       <RemoteControlDialog open={remoteControl} onOpenChange={setRemoteControl} />
+      <LogoDialog open={logoAberto} onOpenChange={setLogoAberto} />
       <DisplayDialog open={display} onOpenChange={setDisplay} />
       <CountdownDialog open={countdown} onOpenChange={setCountdown} />
       <LyricsSearchDialog

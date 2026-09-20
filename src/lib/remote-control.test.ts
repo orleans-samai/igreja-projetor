@@ -23,6 +23,8 @@ describe("estadoRemoto", () => {
       slideTotal: 3,
       noAr: true,
       preto: false,
+      // Música não tem play nem pause.
+      midiaTocando: null,
     });
   });
 
@@ -33,6 +35,7 @@ describe("estadoRemoto", () => {
       slideTotal: 0,
       noAr: false,
       preto: false,
+      midiaTocando: null,
     });
   });
 
@@ -64,5 +67,39 @@ describe("enderecosDeAcesso", () => {
       enderecosDeAcesso({ ligado: false, porta: null, pin: null, enderecos: [], sessoesAtivas: 0 }),
       [],
     );
+  });
+});
+
+describe("estado da mídia no celular", () => {
+  const midia = (extra: Partial<Deck>): Deck => ({
+    kind: "media",
+    refId: "m1",
+    title: "Chamada",
+    subtitle: "",
+    slides: [],
+    ...extra,
+  });
+
+  it("vídeo tocando e pausado viram um botão só", () => {
+    // O celular não tem espaço para dois botões que nunca servem juntos.
+    assert.equal(estadoRemoto("presenting", midia({ mediaType: "video", mediaAcao: "tocar" }), 0).midiaTocando, true);
+    assert.equal(estadoRemoto("presenting", midia({ mediaType: "video", mediaAcao: "pausar" }), 0).midiaTocando, false);
+    assert.equal(estadoRemoto("presenting", midia({ mediaType: "audio", mediaAcao: "tocar" }), 0).midiaTocando, true);
+  });
+
+  it("sem mídia no ar não há o que tocar", () => {
+    assert.equal(estadoRemoto("idle", null, 0).midiaTocando, null);
+    // Imagem no telão não tem play nem pause.
+    assert.equal(estadoRemoto("presenting", midia({ mediaType: "image" }), 0).midiaTocando, null);
+    assert.equal(
+      estadoRemoto("presenting", { kind: "song", refId: "s1", title: "Hino", subtitle: "", slides: [] }, 0)
+        .midiaTocando,
+      null,
+    );
+  });
+
+  it("vídeo parado não conta como tocando", () => {
+    assert.equal(estadoRemoto("presenting", midia({ mediaType: "video", mediaAcao: "parar" }), 0).midiaTocando, false);
+    assert.equal(estadoRemoto("presenting", midia({ mediaType: "video" }), 0).midiaTocando, false);
   });
 });

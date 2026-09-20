@@ -10,6 +10,12 @@ const evidence = path.join(root, "artifacts", "desktop-smoke");
 await mkdir(evidence, { recursive: true });
 let app;
 const errors = [];
+/** Campo controlado por store: limpar antes de escrever evita concatenar. */
+const campoLimpar = async (campo) => {
+  await campo.click();
+  await campo.press("ControlOrMeta+a");
+  await campo.press("Delete");
+};
 try {
   const launch = async () => {
     const executablePath = process.env.LUMEN_SMOKE_EXE;
@@ -28,8 +34,15 @@ try {
   };
   let page = await launch();
   assert.equal(new URL(page.url()).protocol, "lumen:");
-  // Block all network URLs, including cached Google Fonts, while checking assets.
-  await app.context().route(/^https?:/, (route) => route.abort());
+  // Block all network URLs, including cached Google Fonts, while checking
+  // assets. O servidor do controle remoto não é internet: ele roda nesta
+  // máquina, e a página do celular precisa dele para ser testada de verdade.
+  await app.context().route(/^https?:/, (route) => {
+    const anfitriao = new URL(route.request().url()).hostname;
+    return anfitriao === "127.0.0.1" || anfitriao === "localhost"
+      ? route.continue()
+      : route.abort();
+  });
   await page.reload();
   await page.waitForFunction(() => document.querySelectorAll("button").length > 10);
   const bible = await page.evaluate(async () => (await fetch("/bible/almeida-1819.json")).json());
@@ -114,6 +127,28 @@ try {
   // diferente de idle) atrapalhar o relançamento do Electron mais abaixo.
   await fetch(`${remoteBase}/comando`, { method: "POST", body: JSON.stringify({ token: pareado.token, acao: "parar" }) });
   await page.waitForFunction(() => JSON.parse(localStorage.getItem("lumen-live-frame") ?? "null")?.status === "idle");
+  // ---- Logo e nome da igreja, à mão na barra de cima ----
+  // Era a primeira coisa que alguém faz ao instalar o Lúmen, e a mais
+  // escondida: ficava no fundo das Configurações, entre margens e transições.
+  await page.getByRole("button", { name: "Logo e nome da igreja" }).click();
+  const dialogoLogo = page.getByRole("dialog", { name: "Logo e nome da igreja" });
+  await dialogoLogo.waitFor({ state: "visible", timeout: 10000 });
+  await assert.doesNotReject(
+    dialogoLogo.getByRole("button", { name: /Escolher a imagem|Trocar a imagem/ }).waitFor({ timeout: 5000 }),
+  );
+  const campoNome = dialogoLogo.getByLabel("Nome da igreja");
+  await campoLimpar(campoNome);
+  await campoNome.fill("Igreja da Vila");
+  await page.keyboard.press("Escape");
+  // Esperar o diálogo sair de cena, não só a tecla: enquanto ele está aberto
+  // o Radix prende o foco e bloqueia cliques no resto da cabine.
+  await dialogoLogo.waitFor({ state: "hidden", timeout: 10000 });
+  await page.waitForFunction(
+    () => document.body.textContent.includes("Igreja da Vila"),
+    null,
+    { timeout: 10000 },
+  );
+
   // ---- Celular: pasta de mídia espelhada, projetar item, buscar na internet ----
   const midiaNoCelular = await fetch(`${remoteBase}/midia?token=${pareado.token}`).then((r) => r.json());
   assert.equal(midiaNoCelular.ok, true);
@@ -142,6 +177,71 @@ try {
   });
   assert.equal(buscaDoCelular.status, 200, "a cabine não respondeu à busca do celular");
   assert.ok(Array.isArray((await buscaDoCelular.json()).achados));
+
+  // ---- O celular de verdade: um botão só para tocar e pausar ----
+  // A mesma página que o aparelho da equipe abre, carregada numa janela do
+  // Electron — é o único jeito de provar o botão, e não só a rota por trás.
+  const janelaCelular = app.waitForEvent("window");
+  await app.evaluate(({ BrowserWindow }, url) => {
+    // Visível de propósito: janela que não pinta não passa na checagem de
+    // clique do Playwright, e o que se quer provar aqui é o toque no botão.
+    const w = new BrowserWindow({ width: 420, height: 860, show: true });
+    void w.loadURL(url);
+  }, `${remoteBase}/`);
+  const celular = await janelaCelular;
+  await celular.waitForLoadState("domcontentloaded");
+  celular.on("dialog", (d) => {
+    void d.dismiss().catch(() => {});
+  });
+  // O nome primeiro: o campo do PIN pareia sozinho ao completar seis dígitos,
+  // e depois disso a tela de pareamento já não existe para receber o nome.
+  await celular.fill("#nome", "Celular do teste");
+  await celular.fill("#pin", remoteStatus.pin);
+  await celular.waitForSelector("#conectado:not([hidden])", { timeout: 15000 });
+
+  // Dois botões que nunca servem ao mesmo tempo roubavam espaço na tela do
+  // aparelho e faziam errar o alvo com o dedo.
+  const botoesMidia = await celular.evaluate(() =>
+    [...document.querySelectorAll("#painelControle [data-acao]")]
+      .filter((b) => ["tocar", "pausar"].includes(b.dataset.acao))
+      .map((b) => b.textContent.trim()),
+  );
+  assert.deepEqual(botoesMidia, ["▶ Tocar"], "o celular devia ter um botão só de tocar/pausar");
+
+  const aparelhoCelular = (await page.evaluate(() => window.lumenDesktop.remoteControlDevices())).find(
+    (d) => d.nome === "Celular do teste",
+  );
+  assert.ok(aparelhoCelular, "o aparelho pareado pela página não apareceu na cabine");
+  await page.evaluate(
+    (id) => window.lumenDesktop.remoteControlSetPermission(id, "controle"),
+    aparelhoCelular.id,
+  );
+  await celular.waitForFunction(() => !document.querySelector("#tocarPausar").disabled, null, {
+    timeout: 10000,
+  });
+
+  const leBotao = () =>
+    celular.evaluate(() => {
+      const b = document.querySelector("#tocarPausar");
+      return { texto: b.textContent.trim(), acao: b.dataset.acao };
+    });
+  assert.deepEqual(await leBotao(), { texto: "▶ Tocar", acao: "tocar" });
+  await celular.click("#tocarPausar");
+  await celular.waitForFunction(
+    () => document.querySelector("#tocarPausar").dataset.acao === "pausar",
+    null,
+    { timeout: 10000 },
+  );
+  assert.deepEqual(await leBotao(), { texto: "❚❚ Pausar", acao: "pausar" });
+  // E de volta: tocar em Pausar tem que voltar a oferecer Tocar.
+  await celular.click("#tocarPausar");
+  await celular.waitForFunction(
+    () => document.querySelector("#tocarPausar").dataset.acao === "tocar",
+    null,
+    { timeout: 10000 },
+  );
+  assert.deepEqual(await leBotao(), { texto: "▶ Tocar", acao: "tocar" });
+  await celular.close();
 
   // ---- A cabine não rola, nem para o lado nem para baixo ----
   // Controle que saiu da tela é controle que não existe: no meio do culto
@@ -426,7 +526,7 @@ try {
   assert.deepEqual(errors, []);
   const disk = JSON.parse(await readFile(path.join(profile, "data", "library.json"), "utf8"));
   assert.ok(disk.values["lumen-v2"]);
-  console.log(`PASS: offline, fonts, Bible, restart persistence, projector, media ranges, preflight, Auto-Slide, remote control (LAN + PIN + nome fixo na rede), update check, review before apply, 1366×768 at 100/125/150% and 800×600, cabine never scrolls and the chat stays on screen, double-click to project, fixed text only in the footer, YouTube collapses the lyrics strip, phone sees the media folder, projects from it and searches lyrics through the cabine. Evidence: ${evidence}`);
+  console.log(`PASS: offline, fonts, Bible, restart persistence, projector, media ranges, preflight, Auto-Slide, remote control (LAN + PIN + nome fixo na rede), update check, review before apply, 1366×768 at 100/125/150% and 800×600, cabine never scrolls and the chat stays on screen, church logo and name reachable from the menu bar, double-click to project, fixed text only in the footer, YouTube collapses the lyrics strip, phone has one play/pause button, sees the media folder, projects from it and searches lyrics through the cabine. Evidence: ${evidence}`);
 } finally {
   if (app) await app.close();
   console.log(`Isolated test profile: ${profile}`);

@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Segmented } from "@/components/ui/segmented";
 import { Input, Label, Textarea } from "@/components/ui/input";
+import { IdentidadeDaIgreja } from "@/components/operator/logo-dialog";
 import { MediaFoldersSection } from "@/components/operator/media-folders-section";
 import { ACCENT_PRESETS } from "@/lib/accent-presets";
 import { importBibleVersion } from "@/lib/bible";
@@ -306,23 +307,9 @@ export function SettingsDialog({
         <div className="grid gap-4 md:grid-cols-2">
           <section className="space-y-2">
             <p className="text-secondary font-medium text-subtle">Igreja</p>
-            <Label>Nome no logo</Label>
-            <Input
-              value={settings.churchName}
-              onChange={(e) => update({ churchName: e.target.value })}
-            />
-            <Label>Logo (imagem)</Label>
-            <input
-              type="file"
-              accept="image/*"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (!file) return;
-                const reader = new FileReader();
-                reader.onload = () => update({ logoUrl: String(reader.result) });
-                reader.readAsDataURL(file);
-              }}
-            />
+            {/* O mesmo editor do botão Logo da barra de cima — um só, para os
+                dois lugares não passarem a discordar com o tempo. */}
+            <IdentidadeDaIgreja />
             <Label>Linhas máximas por slide</Label>
             <Input
               type="number"

@@ -1,4 +1,13 @@
-import { Check, GraduationCap, Menu as MenuIcon, Play, Radio, Search, Square } from "lucide-react";
+import {
+  Check,
+  GraduationCap,
+  ImageUp,
+  Menu as MenuIcon,
+  Play,
+  Radio,
+  Search,
+  Square,
+} from "lucide-react";
 import { type ReactNode } from "react";
 import { toast } from "sonner";
 import { LumenMark } from "@/components/logo";
@@ -42,6 +51,7 @@ export function MenuBar({
   onDisplay,
   onAutoSlide,
   onRemoteControl,
+  onLogo,
   onOptimize,
 }: {
   onNewSong: () => void;
@@ -54,6 +64,7 @@ export function MenuBar({
   onDisplay: () => void;
   onAutoSlide: () => void;
   onRemoteControl: () => void;
+  onLogo: () => void;
   onOptimize: () => void;
 }) {
   const church = useLumenStore((s) => s.settings.churchName);
@@ -410,6 +421,26 @@ export function MenuBar({
           Reorganizar
         </button>
 
+        {/* A identidade da igreja fica à mão, não no fundo das Configurações:
+            é a primeira coisa que se faz ao instalar o Lúmen, e era a mais
+            escondida — no meio de margens, transições e linhas por slide. */}
+        <button
+          type="button"
+          onClick={onLogo}
+          // Dois controles chamados "Logo" na mesma tela, querendo coisas
+          // diferentes: este ajusta a identidade, o da barra de baixo joga a
+          // logo no telão. Quem ouve a tela precisa dessa diferença.
+          aria-label="Logo e nome da igreja"
+          className={cn(
+            "flex items-center gap-1.5 rounded-md px-2 py-1 text-secondary text-muted",
+            "transition-colors duration-[var(--motion-fast)] ease-[var(--ease-out)]",
+            "hover:bg-elevated hover:text-fg",
+            "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring",
+          )}
+        >
+          <ImageUp className="size-3.5" aria-hidden /> Logo
+        </button>
+
         {/* Auto-Slide e YouTube são recursos extras, não um modo permanente
             como Reorganizar — por isso ficam escondidos atrás de um clique
             em vez de ocupar a barra o tempo todo. O ponto aceso no gatilho
@@ -481,6 +512,9 @@ export function MenuBar({
               ))}
             </Section>
           ))}
+          <Section first={false} label="Igreja">
+            <MenuItem onSelect={onLogo}>Logo e nome da igreja</MenuItem>
+          </Section>
         </MenuContent>
       </Menu>
 

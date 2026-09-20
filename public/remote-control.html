@@ -205,9 +205,10 @@
       </div>
       <p class="dica">Vídeo no telão</p>
       <div class="grade">
-        <button class="botao" data-acao="tocar">▶ Tocar</button>
-        <button class="botao" data-acao="pausar">❚❚ Pausar</button>
-        <button class="botao larga" data-acao="parar-midia">■ Parar vídeo</button>
+        <!-- Um botão só, que troca de cara: no celular, dois botões que nunca
+             servem ao mesmo tempo só roubam espaço e fazem errar o alvo. -->
+        <button class="botao" id="tocarPausar" data-acao="tocar">▶ Tocar</button>
+        <button class="botao" data-acao="parar-midia">■ Parar vídeo</button>
       </div>
       <div id="fixoBloco" hidden>
         <p class="dica">Endereço que não vence — guarde nos favoritos</p>
@@ -448,6 +449,21 @@
       ? "Slide " + (e.slideAtual + 1) + " de " + e.slideTotal
       : "";
     $("preto").classList.toggle("ativo", !!e.preto);
+    desenharTocarPausar(e.midiaTocando);
+  }
+
+  /**
+   * Tocando mostra Pausar; parado mostra Tocar.
+   *
+   * Sem mídia no ar fica em Tocar, e apertar não faz nada — o mesmo que já
+   * acontece com Próximo antes de apresentar qualquer coisa. Desabilitar
+   * brigaria com a regra de permissão, que é quem manda nestes botões.
+   */
+  function desenharTocarPausar(tocando) {
+    var b = $("tocarPausar");
+    if (!b) return;
+    b.textContent = tocando ? "❚❚ Pausar" : "▶ Tocar";
+    b.dataset.acao = tocando ? "pausar" : "tocar";
   }
 
   // ─────────────────────────────────────────── ações
@@ -827,10 +843,25 @@
   });
 
   document.querySelectorAll("[data-acao]").forEach(function (b) {
+    // O tocar/pausar tem tratamento próprio, logo abaixo: precisa virar de
+    // cara no instante do toque, antes de a cabine confirmar.
+    if (b.id === "tocarPausar") return;
     b.addEventListener("click", function () {
       pedir("/comando", { acao: b.dataset.acao }).catch(function (e) {
         if (e.message !== "sessao") conexao("off", e.message);
       });
+    });
+  });
+
+  $("tocarPausar").addEventListener("click", function () {
+    var acao = $("tocarPausar").dataset.acao;
+    // Vira na hora: esperar a volta pela rede faria o dedo achar que o toque
+    // não pegou e apertar de novo, mandando o comando duas vezes. O estado
+    // que a cabine devolve corrige, se for o caso.
+    desenharTocarPausar(acao === "tocar");
+    pedir("/comando", { acao: acao }).catch(function (e) {
+      desenharTocarPausar(acao !== "tocar");
+      if (e.message !== "sessao") conexao("off", e.message);
     });
   });
 

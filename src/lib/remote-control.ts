@@ -113,6 +113,16 @@ export interface RemoteStatePayload {
   slideTotal: number;
   noAr: boolean;
   preto: boolean;
+  /**
+   * Se o vídeo ou áudio no telão está tocando — null quando não há mídia no
+   * ar. É o que permite ao celular ter um botão só, que vira Pausar enquanto
+   * toca e Tocar quando está parado.
+   *
+   * Vem do que a cabine mandou fazer, não do que o telão relatou: com o
+   * projetor fechado não chega relato nenhum, e um botão que depende de
+   * relato passaria o culto inteiro mentindo.
+   */
+  midiaTocando: boolean | null;
 }
 
 /**
@@ -133,7 +143,14 @@ export function estadoRemoto(
     slideTotal: live?.slides.length ?? 0,
     noAr: status === "presenting",
     preto: status === "black",
+    midiaTocando: tocandoMidia(live),
   };
+}
+
+/** Só vídeo e áudio tocam; imagem no telão não tem play nem pause. */
+function tocandoMidia(live: Deck | null): boolean | null {
+  if (!live || (live.mediaType !== "video" && live.mediaType !== "audio")) return null;
+  return live.mediaAcao === "tocar";
 }
 
 /** Endereços prontos para colar no navegador do celular. */
