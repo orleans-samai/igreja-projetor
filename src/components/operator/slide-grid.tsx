@@ -1,6 +1,7 @@
-import { ChevronDown, Copy, Minus, Pencil, Plus } from "lucide-react";
+import { ChevronDown, Copy, Minus, Pencil, Plus, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Menu, MenuContent, MenuItem, MenuTrigger } from "@/components/ui/menu";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Hint } from "@/components/ui/tooltip";
 import { cn } from "@/lib/cn";
@@ -65,6 +66,17 @@ export function SlideGrid() {
   const aberta = useOpsStore((s) => s.gridOpen);
   const setAberta = useOpsStore((s) => s.setGridOpen);
   const [dragFrom, setDragFrom] = useState<number | null>(null);
+  /**
+   * O menu do botão direito, ancorado onde o dedo ou o cursor tocou.
+   *
+   * O Radix posiciona pelo gatilho, então o gatilho vira um ponto invisível
+   * nas coordenadas do clique — é o que faz o menu nascer onde se clicou, e
+   * não no canto da faixa.
+   */
+  const [menuDe, setMenuDe] = useState<{ id: string; indice: number; x: number; y: number } | null>(
+    null,
+  );
+  const removerSlide = useLumenStore((s) => s.removePreviewSlide);
   const pista = useRef<HTMLDivElement>(null);
 
   /*
@@ -207,7 +219,7 @@ export function SlideGrid() {
                         onContextMenu={(e) => {
                           e.preventDefault();
                           setPreviewIndex(i);
-                          useOpsStore.getState().setSlideEditId(slide.id);
+                          setMenuDe({ id: slide.id, indice: i, x: e.clientX, y: e.clientY });
                         }}
                         aria-label={`Mandar ${slide.label} para o telão`}
                         style={{ width: largura, height: altura }}
@@ -292,6 +304,39 @@ export function SlideGrid() {
           )}
         </div>
       )}
+
+      <Menu open={Boolean(menuDe)} onOpenChange={(v) => !v && setMenuDe(null)}>
+        <MenuTrigger asChild>
+          <span
+            aria-hidden
+            className="pointer-events-none fixed size-0"
+            style={{ left: menuDe?.x ?? 0, top: menuDe?.y ?? 0 }}
+          />
+        </MenuTrigger>
+        <MenuContent>
+          <MenuItem
+            onSelect={() => {
+              if (menuDe) useOpsStore.getState().setSlideEditId(menuDe.id);
+              setMenuDe(null);
+            }}
+          >
+            <span className="flex items-center gap-2">
+              <Pencil className="size-3.5 shrink-0" aria-hidden /> Digitar
+            </span>
+          </MenuItem>
+          <MenuItem
+            tone="danger"
+            onSelect={() => {
+              if (menuDe) removerSlide(menuDe.id);
+              setMenuDe(null);
+            }}
+          >
+            <span className="flex items-center gap-2">
+              <Trash2 className="size-3.5 shrink-0" aria-hidden /> Remover
+            </span>
+          </MenuItem>
+        </MenuContent>
+      </Menu>
 
       <SlideEditorDialog />
     </section>

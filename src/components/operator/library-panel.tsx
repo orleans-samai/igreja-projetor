@@ -55,8 +55,11 @@ const TABS = [
   { value: "songs", label: "Letras" },
   { value: "texts", label: "Avisos" },
   { value: "media", label: "Mídia" },
-  { value: "bible", label: "Bíblia" },
-] as const satisfies readonly { value: LibraryTab; label: string }[];
+  // A Bíblia puxa o olho: é a aba que o operador procura no meio do culto,
+  // quando o pregador pede um versículo na hora, e a única que não pode ser
+  // caçada entre as outras.
+  { value: "bible", label: "Bíblia", destaque: true },
+] as const satisfies readonly { value: LibraryTab; label: string; destaque?: boolean }[];
 
 /**
  * O + que põe o item no culto, sem tirar a mão do mouse.

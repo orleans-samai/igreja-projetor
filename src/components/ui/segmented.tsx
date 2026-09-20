@@ -7,6 +7,13 @@ export interface SegmentedItem<T extends string> {
   icon?: ReactNode;
   /** Contagem à direita do rótulo — nunca inventa número, só mostra o que existe. */
   count?: number;
+  /**
+   * Puxa o olho para esta aba quando ela não está escolhida.
+   *
+   * Existe para uma aba que o operador procura no meio do culto e não pode
+   * caçar — a Bíblia, quando o pregador pede um versículo na hora.
+   */
+  destaque?: boolean;
 }
 
 /**
@@ -109,7 +116,11 @@ export function Segmented<T extends string>({
               "transition-colors duration-[var(--motion-fast)] ease-[var(--ease-out)]",
               "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring",
               "[&_svg]:size-3.5 [&_svg]:shrink-0",
-              on ? "text-fg" : "text-muted hover:text-fg",
+              on
+                ? "text-fg"
+                : item.destaque
+                  ? "text-accent hover:text-accent"
+                  : "text-muted hover:text-fg",
               full && "flex-1",
             )}
           >

@@ -1,3 +1,10 @@
+/**
+ * O copyright que o acervo de exemplo carregava, e que acabava no rodapé do
+ * telão numa música que não é de ninguém. Fica aqui nomeado porque a
+ * migração da biblioteca precisa reconhecê-lo para apagá-lo.
+ */
+export const COPYRIGHT_DE_EXEMPLO = "© Igreja local — uso livre no culto";
+
 import { parseLyrics } from "./lyrics";
 import type { FreeText, MediaItem, Playlist, Service, Song, SongGroup, Theme } from "./types";
 
@@ -820,7 +827,7 @@ export const SEED_SONGS: Song[] = [
     "Coletivo Lúmen",
     "g-louvor",
     "G",
-    "© Igreja local — uso livre no culto",
+    "",
     `[Verso 1]
 Levantamos os olhos
 Do vale até o monte
@@ -857,7 +864,7 @@ Ao Deus que nos chamou
     "Coletivo Lúmen",
     "g-louvor",
     "D",
-    "© Igreja local — uso livre no culto",
+    "",
     `[Intro]
 Instrumental
 
@@ -898,7 +905,7 @@ O que preparamos bem
     "Coletivo Lúmen",
     "g-louvor",
     "A",
-    "© Igreja local — uso livre no culto",
+    "",
     `[Verso 1]
 Antes do sol vencer a serra
 Já havia canto na janela
@@ -927,7 +934,7 @@ E o céu se faz dentro
     "Coletivo Lúmen",
     "g-louvor",
     "E",
-    "© Igreja local — uso livre no culto",
+    "",
     `[Verso 1]
 Quando a culpa empurra pra areia
 Tua onda volta e me alcança
@@ -953,7 +960,7 @@ Não sabe recuar
     "Coletivo Lúmen",
     "g-ceia",
     "C",
-    "© Igreja local — uso livre no culto",
+    "",
     `[Verso 1]
 Este pão não é só pão
 É memória sobre a mesa
@@ -983,7 +990,7 @@ Guardamos esta mesa
     "Coletivo Lúmen",
     "g-infantil",
     "C",
-    "© Igreja local — uso livre no culto",
+    "",
     `[Verso 1]
 A porta da casa
 Não fecha pra ninguém
@@ -1039,7 +1046,7 @@ Triunfa no combate
     "Coletivo Lúmen",
     "g-louvor",
     "G",
-    "© Igreja local — uso livre no culto",
+    "",
     `[Verso 1]
 A terra se cala
 Quando o céu se abre

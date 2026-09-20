@@ -126,6 +126,36 @@ try {
   // diferente de idle) atrapalhar o relançamento do Electron mais abaixo.
   await fetch(`${remoteBase}/comando`, { method: "POST", body: JSON.stringify({ token: pareado.token, acao: "parar" }) });
   await page.waitForFunction(() => JSON.parse(localStorage.getItem("lumen-live-frame") ?? "null")?.status === "idle");
+  // ---- Botão direito na letra: digitar e remover ----
+  await page.evaluate(async () => {
+    const esperar = (ms) => new Promise((r) => setTimeout(r, ms));
+    const clicar = (t) => {
+      const b = [...document.querySelectorAll("button,[role=tab]")].find(
+        (x) => (x.textContent || "").trim() === t,
+      );
+      b?.click();
+      return Boolean(b);
+    };
+    clicar("Biblioteca");
+    await esperar(300);
+    clicar("Letras");
+    await esperar(500);
+    document.querySelector('li > button[title^="Um clique seleciona"]')?.click();
+    await esperar(600);
+  });
+  const cartoes = page.locator('button[aria-label^="Mandar "]');
+  const antesDeRemover = await cartoes.count();
+  assert.ok(antesDeRemover >= 2, `a música escolhida tinha ${antesDeRemover} slide(s)`);
+  await cartoes.first().click({ button: "right" });
+  const menuLetra = page.getByRole("menu");
+  await menuLetra.getByRole("menuitem", { name: "Digitar" }).waitFor({ timeout: 10000 });
+  await menuLetra.getByRole("menuitem", { name: "Remover" }).click();
+  await page.waitForFunction(
+    (quantos) => document.querySelectorAll('button[aria-label^="Mandar "]').length === quantos - 1,
+    antesDeRemover,
+    { timeout: 10000 },
+  );
+
   // ---- Permissões: quem entrou pelo celular, e o que pode fazer ----
   // Entrar deixou de pedir senha; esta lista virou a única barreira.
   await page.getByRole("button", { name: "Permissões", exact: true }).click();
@@ -571,7 +601,7 @@ try {
   assert.deepEqual(errors, []);
   const disk = JSON.parse(await readFile(path.join(profile, "data", "library.json"), "utf8"));
   assert.ok(disk.values["lumen-v2"]);
-  console.log(`PASS: offline, fonts, Bible, restart persistence, projector, media ranges, preflight, Auto-Slide, remote control (LAN, entrada por nome, nome fixo na rede), update check, review before apply, 1366×768 at 100/125/150% and 800×600, no scroll at seven sizes from 800×600 to 2560×1440 and the chat stays on screen, church logo and name reachable from the menu bar, double-click to project, fixed text only in the footer, YouTube collapses the lyrics strip, phone has one play/pause button and the screen volume, sees the media folder, projects from it and searches lyrics through the cabine. Evidence: ${evidence}`);
+  console.log(`PASS: offline, fonts, Bible, restart persistence, projector, media ranges, preflight, Auto-Slide, remote control (LAN, entrada por nome, nome fixo na rede), update check, review before apply, 1366×768 at 100/125/150% and 800×600, no scroll at seven sizes from 800×600 to 2560×1440 and the chat stays on screen, church logo and name reachable from the menu bar, right-click on lyrics edits or removes, double-click to project, fixed text only in the footer, YouTube collapses the lyrics strip, phone has one play/pause button and the screen volume, sees the media folder, projects from it and searches lyrics through the cabine. Evidence: ${evidence}`);
 } finally {
   if (app) await app.close();
   console.log(`Isolated test profile: ${profile}`);

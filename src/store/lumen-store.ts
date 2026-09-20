@@ -10,6 +10,7 @@ import {
 import { bookById } from "@/lib/bible-books";
 import { FONT_SCALE_PASSO, fontScaleDe, limitarFontScale } from "@/lib/font-scale";
 import { indiceNaProgramacao } from "@/lib/culto-etapas";
+import { COPYRIGHT_DE_EXEMPLO } from "@/lib/seed";
 import { fold, nid } from "@/lib/fold";
 import { parseLyrics } from "@/lib/lyrics";
 import { publishLiveFrame } from "@/lib/live-channel";
@@ -175,6 +176,7 @@ export interface LumenState {
   saveSong: (song: Song) => void;
   deleteSong: (id: string) => void;
   updatePreviewSlide: (slideId: string, patch: Partial<Slide>) => void;
+  removePreviewSlide: (slideId: string) => void;
   reorderPreview: (from: number, to: number) => void;
   duplicatePreviewLabel: (label: string) => void;
   addToPlaylist: (item: Omit<PlaylistItem, "id">) => void;
@@ -395,6 +397,7 @@ const empty = (): Omit<
   | "saveSong"
   | "deleteSong"
   | "updatePreviewSlide"
+  | "removePreviewSlide"
   | "reorderPreview"
   | "duplicatePreviewLabel"
   | "addToPlaylist"
@@ -843,6 +846,50 @@ export const useLumenStore = create<LumenState>()(
             );
           }
           return { ...s, preview, live, songs };
+        }, set);
+      },
+
+      /**
+       * Tira um slide da música — do preview, do que está no ar se for a
+       * mesma, e do repertório.
+       *
+       * Segue o caminho de `updatePreviewSlide` de propósito: quem edita a
+       * letra pela grade está editando a música, não uma cópia da sessão.
+       * A última estrofe não é removível: um baralho sem slide nenhum deixa
+       * o telão sem nada para mostrar no meio do louvor.
+       */
+      removePreviewSlide: (slideId) => {
+        const tirar = (deck: Deck | null) =>
+          deck
+            ? {
+                ...deck,
+                slides: deck.slides
+                  .filter((sl) => sl.id !== slideId)
+                  .map((sl, i) => ({ ...sl, sortOrder: i })),
+              }
+            : deck;
+        broadcast((s) => {
+          if (!s.preview || s.preview.slides.length <= 1) return s;
+          const preview = tirar(s.preview)!;
+          const live =
+            s.live && s.live.refId === s.preview.refId ? tirar(s.live) : s.live;
+          let songs = s.songs;
+          if (preview.kind === "song") {
+            songs = songs.map((song) =>
+              song.id === preview.refId
+                ? { ...song, slides: preview.slides, updatedAt: Date.now() }
+                : song,
+            );
+          }
+          const ultimo = Math.max(0, preview.slides.length - 1);
+          return {
+            ...s,
+            preview,
+            live,
+            songs,
+            previewIndex: Math.min(s.previewIndex, ultimo),
+            liveIndex: live ? Math.min(s.liveIndex, Math.max(0, live.slides.length - 1)) : s.liveIndex,
+          };
         }, set);
       },
 
@@ -1348,6 +1395,26 @@ export const useLumenStore = create<LumenState>()(
       name: "lumen-v2",
       skipHydration: true,
       storage: durableStorage,
+      /**
+       * O acervo de exemplo vinha com um copyright de mentira — "© Igreja
+       * local — uso livre no culto" — e ele acabava no rodapé do telão, numa
+       * música que não é de ninguém. Quem já tem isso gravado não deveria
+       * precisar apagar música por música.
+       *
+       * A migração tira só essa frase exata. Copyright que a igreja escreveu
+       * de verdade fica onde está.
+       */
+      version: 1,
+      migrate: (guardado) => {
+        const g = guardado as { songs?: { copyright?: string }[] } | undefined;
+        if (!g?.songs) return g;
+        return {
+          ...g,
+          songs: g.songs.map((m) =>
+            m?.copyright === COPYRIGHT_DE_EXEMPLO ? { ...m, copyright: "" } : m,
+          ),
+        };
+      },
       partialize: (s) => ({
         songs: s.songs,
         groups: s.groups,
