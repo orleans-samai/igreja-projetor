@@ -25,6 +25,7 @@ contextBridge.exposeInMainWorld("lumenDesktop", {
   remoteControlPushRepertoire: (lista) => ipcRenderer.send("lumen:remote-control-repertoire", lista),
   remoteControlPushMedia: (lista) => ipcRenderer.send("lumen:remote-control-media", lista),
   remoteControlPushChurch: (dados) => ipcRenderer.send("lumen:remote-control-church", dados),
+  remoteControlPushThemes: (lista) => ipcRenderer.send("lumen:remote-control-themes", lista),
   remoteControlSetDirigentePassword: (senha) =>
     ipcRenderer.invoke("lumen:remote-control-dirigente-password", senha),
   remoteControlAnswer: (pedido, resposta) =>
@@ -68,6 +69,10 @@ contextBridge.exposeInMainWorld("lumenDesktop", {
   mediaChooseFolder: (kind) => ipcRenderer.invoke("lumen:media-choose", kind),
   mediaApplyFolder: (kind, dir, mover) => ipcRenderer.invoke("lumen:media-apply", kind, dir, mover),
   mediaResetFolder: (kind) => ipcRenderer.invoke("lumen:media-reset", kind),
+  mediaSave: (nome, dados) => ipcRenderer.invoke("lumen:media-save", nome, dados),
+  mediaRename: (kind, nome, novo) => ipcRenderer.invoke("lumen:media-rename", kind, nome, novo),
+  mediaDuplicate: (kind, nome) => ipcRenderer.invoke("lumen:media-duplicate", kind, nome),
+  mediaDelete: (kind, nome) => ipcRenderer.invoke("lumen:media-delete", kind, nome),
   storageGet: (key) => ipcRenderer.invoke("lumen:storage-get", key),
   storageSet: (key, value) => ipcRenderer.invoke("lumen:storage-set", key, value),
   openProjector: () => ipcRenderer.invoke("lumen:open-projector"),

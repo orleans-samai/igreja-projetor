@@ -548,6 +548,233 @@ test("projetar pelo celular chega à cabine como pedido, com o item", async () =
   }
 });
 
+test("o dirigente conversa no mesmo mural do celular, e o aviso vira texto", async () => {
+  const ctx = await subir();
+  const vistos = [];
+  ctx.rc.onEvento = (e) => vistos.push(e);
+  try {
+    await ctx.rc.definirSenhaDirigente("cordeiro-de-deus");
+    const entrou = await (
+      await fetch(`${ctx.base}/dirigente/entrar`, {
+        method: "POST",
+        body: JSON.stringify({ senha: "cordeiro-de-deus" }),
+      })
+    ).json();
+    assert.equal(entrou.ok, true);
+    const chave = { "x-lumen-dirigente": entrou.token };
+
+    // O recado do dirigente entra no mesmo mural que o celular lê.
+    const recado = await fetch(`${ctx.base}/dirigente/chat`, {
+      method: "POST",
+      headers: chave,
+      body: JSON.stringify({ texto: "Chegamos com o pen drive", de: "Pastor Elias" }),
+    });
+    assert.equal(recado.status, 200);
+    const noMural = ctx.rc.chat.at(-1);
+    assert.equal(noMural.de, "Pastor Elias");
+    assert.equal(noMural.texto, "Chegamos com o pen drive");
+    assert.equal(noMural.daCabine, false);
+    // E a cabine é avisada, senão o operador só veria ao recarregar.
+    assert.equal(vistos.filter((e) => e.tipo === "chat").length, 1);
+
+    // Recado sem nome ainda é recado, e aparece como "Dirigente".
+    await fetch(`${ctx.base}/dirigente/chat`, {
+      method: "POST",
+      headers: chave,
+      body: JSON.stringify({ texto: "oi" }),
+    });
+    assert.equal(ctx.rc.chat.at(-1).de, "Dirigente");
+
+    // Vazio não vira mensagem em branco no mural de ninguém.
+    const vazio = await fetch(`${ctx.base}/dirigente/chat`, {
+      method: "POST",
+      headers: chave,
+      body: JSON.stringify({ texto: "   ", de: "Pastor Elias" }),
+    });
+    assert.equal(vazio.status, 400);
+
+    // O aviso escrito é outra coisa: vai para a biblioteca, não para o chat.
+    const aviso = await fetch(`${ctx.base}/dirigente/aviso`, {
+      method: "POST",
+      headers: chave,
+      body: JSON.stringify({ titulo: "Santa Ceia", texto: "Domingo, às 19h", de: "Pastor Elias" }),
+    });
+    assert.equal(aviso.status, 200);
+    const guardado = vistos.at(-1);
+    assert.deepEqual(
+      { tipo: guardado.tipo, titulo: guardado.titulo, texto: guardado.texto, de: guardado.de },
+      { tipo: "aviso", titulo: "Santa Ceia", texto: "Domingo, às 19h", de: "Pastor Elias" },
+    );
+    // Aviso sem título não entra na biblioteca sem nome.
+    const semTitulo = await fetch(`${ctx.base}/dirigente/aviso`, {
+      method: "POST",
+      headers: chave,
+      body: JSON.stringify({ titulo: "", texto: "algo" }),
+    });
+    assert.equal(semTitulo.status, 400);
+
+    // Sem a sessão, nada disso abre — é a senha que segura esta porta.
+    for (const rota of ["/dirigente/chat", "/dirigente/aviso"]) {
+      const r = await fetch(ctx.base + rota, {
+        method: "POST",
+        headers: { "x-lumen-dirigente": "token-inventado" },
+        body: JSON.stringify({ texto: "entrei", titulo: "t", de: "x" }),
+      });
+      assert.equal(r.status, 401, rota);
+    }
+    const fluxo = await fetch(`${ctx.base}/dirigente/estado?token=token-inventado`);
+    assert.equal(fluxo.status, 401);
+  } finally {
+    await derrubar(ctx);
+  }
+});
+
+test("quem mandou o arquivo chega junto com o arquivo", async () => {
+  const ctx = await subir();
+  const vistos = [];
+  ctx.rc.onEvento = (e) => vistos.push(e);
+  ctx.rc.aoReceberArquivo = async (nome) => ({
+    ok: true,
+    nome,
+    kind: "image",
+    id: "m1",
+    projetavel: true,
+  });
+  try {
+    await ctx.rc.definirSenhaDirigente("cordeiro-de-deus");
+    const { token } = await (
+      await fetch(`${ctx.base}/dirigente/entrar`, {
+        method: "POST",
+        body: JSON.stringify({ senha: "cordeiro-de-deus" }),
+      })
+    ).json();
+
+    await fetch(`${ctx.base}/dirigente/enviar`, {
+      method: "POST",
+      headers: {
+        "x-lumen-dirigente": token,
+        "x-lumen-arquivo": encodeURIComponent("Fundo Alvorada.jpg"),
+        "x-lumen-de": encodeURIComponent("Pastor Elias"),
+      },
+      body: "conteudo",
+    });
+    assert.equal(vistos.at(-1).de, "Pastor Elias");
+
+    // Sem o cabeçalho, o arquivo chega do mesmo jeito — só sem o nome.
+    await fetch(`${ctx.base}/dirigente/enviar`, {
+      method: "POST",
+      headers: {
+        "x-lumen-dirigente": token,
+        "x-lumen-arquivo": encodeURIComponent("Outro.jpg"),
+      },
+      body: "conteudo",
+    });
+    assert.equal(vistos.at(-1).de, "");
+  } finally {
+    await derrubar(ctx);
+  }
+});
+
+test("a grade do celular pede um slide, e índice inventado é recusado", async () => {
+  const ctx = await subir();
+  const vistos = [];
+  ctx.rc.onEvento = (e) => vistos.push(e);
+  try {
+    const token = await comPermissao(ctx, "controle");
+
+    const ok = await fetch(`${ctx.base}/projetar`, {
+      method: "POST",
+      body: JSON.stringify({ token, tipo: "song", refId: "s1", slide: 3 }),
+    });
+    assert.equal(ok.status, 200);
+    assert.equal(vistos.at(-1).slide, 3);
+
+    // O primeiro slide é o zero, e zero não pode virar "sem slide": seria a
+    // música começando do começo quando a pessoa tocou na primeira estrofe.
+    await fetch(`${ctx.base}/projetar`, {
+      method: "POST",
+      body: JSON.stringify({ token, tipo: "song", refId: "s1", slide: 0 }),
+    });
+    assert.equal(vistos.at(-1).slide, 0);
+
+    // Sem slide o item vai inteiro — é o caminho da lista de mídia.
+    await fetch(`${ctx.base}/projetar`, {
+      method: "POST",
+      body: JSON.stringify({ token, tipo: "media", refId: "v1" }),
+    });
+    assert.equal(vistos.at(-1).slide, undefined);
+
+    // Índice fora da faixa é recusado em vez de aparado: aparar mandaria
+    // para o telão um slide que não é o que a pessoa tocou.
+    const quantos = vistos.length;
+    for (const slide of [-1, 1.5, 99999, "abc", {}]) {
+      const r = await fetch(`${ctx.base}/projetar`, {
+        method: "POST",
+        body: JSON.stringify({ token, tipo: "song", refId: "s1", slide }),
+      });
+      assert.equal(r.status, 400, `slide ${slide} devia ser recusado`);
+    }
+    assert.equal(vistos.length, quantos);
+  } finally {
+    await derrubar(ctx);
+  }
+});
+
+test("a música chega ao celular com slides e com a cara do tema", async () => {
+  const ctx = await subir();
+  try {
+    const token = await comPermissao(ctx, "editor");
+    ctx.rc.atualizarRepertorio([
+      {
+        id: "s1",
+        titulo: "Porque Ele Vive",
+        artista: "Gaither",
+        letra: "linha",
+        tema: "t-foto",
+        slides: [{ rotulo: "Verso 1", texto: "Deus enviou seu Filho amado" }],
+      },
+    ]);
+    ctx.rc.atualizarTemas([
+      {
+        id: "t-cor",
+        fundo: "linear-gradient(#000, #111)",
+        imagem: "",
+        cor: "#fff",
+        maiusculas: false,
+      },
+      {
+        id: "t-foto",
+        // Fundo com url() não passa: esta página não faz requisição para
+        // fora, e um tema não vai ser o primeiro a fazer.
+        fundo: "url(http://fora/imagem.png)",
+        imagem: "data:image/jpeg;base64,AAAA",
+        cor: "#ffeecc",
+        maiusculas: true,
+      },
+      { id: "t-mau", fundo: "", imagem: "javascript:alert(1)", cor: "#fff", maiusculas: false },
+    ]);
+
+    const r = await (await fetch(`${ctx.base}/musica?token=${token}&id=s1`)).json();
+    assert.equal(r.musica.slides[0].texto, "Deus enviou seu Filho amado");
+    assert.equal(r.tema.id, "t-foto");
+    assert.equal(r.tema.fundo, "");
+    assert.equal(r.tema.imagem, "data:image/jpeg;base64,AAAA");
+    assert.equal(r.tema.maiusculas, true);
+
+    // Só `data:image/jpeg` vira capa; o resto some.
+    assert.equal(ctx.rc.temas.find((t) => t.id === "t-mau").imagem, "");
+    assert.equal(ctx.rc.temas.find((t) => t.id === "t-cor").fundo, "linear-gradient(#000, #111)");
+
+    // Música com tema que a cabine não mandou cai no primeiro, em vez de
+    // deixar a grade sem fundo nenhum.
+    ctx.rc.atualizarRepertorio([{ id: "s2", titulo: "Outra", artista: "", letra: "", tema: "sumiu", slides: [] }]);
+    const outra = await (await fetch(`${ctx.base}/musica?token=${token}&id=s2`)).json();
+    assert.equal(outra.tema.id, "t-cor");
+  } finally {
+    await derrubar(ctx);
+  }
+});
+
 test("buscar letra na internet é a cabine quem faz, e o celular espera", async () => {
   const ctx = await subir();
   try {
@@ -798,5 +1025,43 @@ test("a página do dirigente não abre sem senha, e a senha não fica no disco e
   } finally {
     rc.desligar();
     await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  }
+});
+
+test("a capa da mídia só passa se for um JPEG que a cabine gerou", async () => {
+  const ctx = await subir();
+  try {
+    ctx.rc.atualizarMidia([
+      { id: "v1", tipo: "video", titulo: "Chamada", capa: "data:image/jpeg;base64,AAAA", segundos: 268 },
+      // Endereço de fora viraria uma requisição que o celular faria para a
+      // internet — e esta página não faz requisição para fora.
+      { id: "v2", tipo: "video", titulo: "Outro", capa: "https://exemplo.com/foto.jpg", segundos: 10 },
+      { id: "v3", tipo: "video", titulo: "Terceiro", capa: "data:text/html,<script>x</script>" },
+      { id: "v4", tipo: "image", titulo: "Foto", segundos: -5 },
+    ]);
+    const token = await comPermissao(ctx, "editor");
+    const { midia } = await (await fetch(`${ctx.base}/midia?token=${token}`)).json();
+    assert.equal(midia[0].capa, "data:image/jpeg;base64,AAAA");
+    assert.equal(midia[0].segundos, 268);
+    assert.equal(midia[1].capa, "", "endereço de fora não pode virar capa");
+    assert.equal(midia[2].capa, "", "data: de outro tipo não pode virar capa");
+    // Duração negativa não existe; vira zero em vez de aparecer na tela.
+    assert.equal(midia[3].segundos, 0);
+  } finally {
+    await derrubar(ctx);
+  }
+});
+
+test("capa gigante é aparada antes de ir para o celular", async () => {
+  const ctx = await subir();
+  try {
+    ctx.rc.atualizarMidia([
+      { id: "v1", tipo: "video", titulo: "Chamada", capa: "data:image/jpeg;base64," + "A".repeat(500000) },
+    ]);
+    const token = await comPermissao(ctx, "editor");
+    const { midia } = await (await fetch(`${ctx.base}/midia?token=${token}`)).json();
+    assert.ok(midia[0].capa.length <= 96 * 1024, String(midia[0].capa.length));
+  } finally {
+    await derrubar(ctx);
   }
 });

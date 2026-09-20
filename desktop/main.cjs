@@ -450,6 +450,12 @@ handle("lumen:media-open", (kind) => media.open(kind));
 handle("lumen:media-choose", (kind) => media.choose(kind, cabine));
 handle("lumen:media-apply", (kind, dir, mover) => media.apply(kind, dir, mover));
 handle("lumen:media-reset", (kind) => media.reset(kind));
+// O vídeo renderizado pelo VFX entra pela mesma porta do arquivo que chega
+// pela rede: uma função só decide extensão aceita, pasta e nome repetido.
+handle("lumen:media-save", (nome, dados) => media.receber(nome, Buffer.from(dados)));
+handle("lumen:media-rename", (kind, nome, novo) => media.renomear(kind, nome, novo));
+handle("lumen:media-duplicate", (kind, nome) => media.duplicar(kind, nome));
+handle("lumen:media-delete", (kind, nome) => media.excluir(kind, nome));
 handle("lumen:lyrics-suggest", (input) => require("./lyrics.cjs").suggest(input));
 handle("lumen:lyrics-load", (url) => require("./lyrics.cjs").load(url));
 handle("lumen:youtube-host", () => youtubeHost.start());
@@ -463,6 +469,7 @@ handle("lumen:remote-control-status", () => remoteControl.status());
 handle("lumen:remote-control-disconnect-all", () => remoteControl.desconectarTodos());
 onEvent("lumen:remote-control-state", (payload) => remoteControl.atualizarEstado(payload));
 onEvent("lumen:remote-control-repertoire", (lista) => remoteControl.atualizarRepertorio(lista));
+onEvent("lumen:remote-control-themes", (lista) => remoteControl.atualizarTemas(lista));
 onEvent("lumen:remote-control-media", (lista) => remoteControl.atualizarMidia(lista));
 onEvent("lumen:remote-control-church", (dados) => remoteControl.atualizarIgreja(dados));
 handle("lumen:remote-control-dirigente-password", (senha) => remoteControl.definirSenhaDirigente(senha));

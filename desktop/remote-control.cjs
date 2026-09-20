@@ -62,6 +62,10 @@ const SUMIU_MS = 30 * 1000;
 const MAX_CHAT = 200;
 /** Tipos de mídia que o celular pode enxergar e mandar para o telão. */
 const TIPOS_MIDIA = ["video", "audio", "image"];
+/** Uma capa de 160px em JPEG cabe folgado nisto; acima é coisa errada. */
+const MAX_CAPA = 96 * 1024;
+/** Teto do índice de slide que o celular pode pedir — baralho nenhum passa. */
+const MAX_SLIDE = 5000;
 /** O que o celular pode mandar para o telão pelo nome do item. */
 const TIPOS_PROJETAVEIS = ["song", "text", "media"];
 /**
@@ -161,6 +165,8 @@ class RemoteControl {
     this.assinantes = new Map();
     this.ultimoEstado = null;
     this.repertorio = [];
+    /** A cara dos temas, para a grade de slides do celular ter fundo. */
+    this.temas = [];
     /** Espelho da pasta de mídia: vídeo, áudio e imagem que a cabine enxerga. */
     this.midia = [];
     /**
@@ -419,6 +425,15 @@ class RemoteControl {
         tipo: TIPOS_MIDIA.includes(m.tipo) ? m.tipo : "video",
         titulo: semControle(String(m.titulo)).slice(0, 120),
         detalhe: semControle(String(m.detalhe || "")).slice(0, 60),
+        // A capa é um JPEG pequeno que a cabine gerou. Só `data:image/jpeg`
+        // passa: qualquer outro endereço aqui viraria uma requisição que o
+        // celular faria para fora, e esta página não faz requisição para
+        // fora.
+        capa:
+          typeof m.capa === "string" && m.capa.startsWith("data:image/jpeg;base64,")
+            ? m.capa.slice(0, MAX_CAPA)
+            : "",
+        segundos: Number.isFinite(m.segundos) ? Math.max(0, Math.round(m.segundos)) : 0,
       }));
   }
 
@@ -453,6 +468,32 @@ class RemoteControl {
 
   atualizarRepertorio(lista) {
     this.repertorio = Array.isArray(lista) ? lista : [];
+  }
+
+  /**
+   * A cara dos temas, como o celular vai desenhar as miniaturas.
+   *
+   * Os dois campos de fundo são peneirados pelo mesmo motivo da capa de
+   * mídia: esta página não faz requisição para fora, e nem um `data:` de
+   * outro tipo nem um `url()` no CSS vão fazê-la começar agora.
+   */
+  atualizarTemas(lista) {
+    this.temas = (Array.isArray(lista) ? lista : [])
+      .filter((t) => t && typeof t.id === "string")
+      .slice(0, 32)
+      .map((t) => ({
+        id: t.id,
+        fundo:
+          typeof t.fundo === "string" && !/url\s*\(/i.test(t.fundo)
+            ? t.fundo.slice(0, 400)
+            : "",
+        imagem:
+          typeof t.imagem === "string" && t.imagem.startsWith("data:image/jpeg;base64,")
+            ? t.imagem.slice(0, MAX_CAPA)
+            : "",
+        cor: typeof t.cor === "string" ? t.cor.slice(0, 40) : "#ffffff",
+        maiusculas: !!t.maiusculas,
+      }));
   }
 
   /** Recado escrito na cabine, para aparecer nos celulares. */
@@ -587,6 +628,9 @@ class RemoteControl {
       if (m === "GET" && p === "/dirigente/igreja") return this._igrejaDirigente(res);
       if (m === "POST" && p === "/dirigente/entrar") return await this._entrarDirigente(req, res);
       if (m === "POST" && p === "/dirigente/enviar") return await this._enviarDirigente(req, res);
+      if (m === "GET" && p === "/dirigente/estado") return this._sseDirigente(req, res, url);
+      if (m === "POST" && p === "/dirigente/chat") return await this._chatDirigente(req, res);
+      if (m === "POST" && p === "/dirigente/aviso") return await this._avisoDirigente(req, res);
       if (m === "GET" && p === "/midia") return this._midia(res, url);
       if (m === "POST" && p === "/projetar") return await this._projetar(req, res);
       if (m === "POST" && p === "/volume") return await this._volume(req, res);
@@ -765,7 +809,11 @@ class RemoteControl {
       this._json(res, 404, { ok: false, erro: "Música não encontrada." });
       return;
     }
-    this._json(res, 200, { ok: true, musica });
+    // O tema vai junto porque a grade de slides do celular precisa dele na
+    // mesma hora — e uma segunda ida à cabine, numa Wi-Fi de igreja, é a
+    // grade aparecendo cinza e se pintando depois.
+    const tema = this.temas.find((t) => t.id === musica.tema) || this.temas[0] || null;
+    this._json(res, 200, { ok: true, musica, tema });
   }
 
   _midia(res, url) {
@@ -804,7 +852,19 @@ class RemoteControl {
       this._json(res, 400, { ok: false, erro: "Item inválido." });
       return;
     }
-    this.onEvento?.({ tipo: "projetar", kind: tipo, refId, de: disp.nome });
+    // O slide é opcional: sem ele o item vai inteiro, do começo. Com ele, o
+    // toque na grade manda a estrofe exata. Índice fora da faixa é recusado
+    // em vez de aparado — aparar mandaria para o telão um slide que não é o
+    // que a pessoa tocou.
+    let slide;
+    if (corpo.slide !== undefined && corpo.slide !== null) {
+      slide = Number(corpo.slide);
+      if (!Number.isInteger(slide) || slide < 0 || slide > MAX_SLIDE) {
+        this._json(res, 400, { ok: false, erro: "Slide inválido." });
+        return;
+      }
+    }
+    this.onEvento?.({ tipo: "projetar", kind: tipo, refId, de: disp.nome, slide });
     this._json(res, 200, { ok: true });
   }
 
@@ -996,6 +1056,10 @@ class RemoteControl {
       return;
     }
     const nome = decodeURIComponent(String(req.headers["x-lumen-arquivo"] || "arquivo"));
+    // Quem mandou. Não é credencial — a senha é que abre a porta — mas é o
+    // que a cabine mostra no aviso, e "chegou um arquivo" sem dizer de quem
+    // é um aviso que não ajuda ninguém no domingo de manhã.
+    const de = nomeLimpo(decodeURIComponent(String(req.headers["x-lumen-de"] || "")), "");
     let dados;
     try {
       dados = await this._lerBytes(req, MAX_ARQUIVO_DIRIGENTE);
@@ -1011,6 +1075,7 @@ class RemoteControl {
     this.onEvento?.({
       tipo: "arquivo",
       nome: r.nome,
+      de,
       kind: r.kind,
       id: r.id,
       projetavel: Boolean(r.projetavel),
@@ -1089,6 +1154,100 @@ class RemoteControl {
       return;
     }
     const msg = this._registrarChat({ de: disp.nome, texto: corpo.texto, daCabine: false });
+    if (!msg) {
+      this._json(res, 400, { ok: false, erro: "Mensagem vazia." });
+      return;
+    }
+    this.onEvento?.({ tipo: "chat", mensagem: msg });
+    this._json(res, 200, { ok: true, mensagem: msg });
+  }
+
+  /**
+   * O fluxo de recados para a página do dirigente.
+   *
+   * Separado do fluxo do celular porque a sessão é outra: aqui a porta é a
+   * senha, lá é o nome na lista da cabine. O que passa pelo cano é o mesmo,
+   * e por isso reaproveita `assinantes` — o `_paraToken` nunca vai casar
+   * com um token de dirigente, então só chega o que é para todo mundo.
+   *
+   * O token vem na busca do endereço, não num cabeçalho, porque EventSource
+   * não manda cabeçalho — é o mesmo caminho que a página do celular usa.
+   */
+  _sseDirigente(req, res, url) {
+    const token = url.searchParams.get("token") || "";
+    if (!this._sessaoDirigente(token)) {
+      this._json(res, 401, { ok: false, erro: "Sessão expirada. Entre novamente." });
+      return;
+    }
+    res.writeHead(200, {
+      "content-type": "text/event-stream; charset=utf-8",
+      "cache-control": "no-store",
+      connection: "keep-alive",
+      "x-accel-buffering": "no",
+    });
+    res.write(":ok\n\n");
+    res.write(`data: ${JSON.stringify({ tipo: "inicio", chat: this.chat.slice(-30) })}\n\n`);
+    this.assinantes.set(res, token);
+
+    const ping = setInterval(() => {
+      try {
+        res.write(":ping\n\n");
+      } catch {
+        clearInterval(ping);
+      }
+    }, 15000);
+    const encerrar = () => {
+      clearInterval(ping);
+      this.assinantes.delete(res);
+    };
+    req.on("close", encerrar);
+    req.on("error", encerrar);
+  }
+
+  /**
+   * Um aviso escrito, para virar texto projetável na cabine.
+   *
+   * Não é chat: chat é conversa entre a equipe, e isto vai para a
+   * biblioteca de textos, onde o operador acha na hora de projetar.
+   */
+  async _avisoDirigente(req, res) {
+    let corpo;
+    try {
+      corpo = JSON.parse(await this._lerCorpo(req));
+    } catch {
+      corpo = {};
+    }
+    if (!this._sessaoDirigente(req.headers["x-lumen-dirigente"])) {
+      this._json(res, 401, { ok: false, erro: "Sessão expirada. Entre novamente." });
+      return;
+    }
+    const titulo = semControle(String(corpo.titulo || "")).trim().slice(0, 120);
+    const texto = semControle(String(corpo.texto || ""), true).trim().slice(0, 4000);
+    if (!titulo || !texto) {
+      this._json(res, 400, { ok: false, erro: "Falta o título ou o texto." });
+      return;
+    }
+    this.onEvento?.({ tipo: "aviso", titulo, texto, de: nomeLimpo(corpo.de, "Dirigente") });
+    this._json(res, 200, { ok: true });
+  }
+
+  /** Recado escrito na página do dirigente — mesmo mural do celular. */
+  async _chatDirigente(req, res) {
+    let corpo;
+    try {
+      corpo = JSON.parse(await this._lerCorpo(req));
+    } catch {
+      corpo = {};
+    }
+    if (!this._sessaoDirigente(req.headers["x-lumen-dirigente"])) {
+      this._json(res, 401, { ok: false, erro: "Sessão expirada. Entre novamente." });
+      return;
+    }
+    const msg = this._registrarChat({
+      de: nomeLimpo(corpo.de, "Dirigente"),
+      texto: corpo.texto,
+      daCabine: false,
+    });
     if (!msg) {
       this._json(res, 400, { ok: false, erro: "Mensagem vazia." });
       return;

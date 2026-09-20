@@ -232,13 +232,44 @@ declare global {
       mediaResetFolder: (
         kind: MediaKind,
       ) => Promise<{ ok: boolean; dir?: string; error?: string; aviso?: string | null }>;
+      mediaSave: (
+        nome: string,
+        dados: Uint8Array,
+      ) => Promise<{
+        ok: boolean;
+        nome?: string;
+        id?: string | null;
+        kind?: MediaKind | null;
+        projetavel?: boolean;
+        error?: string;
+      }>;
+      mediaRename: (
+        kind: MediaKind,
+        nome: string,
+        novo: string,
+      ) => Promise<{ ok: boolean; nome?: string; id?: string; error?: string }>;
+      mediaDuplicate: (
+        kind: MediaKind,
+        nome: string,
+      ) => Promise<{ ok: boolean; nome?: string; id?: string; error?: string }>;
+      mediaDelete: (kind: MediaKind, nome: string) => Promise<{ ok: boolean; error?: string }>;
       youtubeHost: () => Promise<string>;
       remoteControlStart: () => Promise<import("./remote-control").RemoteStatus>;
       remoteControlStop: () => Promise<import("./remote-control").RemoteStatus>;
       remoteControlStatus: () => Promise<import("./remote-control").RemoteStatus>;
       remoteControlDisconnectAll: () => Promise<import("./remote-control").RemoteStatus>;
       remoteControlPushRepertoire: (
-        lista: { id: string; titulo: string; artista: string; letra: string }[],
+        lista: {
+          id: string;
+          titulo: string;
+          artista: string;
+          letra: string;
+          tema: string;
+          slides: import("./remote-control").SlideRemoto[];
+        }[],
+      ) => void;
+      remoteControlPushThemes: (
+        lista: import("./remote-control").TemaRemoto[],
       ) => void;
       remoteControlPushMedia: (lista: import("./remote-control").MidiaRemota[]) => void;
       remoteControlPushChurch: (dados: { nome: string; logo: string }) => void;

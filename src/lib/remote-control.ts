@@ -67,7 +67,15 @@ export type EventoRemoto =
     }
   // Mandar para o telão pelo celular: o item vai pelo nome, não por um botão
   // fixo, e por isso não cabe na lista de ações.
-  | { tipo: "projetar"; kind: "song" | "text" | "media"; refId: string; de: string }
+  // `slide` vem da grade de slides do celular: projetar a quarta estrofe é
+  // um toque, não quatro. Ausente quando o pedido é o item inteiro.
+  | {
+      tipo: "projetar";
+      kind: "song" | "text" | "media";
+      refId: string;
+      de: string;
+      slide?: number;
+    }
   // Buscar letra na internet é a cabine quem faz: o celular pode estar sem
   // rede, e dois provedores diferentes dariam dois resultados para a mesma
   // busca. `pedido` é o número que casa a resposta com quem perguntou.
@@ -76,16 +84,46 @@ export type EventoRemoto =
   // Volume do que toca no telão, pedido pelo celular. Não cabe na lista de
   // ações porque carrega um número, não é um botão fixo.
   | { tipo: "volume"; valor: number; de: string }
+  // Aviso escrito na página do dirigente. Vira texto na biblioteca da
+  // cabine, não recado no chat: é para ser projetado, não lido pela equipe.
+  | { tipo: "aviso"; titulo: string; texto: string; de: string }
   // Arquivo que chegou pela página do dirigente. `projetavel` é falso para
   // apresentação e PDF: eles ficam guardados, porque o Lúmen ainda não sabe
   // desenhá-los no telão — e dizer que sabe seria pior.
   | {
       tipo: "arquivo";
       nome: string;
+      /** Quem mandou, como escreveu na página. Vazio quando não escreveu. */
+      de?: string;
       kind: "video" | "audio" | "image" | null;
       id: string | null;
       projetavel: boolean;
     };
+
+/** Um slide como o celular precisa vê-lo: rótulo e texto, nada mais. */
+export interface SlideRemoto {
+  rotulo: string;
+  texto: string;
+}
+
+/**
+ * A cara de um tema, no tanto que uma miniatura de celular consegue usar.
+ *
+ * O celular não tem a folha de estilo da cabine nem alcança o disco do PC, e
+ * uma miniatura que ignorasse o tema mostraria um slide que ninguém vai ver
+ * no telão. Então o fundo vem mastigado: cor e degradê viajam como CSS, que
+ * o aparelho desenha igual; imagem e vídeo viram um JPEG pequeno feito aqui.
+ */
+export interface TemaRemoto {
+  id: string;
+  /** Cor ou degradê em CSS. Vazio quando o fundo é imagem ou vídeo. */
+  fundo: string;
+  /** Miniatura JPEG do fundo, como endereço `data:`. Vazia quando não deu. */
+  imagem: string;
+  /** Cor da letra, para a miniatura não ficar ilegível sobre o fundo. */
+  cor: string;
+  maiusculas: boolean;
+}
 
 /** Um achado da internet, do jeito que o celular precisa ver. */
 export interface AchadoRemoto {
@@ -100,6 +138,10 @@ export interface MidiaRemota {
   tipo: "video" | "audio" | "image";
   titulo: string;
   detalhe?: string;
+  /** Miniatura pequena em JPEG, gerada pela cabine. Vazia quando não deu. */
+  capa?: string;
+  /** Duração em segundos; 0 para imagem ou quando não se sabe. */
+  segundos?: number;
 }
 
 export const ROTULO_PERMISSAO: Record<PermissaoRemota, string> = {
@@ -132,6 +174,12 @@ export interface RemoteStatus {
 /** O que a cabine publica a cada troca de slide, para o aparelho mostrar. */
 export interface RemoteStatePayload {
   titulo: string | null;
+  /**
+   * Qual item está no ar, para a grade de slides do celular acender a
+   * estrofe certa. Pelo id, não pelo título: duas músicas com o mesmo nome
+   * no repertório acenderiam a estrofe da outra.
+   */
+  refId: string | null;
   slideAtual: number;
   slideTotal: number;
   noAr: boolean;
@@ -165,6 +213,7 @@ export function estadoRemoto(
 ): RemoteStatePayload {
   return {
     titulo: live?.title ?? null,
+    refId: live?.refId ?? null,
     slideAtual: live ? liveIndex + 1 : 0,
     slideTotal: live?.slides.length ?? 0,
     noAr: status === "presenting",

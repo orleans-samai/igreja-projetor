@@ -19,6 +19,7 @@ describe("estadoRemoto", () => {
   it("descreve o que está no ar, não o preview", () => {
     assert.deepEqual(estadoRemoto("presenting", deck, 1), {
       titulo: "Grande é o Senhor",
+      refId: "s1",
       slideAtual: 2,
       slideTotal: 3,
       noAr: true,
@@ -32,6 +33,7 @@ describe("estadoRemoto", () => {
   it("sem nada apresentado, os números ficam a zero", () => {
     assert.deepEqual(estadoRemoto("idle", null, 0), {
       titulo: null,
+      refId: null,
       slideAtual: 0,
       slideTotal: 0,
       noAr: false,
@@ -39,6 +41,14 @@ describe("estadoRemoto", () => {
       midiaTocando: null,
       midiaVolume: null,
     });
+  });
+
+  it("leva o id do que está no ar, para a grade do celular acender certo", () => {
+    // Duas músicas com o mesmo nome: é o id que separa uma da outra.
+    const gemea: Deck = { ...deck, refId: "s2" };
+    assert.equal(estadoRemoto("presenting", deck, 0).refId, "s1");
+    assert.equal(estadoRemoto("presenting", gemea, 0).refId, "s2");
+    assert.equal(estadoRemoto("presenting", deck, 0).titulo, gemea.title);
   });
 
   it("telão preto marca preto mesmo com uma música por trás", () => {

@@ -27,125 +27,314 @@
 <style>
   :root {
     color-scheme: dark;
-    --bg: #141416; --surface: #1a1a1d; --elevated: #232327; --raised: #2c2c31;
-    --border: #2b2b31; --fg: #ecebe8; --muted: #aeada9; --subtle: #8e8d89;
-    --primary: #e9e8e5; --primary-fg: #17171a;
-    --live: #eba63f; --live-fg: #231804;
-    --accent: #7d9bb8; --accent-fg: #0f161c;
-    --danger: #d2564c; --danger-fg: #1d0b09;
-    --ok: #6f9e78;
+    /* Mais escuro que a cabine: o celular fica na mão de alguém no escuro,
+       e cada nível de cinza a menos é uma tela que não ilumina o rosto. */
+    --bg: #0a0b0d;
+    --superficie: #121417;
+    --elevada: #171a1e;
+    --realce: #1e2228;
+    --borda: #23272e;
+    --fg: #f1f3f5;
+    --muted: #9aa2ad;
+    --subtle: #6b7280;
+    --live: #f0a830;
+    --live-fraco: rgba(240, 168, 48, 0.12);
+    --live-borda: rgba(240, 168, 48, 0.55);
+    --ok: #34c759;
+    --ok-fraco: rgba(52, 199, 89, 0.12);
+    --perigo: #e5484d;
+    --r: 14px;
+    --r-g: 18px;
   }
   * { box-sizing: border-box; }
   html, body {
     margin: 0; min-height: 100%; background: var(--bg); color: var(--fg);
-    font: 15px/1.4 -apple-system, "Segoe UI", Roboto, sans-serif;
+    font: 15px/1.45 -apple-system, "Segoe UI", Roboto, sans-serif;
     -webkit-tap-highlight-color: transparent; user-select: none;
     overscroll-behavior: none;
   }
-  button, input, textarea { font: inherit; -webkit-tap-highlight-color: transparent; }
+  button, input, textarea, select { font: inherit; -webkit-tap-highlight-color: transparent; }
   [hidden] { display: none !important; }
+  svg { flex: none; }
 
   .app {
-    display: flex; flex-direction: column;
+    display: flex; flex-direction: column; gap: 14px;
     min-height: 100dvh;
-    padding: max(10px, env(safe-area-inset-top)) 12px max(10px, env(safe-area-inset-bottom));
-    gap: 10px;
+    padding: max(14px, env(safe-area-inset-top)) 14px calc(16px + env(safe-area-inset-bottom));
   }
 
-  /* ─ Barra de cima: o que está no ar + estado da conexão ─ */
-  .topo { display: flex; align-items: center; gap: 8px; }
-  .ponto { width: 8px; height: 8px; border-radius: 999px; background: var(--subtle); flex: none; }
-  .topo[data-conexao="on"] .ponto { background: var(--ok); }
-  .topo[data-conexao="off"] .ponto { background: var(--danger); }
-  .topo .quem { font-size: 12px; color: var(--subtle); font-weight: 600; letter-spacing: .02em; }
-  .topo .conexao { margin-left: auto; font-size: 12px; color: var(--subtle); }
-  .topo[data-conexao="off"] .conexao { color: var(--danger); }
+  /* ── cabeçalho ───────────────────────────────────────────────── */
+  .cabecalho { display: flex; align-items: center; gap: 10px; }
+  .marca { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1; }
+  .marca .nome { font-size: 22px; font-weight: 700; letter-spacing: -0.01em; line-height: 1.1; }
+  .marca .sub {
+    font-size: 12px; color: var(--muted); line-height: 1.1; margin-top: 2px;
+    /* Numa linha só: quebrada, ela empurra o cabeçalho e come a altura que
+       a lista precisa. */
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .selo-conexao {
+    display: inline-flex; align-items: center; gap: 6px; flex: none;
+    padding: 8px 12px; border-radius: 999px;
+    background: var(--ok-fraco); color: var(--ok);
+    font-size: 12.5px; font-weight: 600; white-space: nowrap;
+  }
+  .selo-conexao .bolinha { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+  .selo-conexao[data-conexao="off"] { background: rgba(229, 72, 77, .12); color: var(--perigo); }
+  .selo-conexao[data-conexao="indo"] { background: rgba(240, 168, 48, .12); color: var(--live); }
+  .icone-botao {
+    display: grid; place-items: center; width: 36px; height: 36px; flex: none;
+    border: 0; border-radius: 12px; background: transparent; color: var(--muted);
+  }
+  .icone-botao:active { background: var(--elevada); }
 
+  /* ── o que está no ar ────────────────────────────────────────── */
   .noar {
-    background: var(--surface); border-radius: 12px; padding: 12px 14px;
-    box-shadow: inset 0 0 0 1px var(--border);
+    display: flex; align-items: center; gap: 12px;
+    padding: 16px; border-radius: var(--r-g);
+    background: var(--superficie);
+    border: 1px solid var(--live-borda);
   }
-  .noar .rotulo {
-    font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
-    color: var(--live);
+  .noar[data-vazio="true"] { border-color: var(--borda); }
+  .noar .marcador {
+    text-transform: uppercase;
+    display: inline-flex; align-items: center; gap: 8px;
+    font-size: 13px; font-weight: 700; letter-spacing: .06em; color: var(--live);
   }
-  .noar[data-vazio="true"] .rotulo { color: var(--subtle); }
-  .noar .titulo { font-size: 19px; font-weight: 650; margin-top: 2px; word-break: break-word; }
-  .noar .posicao { color: var(--subtle); font-variant-numeric: tabular-nums; font-size: 13px; }
-  .noar .depois { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
-  .noar .depois .rotulo { color: var(--subtle); }
-  .noar .depois .texto { color: var(--muted); font-size: 15px; word-break: break-word; }
+  .noar[data-vazio="true"] .marcador { color: var(--subtle); }
+  .noar .marcador .bolinha { width: 9px; height: 9px; border-radius: 50%; background: currentColor; }
+  .noar .meio { display: flex; align-items: center; gap: 9px; min-width: 0; flex: 1; color: var(--muted); }
+  .noar .titulo {
+    min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font-size: 16px; font-weight: 600; color: var(--fg);
+  }
+  .noar .posicao {
+    padding: 5px 10px; border-radius: 9px; background: var(--realce);
+    font-size: 12px; color: var(--muted); white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+  .noar .seta { color: var(--subtle); }
+  .depois { display: none; }
 
-  /* ─ Abas ─ */
-  .abas { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  /* ── abas ────────────────────────────────────────────────────── */
+  .abas { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
   .abas button {
-    border: 0; border-radius: 10px; padding: 10px 6px; font-size: 13px; font-weight: 600;
-    background: var(--elevated); color: var(--muted);
+    position: relative;
+    display: flex; flex-direction: column; align-items: center; gap: 7px;
+    padding: 14px 4px; border-radius: var(--r);
+    border: 1px solid var(--borda); background: var(--superficie);
+    color: var(--muted); font-size: 13px; font-weight: 500;
   }
-  .abas button[aria-selected="true"] { background: var(--raised); color: var(--fg); }
-  .abas button .selo {
-    display: inline-block; min-width: 18px; margin-left: 4px; padding: 0 5px;
-    border-radius: 999px; background: var(--live); color: var(--live-fg);
-    font-size: 11px; font-weight: 700;
+  .abas button[aria-selected="true"] {
+    border-color: var(--live-borda); background: var(--live-fraco); color: var(--live);
+  }
+  .abas .selo {
+    position: absolute; top: 6px; right: 8px;
+    min-width: 18px; padding: 1px 5px; border-radius: 999px;
+    background: var(--live); color: #17130a;
+    font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums;
   }
 
-  .painel { flex: 1; display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+  /* ── peças ───────────────────────────────────────────────────── */
+  .painel { display: flex; flex-direction: column; gap: 12px; flex: 1; min-height: 0; }
 
-  /* ─ Botões ─ */
   .botao {
-    border: 0; border-radius: 12px; padding: 16px; font-size: 16px; font-weight: 600;
-    background: var(--elevated); color: var(--fg); box-shadow: inset 0 0 0 1px var(--border);
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    padding: 15px 16px; border-radius: var(--r);
+    border: 1px solid var(--borda); background: var(--superficie); color: var(--fg);
+    font-size: 15px; font-weight: 600; cursor: pointer;
   }
-  .botao:active { transform: scale(.97); }
-  .botao:disabled { opacity: .4; }
-  .botao-principal { background: var(--primary); color: var(--primary-fg); box-shadow: none; }
-  .botao-perigo { color: var(--danger); }
-  .transporte { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-  .transporte .botao { padding: 30px 10px; font-size: 18px; }
-  .grade { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
-  .grade .botao { padding: 16px 10px; font-size: 15px; }
+  .botao:active { background: var(--realce); }
+  .botao:disabled { opacity: .45; }
+  .botao-principal { background: var(--live); border-color: var(--live); color: #17130a; }
+  .botao-perigo { color: var(--perigo); }
+  .botao.ativo { border-color: var(--live-borda); background: var(--live-fraco); color: var(--live); }
   .larga { grid-column: 1 / -1; }
-  #preto.ativo { background: var(--live); color: var(--live-fg); box-shadow: none; }
+  .transporte { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .transporte .botao { padding: 20px 12px; font-size: 17px; }
+  .grade { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .linha { display: flex; align-items: center; gap: 10px; }
+
+  .campo {
+    width: 100%; padding: 15px 16px; border-radius: var(--r);
+    background: var(--superficie); border: 1px solid var(--borda); color: var(--fg);
+  }
+  .campo::placeholder { color: var(--subtle); }
+  .campo:focus { outline: 2px solid var(--live-borda); outline-offset: -1px; }
+  textarea.campo { resize: none; }
+
+  /* Busca com lupa dentro e um botão de peneira ao lado. */
+  .busca { display: flex; gap: 10px; }
+  .busca .caixa { position: relative; flex: 1; min-width: 0; }
+  .busca .caixa svg { position: absolute; left: 15px; top: 50%; transform: translateY(-50%); color: var(--subtle); }
+  .busca .caixa .campo { padding-left: 46px; }
+  .busca .peneira {
+    display: grid; place-items: center; width: 54px; border-radius: var(--r);
+    border: 1px solid var(--borda); background: var(--superficie); color: var(--muted);
+  }
+
+  /* Filtros em pílula, com ícone. */
+  .filtros { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+  .filtros::-webkit-scrollbar { display: none; }
+  .filtros button {
+    display: inline-flex; align-items: center; gap: 7px; white-space: nowrap;
+    /* Estreito o bastante para os quatro caberem num celular de 390px: a
+       fileira rola, mas rolar para achar "Imagem" é rolar à toa. */
+    padding: 10px 12px; border-radius: 999px;
+    border: 1px solid var(--borda); background: var(--superficie);
+    color: var(--muted); font-size: 13px; font-weight: 500;
+  }
+  .filtros button[aria-pressed="true"] {
+    border-color: var(--live-borda); background: var(--live-fraco); color: var(--live);
+  }
+
+  .cabecalho-lista {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    font-size: 13px; color: var(--muted);
+  }
+  .cabecalho-lista .ordem { display: inline-flex; align-items: center; gap: 6px; }
+  .cabecalho-lista select {
+    border: 0; background: transparent; color: var(--fg); font-size: 13px; font-weight: 600;
+    padding: 2px 0;
+  }
+
+  /* ── listas ──────────────────────────────────────────────────── */
+  .lista { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+  .lista > li > button, .lista > li > .item {
+    width: 100%; display: flex; align-items: center; gap: 12px; text-align: left;
+    padding: 12px; border-radius: var(--r);
+    border: 1px solid var(--borda); background: var(--superficie); color: var(--fg);
+  }
+  .lista > li > button:active { background: var(--realce); }
+  .lista .autor { display: block; margin-top: 3px; font-size: 13px; color: var(--muted); }
+
+  .capa {
+    position: relative; width: 104px; height: 74px; flex: none;
+    border-radius: 10px; overflow: hidden; background: var(--realce);
+    display: grid; place-items: center; color: var(--subtle);
+  }
+  .capa img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .capa .duracao {
+    position: absolute; right: 5px; bottom: 5px;
+    padding: 2px 6px; border-radius: 6px;
+    background: rgba(0,0,0,.72); color: #fff;
+    font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums;
+  }
+  .corpo-item { min-width: 0; flex: 1; }
+  .corpo-item .nome {
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    overflow: hidden; font-size: 14px; line-height: 1.35; word-break: break-word;
+  }
+  .corpo-item .risco { height: 1px; background: var(--borda); margin: 9px 0 8px; }
+  .etiqueta {
+    display: inline-flex; align-items: center; gap: 7px;
+    font-size: 12px; color: var(--muted);
+  }
+  .etiqueta .quadro {
+    display: grid; place-items: center; width: 26px; height: 26px;
+    border-radius: 8px; border: 1px solid var(--borda); color: var(--muted);
+  }
+  .mais {
+    display: grid; place-items: center; width: 34px; height: 34px; flex: none;
+    border: 0; border-radius: 10px; background: transparent; color: var(--subtle);
+  }
+
+  /* ── grade de slides ─────────────────────────────────────────── */
+  .cabecalho-tela { display: flex; align-items: center; gap: 8px; }
+  .cabecalho-tela .meio { flex: 1; min-width: 0; text-align: center; }
+  .cabecalho-tela .titulo {
+    font-size: 16px; font-weight: 600;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .cabecalho-tela .quantos { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+  /* Fica colado no topo ao rolar: numa música de trinta estrofes, "Próximo"
+     sumir no alto da rolagem é o operador perseguindo o botão no meio do
+     louvor. */
+  .passa {
+    position: sticky; top: 0; z-index: 2;
+    display: flex; align-items: stretch;
+    padding: 4px; border-radius: var(--r-g);
+    border: 1px solid var(--borda); background: var(--superficie);
+  }
+  .passa button {
+    flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    padding: 14px 8px; border: 0; border-radius: var(--r);
+    background: transparent; color: var(--fg); font-size: 16px; font-weight: 600;
+  }
+  .passa button:active { background: var(--realce); }
+  .passa button:disabled { opacity: .45; }
+  .passa .risco-vertical { width: 1px; background: var(--borda); margin: 8px 0; flex: none; }
+
+  .grade-slides {
+    list-style: none; margin: 0; padding: 0;
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;
+  }
+  .grade-slides > li > button {
+    width: 100%; padding: 0; border: 0; background: transparent; color: var(--fg);
+    display: flex; flex-direction: column; gap: 5px;
+  }
+  .mini {
+    position: relative; aspect-ratio: 1 / 1; overflow: hidden;
+    border-radius: 12px; border: 1px solid var(--borda);
+    /* Um cinza por baixo: enquanto a capa do tema não chegou — ou quando o
+       fundo é animado, que é classe de CSS da cabine e não viaja — ainda dá
+       para ler a estrofe. */
+    background: #1b1f25 center / cover no-repeat;
+    /* Folga em cima para o rótulo da estrofe não deitar sobre a letra. */
+    display: grid; place-items: center; padding: 22px 7px 8px;
+  }
+  /* A sombra não é enfeite: sobre foto clara, texto branco sem ela some. */
+  .mini .texto {
+    position: relative;
+    /* Quebra onde o telão quebra: a miniatura tem que ser o slide, e a
+       estrofe numa linha corrida não é o que a igreja vai ler. */
+    white-space: pre-line;
+    font-size: 10.5px; line-height: 1.22; font-weight: 600; text-align: center;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, .85);
+    display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical;
+    overflow: hidden; word-break: break-word;
+  }
+  .mini .rotulo {
+    position: absolute; left: 5px; top: 5px;
+    padding: 2px 6px; border-radius: 6px;
+    background: rgba(0, 0, 0, .55); color: #fff;
+    font-size: 9.5px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase;
+  }
+  .grade-slides .numero {
+    text-align: center; font-size: 12px; color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .grade-slides [aria-current="true"] .mini { border-color: var(--live); box-shadow: 0 0 0 2px var(--live-fraco); }
+  .grade-slides [aria-current="true"] .numero { color: var(--live); font-weight: 700; }
+  .grade-slides > li > button:disabled { opacity: .55; }
 
   .aviso {
-    border-radius: 10px; padding: 12px 14px; font-size: 14px;
-    background: color-mix(in oklab, var(--accent) 16%, transparent);
-    color: var(--fg); box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--accent) 35%, transparent);
+    margin: 0; padding: 12px 14px; border-radius: var(--r);
+    background: var(--elevada); color: var(--muted); font-size: 13px;
   }
+  .dica { margin: 0; font-size: 12px; color: var(--subtle); }
+  .erro { margin: 0; font-size: 13px; color: var(--perigo); min-height: 1.2em; }
+  .vazio { padding: 40px 16px; text-align: center; color: var(--subtle); font-size: 14px; }
 
-  /* ─ Pareamento ─ */
-  #pareamento { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 16px; text-align: center; }
-  #pareamento h1 { font-size: 20px; margin: 0; }
-  #pareamento p { color: var(--muted); margin: 0; }
-  .campo {
-    width: 100%; background: var(--elevated); color: var(--fg);
-    border: 1px solid var(--border); border-radius: 12px; padding: 14px;
+  /* ── entrar ──────────────────────────────────────────────────── */
+  #pareamento {
+    flex: 1; display: flex; flex-direction: column; justify-content: center;
+    gap: 16px; text-align: center;
   }
-  .campo:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
-  #erroPin { color: var(--danger); min-height: 20px; font-size: 13px; }
+  #pareamento h1 { font-size: 24px; margin: 0; }
+  #pareamento p { color: var(--muted); margin: 0; font-size: 14px; }
 
-  /* ─ Letras ─ */
-  .lista { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; overflow-y: auto; }
-  .lista button {
-    width: 100%; text-align: left; border: 0; border-radius: 10px; padding: 14px;
-    background: var(--elevated); color: var(--fg); box-shadow: inset 0 0 0 1px var(--border);
-  }
-  .lista .autor { display: block; color: var(--subtle); font-size: 13px; margin-top: 2px; }
-  textarea.campo { min-height: 46dvh; font-family: ui-monospace, monospace; font-size: 14px; user-select: text; resize: vertical; }
-  .linha { display: flex; gap: 8px; }
-  .linha .botao { flex: 1; }
-  .dica { color: var(--subtle); font-size: 12px; }
+  /* ── chat ────────────────────────────────────────────────────── */
+  #chatLista { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+  .msg { padding: 11px 13px; border-radius: var(--r); background: var(--superficie); border: 1px solid var(--borda); }
+  .msg.minha { background: var(--live-fraco); border-color: var(--live-borda); }
+  .msg .de { margin: 0 0 3px; font-size: 12px; font-weight: 600; color: var(--muted); }
+  .msg .texto { margin: 0; white-space: pre-wrap; word-break: break-word; user-select: text; font-size: 14px; }
+  #chatForm { display: flex; gap: 10px; align-items: flex-end; }
+  #chatTexto { flex: 1; min-height: 50px; max-height: 30dvh; }
 
-  /* ─ Chat ─ */
-  #chatLista { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-bottom: 4px; }
-  .msg { border-radius: 10px; padding: 10px 12px; background: var(--elevated); max-width: 88%; }
-  .msg.minha { align-self: flex-end; background: var(--raised); }
-  .msg.cabine { align-self: flex-start; box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--accent) 35%, transparent); }
-  .msg .de { font-size: 12px; color: var(--subtle); font-weight: 600; }
-  .msg .texto { white-space: pre-wrap; word-break: break-word; user-select: text; }
-  .msg .hora { font-size: 11px; color: var(--subtle); }
-  #chatForm { display: flex; gap: 8px; align-items: flex-end; }
-  #chatTexto { flex: 1; min-height: 46px; max-height: 30dvh; resize: none; }
+  #volume { flex: 1; min-width: 0; accent-color: var(--live); }
 </style>
 
 <div class="app">
@@ -156,35 +345,85 @@
       <p>Escreva o seu nome. É ele que aparece na cabine, e é por ele que o operador libera o que você pode fazer.</p>
     </div>
     <input id="nome" class="campo" maxlength="32" placeholder="Seu nome" autocomplete="name" autofocus>
-    <p id="erroPin"></p>
+    <p class="erro" id="erroPin"></p>
     <button class="botao botao-principal" id="entrar">Entrar</button>
     <p class="dica">Você entra no chat. Para mexer nos slides ou nas letras, peça na cabine.</p>
   </section>
 
   <!-- ─ Conectado ─ -->
-  <div id="conectado" hidden style="display:flex;flex-direction:column;gap:10px;flex:1;min-height:0">
-    <div class="topo" id="topo" data-conexao="off">
-      <span class="ponto"></span>
-      <span class="quem" id="quem">Lúmen</span>
-      <span class="conexao" id="conexao">conectando…</span>
-    </div>
-
-    <div class="noar" id="noar" data-vazio="true">
-      <p class="rotulo" id="noarRotulo">Nada no ar</p>
-      <p class="titulo" id="noarTitulo">—</p>
-      <p class="posicao" id="noarPosicao"></p>
-      <div class="depois" id="depois" hidden>
-        <p class="rotulo">Próximo</p>
-        <p class="texto" id="depoisTexto"></p>
+  <div id="conectado" hidden style="display:flex;flex-direction:column;gap:14px;flex:1;min-height:0">
+    <header class="cabecalho">
+      <div class="marca">
+        <!-- A marca do Lúmen: três camadas, como slides empilhados. -->
+        <svg width="34" height="34" viewBox="0 0 34 34" fill="none" aria-hidden="true">
+          <path d="M17 3 31 10.5 17 18 3 10.5 17 3Z" fill="#f0a830"/>
+          <path d="M17 13.5 31 21 17 28.5 3 21 17 13.5Z" fill="#e8e6e1" opacity=".55"/>
+          <path d="M17 19 31 26.5 17 34 3 26.5 17 19Z" fill="#f0a830" opacity=".85"/>
+        </svg>
+        <div style="min-width:0">
+          <div class="nome">Lúmen</div>
+          <div class="sub">Projeção simplificada</div>
+        </div>
       </div>
-    </div>
+      <span class="selo-conexao" id="topo" data-conexao="off">
+        <span class="bolinha"></span>
+        <span id="conexao">conectando…</span>
+      </span>
+      <button class="icone-botao" id="sair" aria-label="Quem sou eu, e sair">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9v.09a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/>
+        </svg>
+      </button>
+    </header>
 
-    <div class="abas" role="tablist">
-      <button role="tab" id="abaControle" aria-selected="true">Controle</button>
-      <button role="tab" id="abaLetras" aria-selected="false">Letras</button>
-      <button role="tab" id="abaMidia" aria-selected="false">Mídia</button>
-      <button role="tab" id="abaChat" aria-selected="false">Chat<span class="selo" id="seloChat" hidden>0</span></button>
-    </div>
+    <!-- O que a igreja está vendo agora. -->
+    <button class="noar" id="noar" data-vazio="true" data-acao="proximo">
+      <span class="marcador"><span class="bolinha"></span><span id="noarRotulo">NADA NO AR</span></span>
+      <span class="meio">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M2 4h6a3 3 0 0 1 3 3v13a2 2 0 0 0-2-2H2zM22 4h-6a3 3 0 0 0-3 3v13a2 2 0 0 1 2-2h7z"/>
+        </svg>
+        <span class="titulo" id="noarTitulo">—</span>
+      </span>
+      <span class="posicao" id="noarPosicao"></span>
+      <svg class="seta" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="m9 18 6-6-6-6"/>
+      </svg>
+      <span class="depois" id="depois" hidden><span id="depoisTexto"></span></span>
+    </button>
+
+    <nav class="abas" role="tablist">
+      <button role="tab" id="abaControle" aria-selected="true">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <line x1="6" y1="11" x2="10" y2="11"/><line x1="8" y1="9" x2="8" y2="13"/>
+          <line x1="15" y1="12" x2="15.01" y2="12"/><line x1="18" y1="10" x2="18.01" y2="10"/>
+          <rect x="2" y="6" width="20" height="12" rx="4"/>
+        </svg>
+        Controle
+      </button>
+      <button role="tab" id="abaLetras" aria-selected="false">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/>
+          <line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/>
+        </svg>
+        Letras
+      </button>
+      <button role="tab" id="abaMidia" aria-selected="false">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/>
+          <path d="m21 15-5-5L5 21"/>
+        </svg>
+        Mídia
+      </button>
+      <button role="tab" id="abaChat" aria-selected="false">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.2A8.4 8.4 0 0 1 12 3a8.4 8.4 0 0 1 9 8.5Z"/>
+        </svg>
+        Chat
+        <span class="selo" id="seloChat" hidden>0</span>
+      </button>
+    </nav>
 
     <!-- Controle -->
     <section class="painel" id="painelControle">
@@ -204,25 +443,22 @@
       </div>
       <p class="dica">Vídeo no telão</p>
       <div class="grade">
-        <!-- Um botão só, que troca de cara: no celular, dois botões que nunca
-             servem ao mesmo tempo só roubam espaço e fazem errar o alvo. -->
         <button class="botao" id="tocarPausar" data-acao="tocar">▶ Tocar</button>
         <button class="botao" data-acao="parar-midia">■ Parar vídeo</button>
       </div>
       <!-- O som sai do telão, não do aparelho: este controle é o volume que a
            igreja inteira escuta, por isso exige controle do telão. -->
       <div class="linha" id="caixaVolume">
-        <button class="botao" id="mudo" aria-label="Mudo">🔇</button>
-        <input id="volume" type="range" min="0" max="100" step="5" value="100"
-               aria-label="Volume do telão" style="flex:1;min-width:0">
-        <span class="tnum" id="volumeRotulo" style="width:3.2em;text-align:right">100%</span>
+        <button class="botao" id="mudo" aria-label="Mudo" style="padding:12px 14px">🔇</button>
+        <input id="volume" type="range" min="0" max="100" step="5" value="100" aria-label="Volume do telão">
+        <span class="dica" id="volumeRotulo" style="width:3.4em;text-align:right">100%</span>
       </div>
+      <p class="dica" id="quem">—</p>
       <div id="fixoBloco" hidden>
         <p class="dica">Endereço que não vence — guarde nos favoritos</p>
-        <a class="botao larga" id="fixoLink" href="#" target="_blank" rel="noopener"></a>
-        <p class="dica">Se abrir aqui, vai abrir sempre, mesmo se o computador mudar de número.</p>
+        <a class="botao" id="fixoLink" href="#" target="_blank" rel="noopener"
+           style="margin-top:8px;width:100%"></a>
       </div>
-      <button class="botao botao-perigo" id="sair">Sair deste controle</button>
     </section>
 
     <!-- Letras -->
@@ -230,25 +466,66 @@
       <p class="aviso" id="semEditor" hidden>
         Este aparelho ainda não edita letras. Peça na cabine para liberar.
       </p>
-      <div id="letrasLista" style="display:flex;flex-direction:column;gap:10px;min-height:0;flex:1">
+      <div id="letrasLista" style="display:flex;flex-direction:column;gap:12px;min-height:0;flex:1">
         <button class="botao botao-principal" id="novaMusica">+ Nova música</button>
         <!-- Quem busca é a cabine, não este aparelho: o celular pode estar sem
              internet, e um provedor diferente daria outro resultado para a
              mesma busca. -->
-        <form class="linha" id="buscaForm">
-          <input id="buscaWeb" class="campo" maxlength="120" placeholder="Buscar letra na internet">
-          <button class="botao" type="submit" id="buscarWeb">Buscar</button>
+        <form class="busca" id="buscaForm">
+          <div class="caixa">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+              <circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/>
+            </svg>
+            <input id="buscaWeb" class="campo" maxlength="120" placeholder="Buscar letra na internet">
+          </div>
+          <button class="botao" type="submit" id="buscarWeb" style="padding:15px 18px">Buscar</button>
         </form>
         <p class="dica" id="buscaEstado"></p>
         <ul class="lista" id="achados"></ul>
         <ul class="lista" id="musicas"></ul>
       </div>
-      <div id="letrasEditor" hidden style="display:flex;flex-direction:column;gap:8px;flex:1;min-height:0">
+      <!-- A grade de slides: tocar numa estrofe manda ela para o telão. -->
+      <div id="letrasSlides" hidden style="display:flex;flex-direction:column;gap:12px;flex:1;min-height:0">
+        <div class="cabecalho-tela">
+          <button class="icone-botao" id="slidesVoltar" aria-label="Voltar para as músicas">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="m15 18-6-6 6-6"/>
+            </svg>
+          </button>
+          <div class="meio">
+            <div class="titulo" id="slidesTitulo"></div>
+            <div class="quantos" id="slidesQuantos"></div>
+          </div>
+          <button class="icone-botao" id="slidesEditar" aria-label="Editar a letra">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/>
+            </svg>
+          </button>
+        </div>
+        <div class="passa">
+          <button data-acao="anterior" id="slidesAnterior">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="m15 18-6-6 6-6"/>
+            </svg>
+            Anterior
+          </button>
+          <span class="risco-vertical"></span>
+          <button data-acao="proximo" id="slidesProximo">
+            Próximo
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="m9 18 6-6-6-6"/>
+            </svg>
+          </button>
+        </div>
+        <p class="dica" id="slidesEstado"></p>
+        <ul class="grade-slides" id="gradeSlides"></ul>
+      </div>
+      <div id="letrasEditor" hidden style="display:flex;flex-direction:column;gap:10px;flex:1;min-height:0">
         <input id="edTitulo" class="campo" maxlength="120" placeholder="Título">
         <input id="edArtista" class="campo" maxlength="120" placeholder="Autor (opcional)">
-        <textarea id="edLetra" class="campo" placeholder="Letra — linha em branco separa slide. Use [Coro], [Verso 1]…"></textarea>
+        <textarea id="edLetra" class="campo" style="flex:1;min-height:34dvh" placeholder="Letra — linha em branco separa slide. Use [Coro], [Verso 1]…"></textarea>
         <p class="dica" id="edEstado"></p>
-        <div class="linha">
+        <div class="grade">
           <button class="botao" id="edVoltar">Voltar</button>
           <button class="botao botao-principal" id="edSalvar">Salvar</button>
         </div>
@@ -260,14 +537,50 @@
       <p class="aviso" id="semMidia" hidden>
         Este aparelho ainda não vê a mídia. Peça na cabine para liberar.
       </p>
-      <div class="linha" id="midiaFiltros">
-        <button class="botao" data-tipo="todos" aria-pressed="true">Tudo</button>
-        <button class="botao" data-tipo="video" aria-pressed="false">Vídeo</button>
-        <button class="botao" data-tipo="audio" aria-pressed="false">Áudio</button>
-        <button class="botao" data-tipo="image" aria-pressed="false">Imagem</button>
+      <div class="filtros" id="midiaFiltros">
+        <button data-tipo="todos" aria-pressed="true">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true">
+            <rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/>
+            <rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/>
+          </svg>
+          Tudo
+        </button>
+        <button data-tipo="video" aria-pressed="false">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="2" y="6" width="14" height="12" rx="3"/><path d="m22 8-6 4 6 4z"/>
+          </svg>
+          Vídeo
+        </button>
+        <button data-tipo="audio" aria-pressed="false">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/>
+          </svg>
+          Áudio
+        </button>
+        <button data-tipo="image" aria-pressed="false">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/>
+          </svg>
+          Imagem
+        </button>
       </div>
-      <input id="midiaBusca" class="campo" maxlength="80" placeholder="Procurar pelo nome">
-      <p class="dica" id="midiaEstado"></p>
+      <div class="busca">
+        <div class="caixa">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+            <circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/>
+          </svg>
+          <input id="midiaBusca" class="campo" maxlength="80" placeholder="Procurar pelo nome">
+        </div>
+        <button class="peneira" id="midiaOrdenar" aria-label="Trocar a ordem da lista">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true">
+            <path d="M4 7h16M7 12h10M10 17h4"/>
+          </svg>
+        </button>
+      </div>
+      <div class="cabecalho-lista">
+        <span id="midiaEstado">—</span>
+        <span class="ordem">Ordenar por: <span id="midiaOrdemRotulo" style="color:var(--fg);font-weight:600">Nome</span></span>
+      </div>
       <ul class="lista" id="midiaLista"></ul>
     </section>
 
@@ -286,7 +599,7 @@
           campo de arquivo com `capture` abre o gravador que a pessoa já sabe
           usar, e funciona em qualquer celular.
         -->
-        <label class="botao" id="vozBotao" aria-label="Gravar recado falado">
+        <label class="botao" id="vozBotao" aria-label="Gravar recado falado" style="padding:15px">
           🎤
           <input id="vozArquivo" type="file" accept="audio/*" capture hidden>
         </label>
@@ -311,6 +624,11 @@
   var naoLidas = 0;
   var abaAtual = "controle";
   var musicaAberta = null;
+  /** A música cuja grade de slides está aberta, e o tema dela. */
+  var musicaEmSlides = null;
+  var temaEmSlides = null;
+  /** Qual slide desta música está no telão agora, contando do zero. */
+  var slideNoAr = -1;
 
   var $ = function (id) { return document.getElementById(id); };
 
@@ -349,7 +667,7 @@
     if (reconectarEm) return;
     tentativas += 1;
     var espera = Math.min(15000, 1000 * Math.pow(2, Math.min(tentativas - 1, 4)));
-    conexao("off", "sem conexão · tentando de novo");
+    conexao("off", "Sem conexão");
     reconectarEm = setTimeout(function () {
       reconectarEm = null;
       conectar();
@@ -359,14 +677,14 @@
   function conectar() {
     if (!token) return mostrarPareamento();
     fecharFluxo();
-    conexao("off", "conectando…");
+    conexao("indo", "Conectando…");
     es = new EventSource("/estado?token=" + encodeURIComponent(token));
     var abriu = false;
 
     es.onopen = function () {
       abriu = true;
       tentativas = 0;
-      conexao("on", "conectado");
+      conexao("on", "Celular conectado");
       mostrarPainel();
     };
 
@@ -398,7 +716,7 @@
   function aplicar(d) {
     if (!d || !d.tipo) return;
     if (d.tipo === "inicio") {
-      if (d.nome) $("quem").textContent = d.nome;
+      if (d.nome) $("quem").textContent = "Você entrou como " + d.nome + ".";
       mostrarEnderecoFixo(d.enderecoFixo);
       definirPermissao(d.permissao);
       aplicarEstado(d.estado);
@@ -418,7 +736,7 @@
     }
     if (d.tipo === "encerrado") {
       fecharFluxo();
-      conexao("off", "o Lúmen encerrou o controle remoto");
+      conexao("off", "Encerrado na cabine");
       return;
     }
   }
@@ -453,7 +771,10 @@
     $("mudo").disabled = !podeControlar;
     $("buscarWeb").disabled = !podeEditar;
     $("buscaWeb").disabled = !podeEditar;
-    if (podeEditar && abaAtual === "letras" && !musicaAberta) carregarRepertorio();
+    // A grade já desenhada precisa saber: o operador acabou de liberar (ou
+    // tirar) o controle, e os quadradinhos ligam ou apagam com isso.
+    if (musicaEmSlides) desenharSlides();
+    if (podeEditar && abaAtual === "letras" && !musicaAberta && !musicaEmSlides) carregarRepertorio();
     if (podeEditar && abaAtual === "midia") carregarMidia();
   }
 
@@ -463,8 +784,11 @@
     $("noar").dataset.vazio = vazio ? "true" : "false";
     $("noarRotulo").textContent = e.preto ? "Tela preta" : (e.noAr ? "No ar" : "Nada no ar");
     $("noarTitulo").textContent = e.titulo || "—";
+    // "19 de 32" em vez de "Slide 19 de 32": o chip é estreito, e a palavra
+    // "slide" não acrescenta nada ao lado do nome do que está no ar.
     $("noarPosicao").textContent =
-      e.slideTotal > 0 ? "Slide " + e.slideAtual + " de " + e.slideTotal : "";
+      e.slideTotal > 0 ? e.slideAtual + " de " + e.slideTotal : "";
+    $("noarPosicao").hidden = e.slideTotal === 0;
     var temProximo = e.slideTotal > 0 && e.slideAtual < e.slideTotal;
     $("depois").hidden = !temProximo;
     $("depoisTexto").textContent = temProximo
@@ -473,6 +797,7 @@
     $("preto").classList.toggle("ativo", !!e.preto);
     desenharTocarPausar(e.midiaTocando);
     desenharVolume(e.midiaVolume);
+    marcarSlideNoAr(e);
   }
 
   /**
@@ -587,7 +912,7 @@
       $("seloChat").hidden = true;
       rolarChat();
     }
-    if (nome === "letras" && !musicaAberta) carregarRepertorio();
+    if (nome === "letras" && !musicaAberta && !musicaEmSlides) carregarRepertorio();
     if (nome === "midia") carregarMidia();
   }
 
@@ -644,27 +969,113 @@
       .catch(function () { $("midiaEstado").textContent = "Sem conexão com a cabine."; });
   }
 
+  /** Segundos em 04:28, como todo tocador de vídeo mostra. */
+  function relogio(segundos) {
+    var s = Math.max(0, Math.round(Number(segundos) || 0));
+    var m = Math.floor(s / 60);
+    var r = s % 60;
+    return (m < 10 ? "0" : "") + m + ":" + (r < 10 ? "0" : "") + r;
+  }
+
+  var ORDENS = [
+    { id: "nome", rotulo: "Nome" },
+    { id: "tipo", rotulo: "Tipo" },
+    { id: "duracao", rotulo: "Duração" },
+  ];
+  var midiaOrdem = 0;
+
+  function iconeDoTipo(tipo) {
+    if (tipo === "audio") {
+      return '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+        'stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+        '<path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></svg>';
+    }
+    if (tipo === "image") {
+      return '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+        'stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+        '<rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/>' +
+        '<path d="m21 15-5-5L5 21"/></svg>';
+    }
+    return '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+      'stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+      '<rect x="2" y="6" width="14" height="12" rx="3"/><path d="m22 8-6 4 6 4z"/></svg>';
+  }
+
+  var NOME_DO_TIPO = { video: "Vídeo", audio: "Áudio", image: "Imagem" };
+
+  /**
+   * A lista da pasta, com capa, duração e etiqueta.
+   *
+   * A capa e a duração vêm da cabine junto com a lista — este aparelho não
+   * consegue abrir o arquivo do computador, e mandar o vídeo inteiro pela
+   * Wi-Fi da igreja só para mostrar um quadradinho seria absurdo.
+   */
   function desenharMidia() {
     var termo = $("midiaBusca").value.trim().toLowerCase();
     var lista = midia.filter(function (m) {
       if (midiaTipo !== "todos" && m.tipo !== midiaTipo) return false;
       return !termo || m.titulo.toLowerCase().indexOf(termo) >= 0;
     });
+
+    var ordem = ORDENS[midiaOrdem].id;
+    lista.sort(function (a, b) {
+      if (ordem === "tipo") return (a.tipo || "").localeCompare(b.tipo || "") || a.titulo.localeCompare(b.titulo);
+      if (ordem === "duracao") return (b.segundos || 0) - (a.segundos || 0);
+      return a.titulo.localeCompare(b.titulo, "pt-BR");
+    });
+
     var ul = $("midiaLista");
     ul.innerHTML = "";
     lista.slice(0, 300).forEach(function (m) {
       var li = document.createElement("li");
       var b = document.createElement("button");
-      b.textContent = m.titulo;
-      if (m.detalhe) {
-        var s = document.createElement("span");
-        s.className = "autor";
-        s.textContent = m.detalhe;
-        b.appendChild(s);
-      }
       b.disabled = permissao !== "controle";
+
+      var capa = document.createElement("span");
+      capa.className = "capa";
+      if (m.capa) {
+        var img = document.createElement("img");
+        img.src = m.capa;
+        img.alt = "";
+        capa.appendChild(img);
+      } else {
+        capa.innerHTML = iconeDoTipo(m.tipo);
+      }
+      if (m.segundos > 0) {
+        var dur = document.createElement("span");
+        dur.className = "duracao";
+        dur.textContent = relogio(m.segundos);
+        capa.appendChild(dur);
+      }
+
+      var corpo = document.createElement("span");
+      corpo.className = "corpo-item";
+      var nome = document.createElement("span");
+      nome.className = "nome";
+      nome.textContent = m.titulo;
+      var risco = document.createElement("span");
+      risco.className = "risco";
+      var etiqueta = document.createElement("span");
+      etiqueta.className = "etiqueta";
+      etiqueta.innerHTML =
+        '<span class="quadro">' + iconeDoTipo(m.tipo) + "</span>" +
+        "<span>" + (NOME_DO_TIPO[m.tipo] || "Arquivo") + "</span>";
+      corpo.appendChild(nome);
+      corpo.appendChild(risco);
+      corpo.appendChild(etiqueta);
+
+      var mais = document.createElement("span");
+      mais.className = "mais";
+      mais.setAttribute("aria-hidden", "true");
+      mais.innerHTML =
+        '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">' +
+        '<circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>';
+
+      b.appendChild(capa);
+      b.appendChild(corpo);
+      b.appendChild(mais);
       b.onclick = function () {
-        $("midiaEstado").textContent = "Mandando “" + m.titulo + "” para o telão…";
+        $("midiaEstado").textContent = "Mandando para o telão…";
         pedir("/projetar", { tipo: "media", refId: m.id })
           .then(function () { $("midiaEstado").textContent = "“" + m.titulo + "” no telão."; })
           .catch(function (e) {
@@ -674,12 +1085,13 @@
       li.appendChild(b);
       ul.appendChild(li);
     });
+
     if (lista.length === 0) {
       $("midiaEstado").textContent = midia.length
-        ? "Nada com esse nome."
-        : "A pasta de mídia está vazia — ou ainda não foi escolhida na cabine.";
+        ? "Nada com esse nome"
+        : "A pasta está vazia — ou ainda não foi escolhida na cabine";
     } else if (permissao !== "controle") {
-      $("midiaEstado").textContent = "Você vê a pasta, mas ainda não manda para o telão.";
+      $("midiaEstado").textContent = lista.length + " de " + midia.length + " · só para ver";
     } else {
       $("midiaEstado").textContent = lista.length + " de " + midia.length;
     }
@@ -743,6 +1155,7 @@
   function abrirEditor(musica) {
     musicaAberta = musica;
     $("letrasLista").hidden = true;
+    $("letrasSlides").hidden = true;
     $("letrasEditor").hidden = false;
     $("edTitulo").value = musica.titulo || "";
     $("edArtista").value = musica.artista || "";
@@ -753,8 +1166,131 @@
   function abrirMusica(id) {
     fetch("/musica?token=" + encodeURIComponent(token) + "&id=" + encodeURIComponent(id))
       .then(function (r) { return r.json(); })
-      .then(function (d) { if (d.ok) abrirEditor(d.musica); })
+      .then(function (d) { if (d.ok) abrirSlides(d.musica, d.tema); })
       .catch(function () { $("edEstado").textContent = "Sem conexão com a cabine."; });
+  }
+
+  // ─────────────────────────────────────────── grade de slides
+
+  /**
+   * A música aberta em estrofes, como o telão vai mostrar.
+   *
+   * Os slides vêm prontos da cabine — repartir a letra aqui daria outra
+   * contagem que a do telão, e "19 de 32" na mão não bater com "19 de 32"
+   * na parede é o tipo de erro que só aparece no meio do louvor.
+   */
+  function abrirSlides(musica, tema) {
+    musicaEmSlides = musica;
+    temaEmSlides = tema || null;
+    musicaAberta = null;
+    // Zera antes de desenhar: o slide aceso era o da música anterior, e
+    // acender a mesma posição nesta seria apontar a estrofe errada até o
+    // próximo aviso da cabine chegar.
+    slideNoAr = -1;
+    $("letrasLista").hidden = true;
+    $("letrasEditor").hidden = true;
+    $("letrasSlides").hidden = false;
+    $("slidesTitulo").textContent = musica.titulo || "Sem título";
+    desenharSlides();
+    window.scrollTo(0, 0);
+  }
+
+  function fecharSlides() {
+    musicaEmSlides = null;
+    temaEmSlides = null;
+    slideNoAr = -1;
+    $("letrasSlides").hidden = true;
+    $("letrasEditor").hidden = true;
+    $("letrasLista").hidden = false;
+    carregarRepertorio();
+  }
+
+  /** O fundo do tema numa miniatura, do jeito que o aparelho consegue. */
+  function pintarTema(quadro, texto) {
+    if (!temaEmSlides) return;
+    if (temaEmSlides.imagem) quadro.style.backgroundImage = "url(" + temaEmSlides.imagem + ")";
+    else if (temaEmSlides.fundo) quadro.style.background = temaEmSlides.fundo;
+    if (temaEmSlides.cor) texto.style.color = temaEmSlides.cor;
+    if (temaEmSlides.maiusculas) texto.style.textTransform = "uppercase";
+  }
+
+  function desenharSlides() {
+    var m = musicaEmSlides;
+    if (!m) return;
+    var slides = m.slides || [];
+    $("slidesQuantos").textContent =
+      slides.length === 1 ? "1 slide" : slides.length + " slides";
+    $("slidesEstado").textContent = slides.length
+      ? (permissao === "controle"
+          ? "Toque numa estrofe para pôr no telão."
+          : "Só para ver — peça controle na cabine.")
+      : "Esta música ainda não tem letra.";
+
+    var ul = $("gradeSlides");
+    ul.innerHTML = "";
+    slides.forEach(function (sl, i) {
+      var li = document.createElement("li");
+      var b = document.createElement("button");
+      b.disabled = permissao !== "controle";
+      if (i === slideNoAr) b.setAttribute("aria-current", "true");
+
+      var quadro = document.createElement("span");
+      quadro.className = "mini";
+      var texto = document.createElement("span");
+      texto.className = "texto";
+      texto.textContent = sl.texto || "";
+      pintarTema(quadro, texto);
+      if (sl.rotulo) {
+        var rotulo = document.createElement("span");
+        rotulo.className = "rotulo";
+        rotulo.textContent = sl.rotulo;
+        quadro.appendChild(rotulo);
+      }
+      quadro.appendChild(texto);
+
+      var numero = document.createElement("span");
+      numero.className = "numero";
+      numero.textContent = String(i + 1);
+
+      b.appendChild(quadro);
+      b.appendChild(numero);
+      b.onclick = function () { projetarSlide(i); };
+      li.appendChild(b);
+      ul.appendChild(li);
+    });
+  }
+
+  function projetarSlide(i) {
+    if (!musicaEmSlides) return;
+    $("slidesEstado").textContent = "Mandando o slide " + (i + 1) + "…";
+    pedir("/projetar", { tipo: "song", refId: musicaEmSlides.id, slide: i })
+      .then(function () { $("slidesEstado").textContent = "Slide " + (i + 1) + " no telão."; })
+      .catch(function (e) {
+        if (e.message !== "sessao") $("slidesEstado").textContent = e.message;
+      });
+  }
+
+  /**
+   * Marca na grade o slide que está no telão.
+   *
+   * Compara pelo id do que está no ar, não pelo título: duas músicas com o
+   * mesmo nome no repertório fariam a grade acender a estrofe errada.
+   */
+  function marcarSlideNoAr(e) {
+    if (!musicaEmSlides) return;
+    var meu = e && e.refId === musicaEmSlides.id && e.slideAtual > 0;
+    var novo = meu ? e.slideAtual - 1 : -1;
+    if (novo === slideNoAr) return;
+    slideNoAr = novo;
+    var botoes = $("gradeSlides").children;
+    for (var i = 0; i < botoes.length; i++) {
+      var b = botoes[i].firstChild;
+      if (!b) continue;
+      if (i === slideNoAr) b.setAttribute("aria-current", "true");
+      else b.removeAttribute("aria-current");
+    }
+    var atual = botoes[slideNoAr];
+    if (atual && atual.scrollIntoView) atual.scrollIntoView({ block: "nearest" });
   }
 
   /**
@@ -810,10 +1346,17 @@
         $("edEstado").textContent = "Salvo na cabine.";
         limparRascunho();
         setTimeout(function () {
+          var voltarPara = musicaEmSlides;
           musicaAberta = null;
           $("letrasEditor").hidden = true;
-          $("letrasLista").hidden = false;
-          carregarRepertorio();
+          // Reabre a grade pela cabine: os slides mudaram com a letra, e
+          // mostrar os antigos seria a grade mentindo sobre o telão.
+          if (voltarPara && voltarPara.id) abrirMusica(voltarPara.id);
+          else {
+            musicaEmSlides = null;
+            $("letrasLista").hidden = false;
+            carregarRepertorio();
+          }
         }, 700);
       })
       .catch(function (e) {
@@ -884,6 +1427,10 @@
     }
   });
   $("sair").addEventListener("click", function () {
+    // Pergunta antes: a engrenagem parece ajuste, e sair sem querer no meio
+    // do culto custa achar o endereço e entrar de novo.
+    var eu = ($("quem").textContent || "").replace("Você entrou como ", "").replace(".", "");
+    if (!window.confirm("Sair" + (eu && eu !== "—" ? " como " + eu : "") + "?")) return;
     localStorage.removeItem(CHAVE);
     token = null;
     mostrarPareamento();
@@ -912,6 +1459,11 @@
   });
 
   $("midiaBusca").addEventListener("input", desenharMidia);
+  $("midiaOrdenar").addEventListener("click", function () {
+    midiaOrdem = (midiaOrdem + 1) % ORDENS.length;
+    $("midiaOrdemRotulo").textContent = ORDENS[midiaOrdem].rotulo;
+    desenharMidia();
+  });
   $("midiaFiltros").addEventListener("click", function (ev) {
     var b = ev.target.closest("[data-tipo]");
     if (!b) return;
@@ -955,13 +1507,23 @@
   });
 
   $("novaMusica").addEventListener("click", function () {
+    musicaEmSlides = null;
     abrirEditor({ id: null, titulo: "", artista: "", letra: "" });
   });
   $("edVoltar").addEventListener("click", function () {
     musicaAberta = null;
     limparRascunho();
     $("letrasEditor").hidden = true;
-    $("letrasLista").hidden = false;
+    // Quem entrou pelo editor volta para a lista; quem entrou pela grade
+    // volta para a grade, que é de onde saiu.
+    if (musicaEmSlides) $("letrasSlides").hidden = false;
+    else $("letrasLista").hidden = false;
+  });
+  $("slidesVoltar").addEventListener("click", fecharSlides);
+  $("slidesEditar").addEventListener("click", function () {
+    if (!musicaEmSlides) return;
+    $("letrasSlides").hidden = true;
+    abrirEditor(musicaEmSlides);
   });
   $("edSalvar").addEventListener("click", salvarMusica);
   ["edTitulo", "edArtista", "edLetra"].forEach(function (id) {
