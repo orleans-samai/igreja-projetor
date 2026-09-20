@@ -751,7 +751,9 @@ class RemoteControl {
       return;
     }
     if (!podeFazer(disp.permissao, "controle")) return this._semPermissao(res, "controle");
-    const valor = Number(corpo.valor);
+    // `typeof` antes de `Number`: `Number(null)` é zero, e um corpo torto
+    // passaria por "mudo" — a igreja perderia o som sem ninguém ter pedido.
+    const valor = typeof corpo.valor === "number" ? corpo.valor : NaN;
     if (!Number.isFinite(valor) || valor < 0 || valor > 100) {
       this._json(res, 400, { ok: false, erro: "Volume inválido." });
       return;
