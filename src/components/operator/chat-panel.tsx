@@ -1,4 +1,4 @@
-import { MessageSquare, Send, X } from "lucide-react";
+import { MessageSquare, Send } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -119,7 +119,6 @@ export function ChatPanel() {
   const mensagens = useChatStore((s) => s.mensagens);
   const aberto = useChatStore((s) => s.aberto);
   const posicao = useChatStore((s) => s.posicao);
-  const setPosicao = useChatStore((s) => s.setPosicao);
   const operador = useLumenStore((s) => s.settings.operatorName);
   const [texto, setTexto] = useState("");
   const [enviando, setEnviando] = useState(false);
@@ -164,19 +163,9 @@ export function ChatPanel() {
         <h2 className="flex items-center gap-1.5">
           <MessageSquare className="size-3.5 text-subtle" aria-hidden /> Chat
         </h2>
-        {/* Na lateral, fechar quer dizer esconder de vez — não há "fechado
-            mas ocupando coluna". O botão Chat da barra de cima traz de volta. */}
-        <Button
-          size="iconSm"
-          variant="ghost"
-          aria-label="Esconder o chat"
-          onClick={() => {
-            const destino = fecharLeva(posicao);
-            if (destino) setPosicao(destino);
-          }}
-        >
-          <X />
-        </Button>
+{/* Sem botão de fechar: o chat é móvel da cabine, e some só onde
+            se escolhe onde ele fica — nas Configurações. Recado de culto que
+            chega num painel fechado é recado perdido. */}
       </div>
 
       <ul className="lumen-scroll min-h-0 flex-1 space-y-1.5 overflow-y-auto p-2">

@@ -272,40 +272,66 @@ try {
     nomeComprido,
     { timeout: 10000 },
   );
+  // Emulação, não setSize: o Windows recusa janela maior que o monitor, e a
+  // varredura passava a medir um tamanho que não tinha pedido — dizendo "ok"
+  // para telas que nunca chegou a testar.
+  const cdp = await page.context().newCDPSession(page);
   for (const [largura, altura] of [
-    [1600, 900],
+    [800, 600],
+    [1024, 640],
+    [1280, 720],
     [1366, 768],
+    [1600, 900],
+    [1920, 1080],
+    [2560, 1440],
   ]) {
-    await app.evaluate(
-      ({ BrowserWindow }, [w, h]) => {
-        const j = BrowserWindow.getAllWindows().find((x) => x.webContents.getURL() === "lumen://app/");
-        j?.unmaximize();
-        j?.setSize(w, h);
-      },
-      [largura, altura],
-    );
-    await page.waitForTimeout(700);
+    await cdp.send("Emulation.setDeviceMetricsOverride", {
+      width: largura,
+      height: altura,
+      deviceScaleFactor: 1,
+      mobile: false,
+    });
+    await page.waitForTimeout(600);
     const rolagem = await page.evaluate(() => {
       const d = document.documentElement;
       const chat = document.querySelector('[aria-label="Chat com os celulares"]');
       const c = chat?.getBoundingClientRect();
+      // Apresentar e Parar são os que ninguém pode perder no meio do culto.
+      const vivos = ["Apresentar", "Parar"].map((nome) => {
+        const b = document.querySelector(`button[aria-label="${nome}"]`);
+        const r = b?.getBoundingClientRect();
+        return { nome, direita: r ? Math.round(r.right) : -1, largura: r ? Math.round(r.width) : 0 };
+      });
       return {
         sobraLado: d.scrollWidth - d.clientWidth,
         sobraBaixo: d.scrollHeight - d.clientHeight,
         janela: d.clientWidth,
         chatLargura: c ? Math.round(c.width) : 0,
         chatDireita: c ? Math.round(c.right) : 0,
+        vivos,
       };
     });
-    assert.equal(rolagem.sobraLado, 0, `a cabine rolou ${rolagem.sobraLado}px para o lado em ${largura}x${altura}`);
-    assert.equal(rolagem.sobraBaixo, 0, `a cabine rolou ${rolagem.sobraBaixo}px para baixo em ${largura}x${altura}`);
-    // O chat é móvel da cabine, não janelinha: fica à vista, dentro da tela.
-    assert.ok(rolagem.chatLargura > 0, `o chat sumiu em ${largura}x${altura}`);
-    assert.ok(
-      rolagem.chatDireita <= rolagem.janela + 1,
-      `o chat ficou ${rolagem.chatDireita - rolagem.janela}px fora da tela em ${largura}x${altura}`,
-    );
+    const onde = `${largura}x${altura}`;
+    assert.equal(rolagem.sobraLado, 0, `a cabine rolou ${rolagem.sobraLado}px para o lado em ${onde}`);
+    assert.equal(rolagem.sobraBaixo, 0, `a cabine rolou ${rolagem.sobraBaixo}px para baixo em ${onde}`);
+    for (const v of rolagem.vivos) {
+      assert.ok(v.largura > 0, `"${v.nome}" sumiu em ${onde}`);
+      assert.ok(
+        v.direita <= rolagem.janela + 1,
+        `"${v.nome}" ficou ${v.direita - rolagem.janela}px fora da tela em ${onde}`,
+      );
+    }
+    // O chat é móvel da cabine, não janelinha — mas abaixo de 768px a coluna
+    // não cabe, e some por desenho, como qualquer painel lateral.
+    if (largura >= 768) {
+      assert.ok(rolagem.chatLargura > 0, `o chat sumiu em ${onde}`);
+      assert.ok(
+        rolagem.chatDireita <= rolagem.janela + 1,
+        `o chat ficou ${rolagem.chatDireita - rolagem.janela}px fora da tela em ${onde}`,
+      );
+    }
   }
+  await cdp.send("Emulation.clearDeviceMetricsOverride");
 
   await fetch(`${remoteBase}/comando`, { method: "POST", body: JSON.stringify({ token: pareado.token, acao: "parar" }) });
   await page.waitForFunction(() => JSON.parse(localStorage.getItem("lumen-live-frame") ?? "null")?.status === "idle");
@@ -526,7 +552,7 @@ try {
   assert.deepEqual(errors, []);
   const disk = JSON.parse(await readFile(path.join(profile, "data", "library.json"), "utf8"));
   assert.ok(disk.values["lumen-v2"]);
-  console.log(`PASS: offline, fonts, Bible, restart persistence, projector, media ranges, preflight, Auto-Slide, remote control (LAN + PIN + nome fixo na rede), update check, review before apply, 1366×768 at 100/125/150% and 800×600, cabine never scrolls and the chat stays on screen, church logo and name reachable from the menu bar, double-click to project, fixed text only in the footer, YouTube collapses the lyrics strip, phone has one play/pause button, sees the media folder, projects from it and searches lyrics through the cabine. Evidence: ${evidence}`);
+  console.log(`PASS: offline, fonts, Bible, restart persistence, projector, media ranges, preflight, Auto-Slide, remote control (LAN + PIN + nome fixo na rede), update check, review before apply, 1366×768 at 100/125/150% and 800×600, no scroll at seven sizes from 800×600 to 2560×1440 and the chat stays on screen, church logo and name reachable from the menu bar, double-click to project, fixed text only in the footer, YouTube collapses the lyrics strip, phone has one play/pause button, sees the media folder, projects from it and searches lyrics through the cabine. Evidence: ${evidence}`);
 } finally {
   if (app) await app.close();
   console.log(`Isolated test profile: ${profile}`);

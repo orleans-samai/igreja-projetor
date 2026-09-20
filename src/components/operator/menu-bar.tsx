@@ -4,7 +4,6 @@ import {
   ImageUp,
   Menu as MenuIcon,
   Play,
-  Radio,
   Search,
   Square,
 } from "lucide-react";
@@ -18,7 +17,6 @@ import { Hint } from "@/components/ui/tooltip";
 import { cn } from "@/lib/cn";
 import { fold, nid } from "@/lib/fold";
 import { escreverMuf, lerMuf } from "@/lib/muf";
-import { ChatButton } from "@/components/operator/chat-panel";
 import { importarMusicasJsonDoDisco } from "@/lib/import-songs-json";
 import { openOutputWindow } from "@/lib/live-channel";
 import { openProjectorWindow } from "@/lib/windows-desktop";
@@ -82,7 +80,6 @@ export function MenuBar({
   const savePlaylist = useLumenStore((s) => s.savePlaylist);
   const exportLibrary = useLumenStore((s) => s.exportLibrary);
   const importLibrary = useLumenStore((s) => s.importLibrary);
-  const setLiveMode = useOpsStore((s) => s.setLiveMode);
   const setTourOpen = useOpsStore((s) => s.setTourOpen);
   const reorganizando = useOpsStore((s) => s.reorganizando);
   const autoSlideLigado = useAutoSlideStore((s) => s.ligado);
@@ -300,7 +297,6 @@ export function MenuBar({
     {
       label: "Culto",
       items: [
-        { label: "Modo operador", onSelect: () => setLiveMode(true), shortcut: "F8" },
         { label: "Check-up pré-culto", onSelect: () => setCheckupOpen(true), shortcut: "Ctrl+Shift+H" },
         { label: "Busca universal", onSelect: () => setCommandOpen(true), shortcut: "Ctrl+K" },
         { label: "Contagem regressiva", onSelect: onCountdown },
@@ -372,7 +368,9 @@ export function MenuBar({
       <span className="ml-1.5 mr-1 text-body font-semibold tracking-tight">Lúmen</span>
 
       {/* Desktop: os cinco menus lado a lado. */}
-      <nav className="hidden items-center gap-0.5 sm:flex" aria-label="Menu principal">
+      {/* `min-w-0` deixa esta faixa ceder: numa janela estreita quem some é
+          um menu, nunca o botão de parar a projeção. */}
+      <nav className="hidden min-w-0 items-center gap-0.5 overflow-hidden sm:flex" aria-label="Menu principal">
         {sections.map((section) => (
           <Menu key={section.label}>
             <MenuTrigger asChild>
@@ -522,7 +520,10 @@ export function MenuBar({
         {church}
       </p>
 
-      <div className="ml-auto flex items-center gap-1">
+      {/* Apresentar, Parar e a busca não encolhem nem se cortam: numa janela
+          de 800px eles eram os primeiros a sair da tela, e são justamente os
+          que ninguém pode perder no meio do culto. */}
+      <div className="ml-auto flex shrink-0 items-center gap-1">
         <span data-tour="tally" className="mr-1 hidden md:inline-flex">
           <Tally state={tally} label={tallyLabel} />
         </span>
@@ -559,8 +560,6 @@ export function MenuBar({
           </Button>
         </Hint>
 
-        <ChatButton />
-
         <Hint label="Tutorial guiado da cabine, para quem está começando">
           <Button size="sm" variant="secondary" onClick={() => setTourOpen(true)}>
             <GraduationCap />
@@ -568,10 +567,7 @@ export function MenuBar({
           </Button>
         </Hint>
 
-        <Button size="sm" variant="secondary" onClick={() => setLiveMode(true)}>
-          <Radio />
-          <span className="hidden md:inline">Modo operador</span>
-        </Button>
+
       </div>
     </header>
   );
