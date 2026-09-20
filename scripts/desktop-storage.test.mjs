@@ -17,14 +17,26 @@ const state = (title) => JSON.stringify({ state: { title }, version: 0 });
  * então um store novo sem registro falha aqui, e não no culto.
  */
 test("toda chave persistida pelos stores é aceita pelo disco", async () => {
-  const storeDir = new URL("../src/store/", import.meta.url);
-  const arquivos = await readdir(storeDir);
-  const chaves = new Set();
-  for (const nome of arquivos.filter((f) => f.endsWith(".ts"))) {
-    const fonte = await readFile(new URL(nome, storeDir), "utf8");
-    for (const m of fonte.matchAll(/name:\s*"(lumen-[a-z0-9-]+)"/g)) chaves.add(m[1]);
+  // Varre src/store e também os stores de funcionalidade em src/features:
+  // o primeiro store que nasceu fora de src/store quase repetiu a história
+  // da fila do YouTube, porque este teste não olhava lá.
+  const raizes = [new URL("../src/store/", import.meta.url)];
+  const features = new URL("../src/features/", import.meta.url);
+  for (const pasta of await readdir(features, { withFileTypes: true }).catch(() => [])) {
+    if (pasta.isDirectory()) raizes.push(new URL(`${pasta.name}/`, features));
   }
-  assert.ok(chaves.size >= 4, `esperava achar os stores persistidos, achei ${chaves.size}`);
+  const chaves = new Set();
+  for (const raiz of raizes) {
+    for (const nome of (await readdir(raiz)).filter((f) => f.endsWith(".ts"))) {
+      const fonte = await readFile(new URL(nome, raiz), "utf8");
+      // Todo literal "lumen-..." num arquivo de store, não só o que está
+      // colado em `name:`. O primeiro store a usar uma constante passou
+      // batido por este teste — e teria dado "Chave inválida" na abertura do
+      // app instalado, que é exatamente o que ele existe para impedir.
+      for (const m of fonte.matchAll(/"(lumen-[a-z0-9-]+)"/g)) chaves.add(m[1]);
+    }
+  }
+  assert.ok(chaves.size >= 6, `esperava achar os stores persistidos, achei ${chaves.size}`);
 
   const dir = await mkdtemp(path.join(os.tmpdir(), "lumen-chaves-"));
   try {

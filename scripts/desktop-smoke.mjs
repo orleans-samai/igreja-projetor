@@ -217,6 +217,45 @@ try {
     { timeout: 10000 },
   );
 
+  // ---- Artes: do formulário ao desenho, sem sair do app ----
+  await page.getByRole("button", { name: "Artes", exact: true }).click();
+  const dialogoArtes = page.getByRole("dialog", { name: "Artes" });
+  await dialogoArtes.waitFor({ state: "visible", timeout: 10000 });
+  await dialogoArtes.getByRole("button", { name: "Criar nova arte" }).click();
+  await page.getByRole("button", { name: "Conferência", exact: true }).click();
+  await page.getByLabel("Nome do evento").fill("Conferência de Jovens");
+  await page.getByLabel("Data", { exact: true }).fill("12 de março");
+  await page.getByRole("button", { name: "Escolher o formato" }).click();
+  await page.getByRole("button", { name: /^Instagram quadrado/ }).click();
+  // Doze desenhos com os mesmos dados, cada um desenhado pelo renderizador
+  // de verdade — a miniatura é o mesmo SVG do arquivo.
+  const opcoes = page.getByRole("button", { name: /^Escolher o desenho / });
+  await opcoes.first().waitFor({ timeout: 10000 });
+  assert.equal(await opcoes.count(), 12);
+  const desenhos = await page.evaluate(
+    () => document.querySelectorAll('[role="dialog"] svg[viewBox="0 0 1080 1080"]').length,
+  );
+  assert.ok(desenhos >= 12, `esperava 12 desenhos, achei ${desenhos}`);
+  await opcoes.first().click();
+
+  // O editor abre com o mesmo desenho e com o texto do formulário dentro.
+  // Espera o texto aparecer em vez de amostrar um quadro: o SVG entra um
+  // tique depois do botão, e a tipografia sorteada pode pôr tudo em caixa
+  // alta — a comparação ignora caixa e espaço entre as linhas.
+  await page.getByRole("button", { name: "Salvar", exact: true }).waitFor({ timeout: 10000 });
+  await page.waitForFunction(
+    () => {
+      const svg = document.querySelector('[role="dialog"] svg[viewBox="0 0 1080 1080"]');
+      const texto = (svg?.textContent ?? "").toLocaleUpperCase("pt-BR").replace(/\s+/g, "");
+      return texto.includes("CONFERÊNCIADEJOVENS");
+    },
+    null,
+    { timeout: 10000 },
+  );
+
+  await page.keyboard.press("Escape");
+  await dialogoArtes.waitFor({ state: "hidden", timeout: 10000 });
+
   // ---- O assistente existe, nasce desligado, e não é pré-requisito de nada ----
   const iaInicial = await page.evaluate(() => window.lumenDesktop.iaEstado());
   assert.equal(iaInicial.modo, "desativado", "a IA devia nascer desativada num PC de igreja");
@@ -719,7 +758,7 @@ try {
   assert.deepEqual(errors, []);
   const disk = JSON.parse(await readFile(path.join(profile, "data", "library.json"), "utf8"));
   assert.ok(disk.values["lumen-v2"]);
-  console.log(`PASS: offline, fonts, Bible, restart persistence, projector, media ranges, preflight, Auto-Slide, remote control (LAN, entrada por nome, nome fixo na rede), update check, review before apply, 1366×768 at 100/125/150% and 800×600, no scroll at seven sizes from 800×600 to 2560×1440 and the chat stays on screen, church logo and name reachable from the menu bar, local AI off by default and the cabine independent of it, dirigente upload page, video as a theme background, find a song by a lyric excerpt, right-click on lyrics edits or removes, double-click to project, fixed text only in the footer, YouTube collapses the lyrics strip, phone has one play/pause button and the screen volume, sees the media folder, projects from it and searches lyrics through the cabine. Evidence: ${evidence}`);
+  console.log(`PASS: offline, fonts, Bible, restart persistence, projector, media ranges, preflight, Auto-Slide, remote control (LAN, entrada por nome, nome fixo na rede), update check, review before apply, 1366×768 at 100/125/150% and 800×600, no scroll at seven sizes from 800×600 to 2560×1440 and the chat stays on screen, church logo and name reachable from the menu bar, art studio makes a design from a form, local AI off by default and the cabine independent of it, dirigente upload page, video as a theme background, find a song by a lyric excerpt, right-click on lyrics edits or removes, double-click to project, fixed text only in the footer, YouTube collapses the lyrics strip, phone has one play/pause button and the screen volume, sees the media folder, projects from it and searches lyrics through the cabine. Evidence: ${evidence}`);
 } finally {
   if (app) await app.close();
   console.log(`Isolated test profile: ${profile}`);

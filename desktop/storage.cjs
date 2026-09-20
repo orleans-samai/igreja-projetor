@@ -13,6 +13,7 @@ const KEYS = new Set([
   "lumen-auto-slide-v1",
   "lumen-youtube-v1",
   "lumen-chat-v1",
+  "lumen-artes-v1",
 ]);
 const LIMIT = 100 * 1024 * 1024;
 

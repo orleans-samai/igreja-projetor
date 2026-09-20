@@ -5,6 +5,7 @@ import {
   Smartphone,
   Sparkles,
   Menu as MenuIcon,
+  Palette,
   Play,
   Search,
   Square,
@@ -54,6 +55,7 @@ export function MenuBar({
   onLogo,
   onPermissoes,
   onIa,
+  onArtes,
   onOptimize,
 }: {
   onNewSong: () => void;
@@ -69,6 +71,7 @@ export function MenuBar({
   onLogo: () => void;
   onPermissoes: () => void;
   onIa: () => void;
+  onArtes: () => void;
   onOptimize: () => void;
 }) {
   const church = useLumenStore((s) => s.settings.churchName);
@@ -478,6 +481,19 @@ export function MenuBar({
           <Sparkles className="size-3.5" aria-hidden /> IA
         </button>
 
+        <button
+          type="button"
+          onClick={onArtes}
+          className={cn(
+            "flex items-center gap-1.5 rounded-md px-2 py-1 text-secondary text-muted",
+            "transition-colors duration-[var(--motion-fast)] ease-[var(--ease-out)]",
+            "hover:bg-elevated hover:text-fg",
+            "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring",
+          )}
+        >
+          <Palette className="size-3.5" aria-hidden /> Artes
+        </button>
+
         {/* Auto-Slide e YouTube são recursos extras, não um modo permanente
             como Reorganizar — por isso ficam escondidos atrás de um clique
             em vez de ocupar a barra o tempo todo. O ponto aceso no gatilho
@@ -553,6 +569,7 @@ export function MenuBar({
             <MenuItem onSelect={onLogo}>Logo e nome da igreja</MenuItem>
             <MenuItem onSelect={onPermissoes}>Permissões do celular</MenuItem>
             <MenuItem onSelect={onIa}>Assistente Lúmen</MenuItem>
+            <MenuItem onSelect={onArtes}>Artes</MenuItem>
           </Section>
         </MenuContent>
       </Menu>
