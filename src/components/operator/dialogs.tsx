@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Segmented } from "@/components/ui/segmented";
 import { Input, Label, Textarea } from "@/components/ui/input";
+import { FundoDeVideo } from "@/components/operator/fundo-video";
 import { IdentidadeDaIgreja } from "@/components/operator/logo-dialog";
 import { MediaFoldersSection } from "@/components/operator/media-folders-section";
 import { ACCENT_PRESETS } from "@/lib/accent-presets";
@@ -550,15 +551,19 @@ export function DisplayDialog({
   const theme = themes.find((t) => t.id === songThemeId) ?? themes[0];
   const [clockPad, setClockPad] = useState(false);
 
+  // O quadro de prévia desenha vídeo com um <video>, logo abaixo; aqui só
+  // entram os fundos que são pintura.
   const bg =
     theme.backgroundType === "color"
       ? { background: theme.backgroundValue }
-      : {
+      : theme.backgroundType === "video"
+        ? undefined
+        : {
           backgroundImage: `url(${theme.backgroundValue})`,
           backgroundSize: settings.fitMode === "contain" ? "contain" : "cover",
           backgroundPosition: "center",
           backgroundRepeat: "no-repeat" as const,
-        };
+          };
 
   const fill = settings.baseFill === "light" ? "bg-paper text-paper-fg" : "bg-stage text-stage-fg";
   const clockCorner: Record<ClockPosition, string> = {
@@ -605,8 +610,18 @@ export function DisplayDialog({
               )}
               style={settings.showWallpaper ? bg : undefined}
             >
+              {settings.showWallpaper && theme.backgroundType === "video" && (
+                <video
+                  className="absolute inset-0 size-full object-cover"
+                  src={theme.backgroundValue}
+                  autoPlay
+                  loop
+                  muted
+                  playsInline
+                />
+              )}
               {settings.logoUrl ? (
-                <img src={settings.logoUrl} alt="Logo" className="max-h-16 object-contain" />
+                <img src={settings.logoUrl} alt="Logo" className="relative max-h-16 object-contain" />
               ) : (
                 <Monitor className="size-8 text-muted" />
               )}
@@ -645,6 +660,14 @@ export function DisplayDialog({
               }}
             />
           </label>
+
+          <FundoDeVideo
+            theme={theme}
+            aoEscolher={(patch) => {
+              updateTheme({ ...theme, ...patch });
+              update({ showWallpaper: true });
+            }}
+          />
 
           <div>
             <Label>Ajuste</Label>

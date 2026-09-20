@@ -126,6 +126,23 @@ try {
   // diferente de idle) atrapalhar o relançamento do Electron mais abaixo.
   await fetch(`${remoteBase}/comando`, { method: "POST", body: JSON.stringify({ token: pareado.token, acao: "parar" }) });
   await page.waitForFunction(() => JSON.parse(localStorage.getItem("lumen-live-frame") ?? "null")?.status === "idle");
+  // ---- Vídeo como tema, referenciado da pasta e não embutido ----
+  // Um vídeo guardado como `data:` dentro do tema viajaria no quadro a cada
+  // troca de slide; o tema guarda só o endereço do arquivo na pasta.
+  await page.getByRole("button", { name: "Mais", exact: true }).click();
+  await page.getByRole("menuitem", { name: /Exibição|Configurações de exibição/ }).click().catch(async () => {
+    await page.keyboard.press("Escape");
+    await page.getByRole("button", { name: "Tela", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Configurações de exibição" }).click();
+  });
+  const dialogoExibicao = page.getByRole("dialog", { name: /exibição/i });
+  await dialogoExibicao.waitFor({ state: "visible", timeout: 10000 });
+  // Com a pasta de vídeo vazia o seletor não existe, e o painel explica o
+  // que fazer — os dois casos mostram o mesmo rótulo.
+  await dialogoExibicao.getByText("Fundo em vídeo").waitFor({ timeout: 10000 });
+  await page.keyboard.press("Escape");
+  await dialogoExibicao.waitFor({ state: "hidden", timeout: 10000 });
+
   // ---- Achar a música pelo trecho que se lembra ----
   // Numa largura de cabine: a janela mantém os dois layouts montados, e sem
   // fixar o tamanho o teste pode acabar olhando para o que está escondido.
@@ -645,7 +662,7 @@ try {
   assert.deepEqual(errors, []);
   const disk = JSON.parse(await readFile(path.join(profile, "data", "library.json"), "utf8"));
   assert.ok(disk.values["lumen-v2"]);
-  console.log(`PASS: offline, fonts, Bible, restart persistence, projector, media ranges, preflight, Auto-Slide, remote control (LAN, entrada por nome, nome fixo na rede), update check, review before apply, 1366×768 at 100/125/150% and 800×600, no scroll at seven sizes from 800×600 to 2560×1440 and the chat stays on screen, church logo and name reachable from the menu bar, find a song by a lyric excerpt, right-click on lyrics edits or removes, double-click to project, fixed text only in the footer, YouTube collapses the lyrics strip, phone has one play/pause button and the screen volume, sees the media folder, projects from it and searches lyrics through the cabine. Evidence: ${evidence}`);
+  console.log(`PASS: offline, fonts, Bible, restart persistence, projector, media ranges, preflight, Auto-Slide, remote control (LAN, entrada por nome, nome fixo na rede), update check, review before apply, 1366×768 at 100/125/150% and 800×600, no scroll at seven sizes from 800×600 to 2560×1440 and the chat stays on screen, church logo and name reachable from the menu bar, video as a theme background, find a song by a lyric excerpt, right-click on lyrics edits or removes, double-click to project, fixed text only in the footer, YouTube collapses the lyrics strip, phone has one play/pause button and the screen volume, sees the media folder, projects from it and searches lyrics through the cabine. Evidence: ${evidence}`);
 } finally {
   if (app) await app.close();
   console.log(`Isolated test profile: ${profile}`);
