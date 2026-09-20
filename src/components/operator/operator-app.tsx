@@ -1,6 +1,7 @@
 import { Group, Panel, Separator } from "react-resizable-panels";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChatAviso, ChatPanel } from "@/components/operator/chat-panel";
+import { ColunasSeguras } from "@/components/operator/colunas-seguras";
 import { LogoDialog } from "@/components/operator/logo-dialog";
 import { ArtesDialog } from "@/features/artes/componentes/artes-dialog";
 import { VfxDialog } from "@/features/vfx/componentes/vfx-dialog";
@@ -444,7 +445,30 @@ export function OperatorApp() {
           ) : (
             <>
           <div className="hidden h-full xl:block">
-            <Group orientation="horizontal" className="h-full">
+            <ColunasSeguras
+              alternativa={
+                // Sem divisória móvel, mas com as mesmas colunas e as
+                // mesmas larguras de partida: a cabine inteira continua
+                // à mão, que é o que importa no domingo.
+                <div className="flex h-full">
+                  {ordemVisivel.map((id) => (
+                    <div
+                      key={id}
+                      className="relative h-full overflow-hidden"
+                      style={{ flex: `1 1 ${TAMANHO_PAINEL[id].padrao}`, minWidth: TAMANHO_PAINEL[id].minimo }}
+                    >
+                      {paineis[id]}
+                      <PainelArrastavel id={id} />
+                    </div>
+                  ))}
+                </div>
+              }
+            >
+            {/* A chave carrega o conjunto de colunas: quando ele muda — o
+                chat entrando ou saindo da fileira, a ordem trocada — o
+                grupo nasce de novo em vez de seguir com o layout velho,
+                que é de onde vinham as asserções quebradas. */}
+            <Group key={ordemVisivel.join(",")} orientation="horizontal" className="h-full">
               {ordemVisivel.flatMap((id, i) => {
                 const coluna = (
                   <Panel
@@ -467,6 +491,7 @@ export function OperatorApp() {
                     ];
               })}
             </Group>
+            </ColunasSeguras>
           </div>
           <div className="h-full xl:hidden">
             {mobileTab === "lib" && (
