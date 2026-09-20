@@ -659,3 +659,39 @@ test("o celular recebe o endereço que não vence, quando existe", async () => {
     await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
   }
 });
+
+test("o volume do telão vem do celular, e só de quem controla", async () => {
+  const ctx = await subir();
+  const vistos = [];
+  ctx.rc.onEvento = (e) => vistos.push(e);
+  try {
+    const soChat = await parear(ctx.base, "Visitante");
+    const negado = await fetch(ctx.base + "/volume", {
+      method: "POST",
+      body: JSON.stringify({ token: soChat, valor: 50 }),
+    });
+    // Som que a igreja inteira escuta não é preferência de aparelho.
+    assert.equal(negado.status, 403);
+
+    const token = await parearComControle(ctx.rc, ctx.base, "Mesa de som");
+    const ok = await fetch(ctx.base + "/volume", {
+      method: "POST",
+      body: JSON.stringify({ token, valor: 35 }),
+    });
+    assert.equal(ok.status, 200);
+    assert.deepEqual(
+      vistos.filter((e) => e.tipo === "volume").map((e) => e.valor),
+      [35],
+    );
+
+    for (const valor of [-1, 101, "alto", null]) {
+      const r = await fetch(ctx.base + "/volume", {
+        method: "POST",
+        body: JSON.stringify({ token, valor }),
+      });
+      assert.equal(r.status, 400, `volume ${valor} devia ser recusado`);
+    }
+  } finally {
+    await derrubar(ctx);
+  }
+});

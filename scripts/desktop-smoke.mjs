@@ -249,6 +249,17 @@ try {
     { timeout: 10000 },
   );
   assert.deepEqual(await leBotao(), { texto: "▶ Tocar", acao: "tocar" });
+  // O volume do telão, pelo dedo: a barra existe, obedece a permissão e o
+  // valor chega à cabine.
+  assert.equal(await celular.locator("#volume").getAttribute("aria-label"), "Volume do telão");
+  await celular.locator("#volume").fill("40");
+  await celular.locator("#volume").dispatchEvent("change");
+  await celular.waitForFunction(
+    () => document.querySelector("#volumeRotulo").textContent === "40%",
+    null,
+    { timeout: 10000 },
+  );
+
   await celular.close();
 
   // ---- A cabine não rola, nem para o lado nem para baixo ----
@@ -329,9 +340,9 @@ try {
         `"${v.nome}" ficou ${v.direita - rolagem.janela}px fora da tela em ${onde}`,
       );
     }
-    // O chat é móvel da cabine, não janelinha — mas abaixo de 768px a coluna
-    // não cabe, e some por desenho, como qualquer painel lateral.
-    if (largura >= 768) {
+    // O chat é uma coluna como as outras, e como as outras só existe no
+    // layout de colunas — abaixo de 1280px a cabine vira abas, por desenho.
+    if (largura >= 1280) {
       assert.ok(rolagem.chatLargura > 0, `o chat sumiu em ${onde}`);
       assert.ok(
         rolagem.chatDireita <= rolagem.janela + 1,
@@ -560,7 +571,7 @@ try {
   assert.deepEqual(errors, []);
   const disk = JSON.parse(await readFile(path.join(profile, "data", "library.json"), "utf8"));
   assert.ok(disk.values["lumen-v2"]);
-  console.log(`PASS: offline, fonts, Bible, restart persistence, projector, media ranges, preflight, Auto-Slide, remote control (LAN, entrada por nome, nome fixo na rede), update check, review before apply, 1366×768 at 100/125/150% and 800×600, no scroll at seven sizes from 800×600 to 2560×1440 and the chat stays on screen, church logo and name reachable from the menu bar, double-click to project, fixed text only in the footer, YouTube collapses the lyrics strip, phone has one play/pause button, sees the media folder, projects from it and searches lyrics through the cabine. Evidence: ${evidence}`);
+  console.log(`PASS: offline, fonts, Bible, restart persistence, projector, media ranges, preflight, Auto-Slide, remote control (LAN, entrada por nome, nome fixo na rede), update check, review before apply, 1366×768 at 100/125/150% and 800×600, no scroll at seven sizes from 800×600 to 2560×1440 and the chat stays on screen, church logo and name reachable from the menu bar, double-click to project, fixed text only in the footer, YouTube collapses the lyrics strip, phone has one play/pause button and the screen volume, sees the media folder, projects from it and searches lyrics through the cabine. Evidence: ${evidence}`);
 } finally {
   if (app) await app.close();
   console.log(`Isolated test profile: ${profile}`);

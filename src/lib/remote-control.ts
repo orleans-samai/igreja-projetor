@@ -63,7 +63,10 @@ export type EventoRemoto =
   // rede, e dois provedores diferentes dariam dois resultados para a mesma
   // busca. `pedido` é o número que casa a resposta com quem perguntou.
   | { tipo: "buscar-musica"; pedido: number; termo: string }
-  | { tipo: "letra-musica"; pedido: number; fonte: string };
+  | { tipo: "letra-musica"; pedido: number; fonte: string }
+  // Volume do que toca no telão, pedido pelo celular. Não cabe na lista de
+  // ações porque carrega um número, não é um botão fixo.
+  | { tipo: "volume"; valor: number; de: string };
 
 /** Um achado da internet, do jeito que o celular precisa ver. */
 export interface AchadoRemoto {
@@ -122,6 +125,9 @@ export interface RemoteStatePayload {
    * relato passaria o culto inteiro mentindo.
    */
   midiaTocando: boolean | null;
+  /** De 0 a 100, ou null sem mídia no ar. Inteiro, porque é um controle de
+   *  dedo num celular, não um botão de mesa de som. */
+  midiaVolume: number | null;
 }
 
 /**
@@ -143,7 +149,29 @@ export function estadoRemoto(
     noAr: status === "presenting",
     preto: status === "black",
     midiaTocando: tocandoMidia(live),
+    midiaVolume: volumeDaMidia(live),
   };
+}
+
+/** De 0 a 100 para o celular mostrar; null quando não há som para mexer. */
+export function volumeDaMidia(live: Deck | null): number | null {
+  if (!live || (live.mediaType !== "video" && live.mediaType !== "audio")) return null;
+  if (live.mediaMudo) return 0;
+  return porcentoDeVolume(live.mediaVolume);
+}
+
+/** Aceita o que vier e devolve 0..100 — o valor chega de um aparelho. */
+export function porcentoDeVolume(bruto: number | undefined): number {
+  const n = Number(bruto);
+  if (!Number.isFinite(n)) return 100;
+  return Math.round(Math.min(1, Math.max(0, n)) * 100);
+}
+
+/** O caminho de volta: 0..100 do celular vira 0..1 do elemento que toca. */
+export function volumeDePorcento(bruto: unknown): number {
+  const n = Number(bruto);
+  if (!Number.isFinite(n)) return 1;
+  return Math.min(1, Math.max(0, n / 100));
 }
 
 /** Só vídeo e áudio tocam; imagem no telão não tem play nem pause. */

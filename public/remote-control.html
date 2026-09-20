@@ -209,6 +209,14 @@
         <button class="botao" id="tocarPausar" data-acao="tocar">▶ Tocar</button>
         <button class="botao" data-acao="parar-midia">■ Parar vídeo</button>
       </div>
+      <!-- O som sai do telão, não do aparelho: este controle é o volume que a
+           igreja inteira escuta, por isso exige controle do telão. -->
+      <div class="linha" id="caixaVolume">
+        <button class="botao" id="mudo" aria-label="Mudo">🔇</button>
+        <input id="volume" type="range" min="0" max="100" step="5" value="100"
+               aria-label="Volume do telão" style="flex:1;min-width:0">
+        <span class="tnum" id="volumeRotulo" style="width:3.2em;text-align:right">100%</span>
+      </div>
       <div id="fixoBloco" hidden>
         <p class="dica">Endereço que não vence — guarde nos favoritos</p>
         <a class="botao larga" id="fixoLink" href="#" target="_blank" rel="noopener"></a>
@@ -427,6 +435,8 @@
     $("novaMusica").disabled = !podeEditar;
     $("edSalvar").disabled = !podeEditar;
     $("semMidia").hidden = podeEditar;
+    $("volume").disabled = !podeControlar;
+    $("mudo").disabled = !podeControlar;
     $("buscarWeb").disabled = !podeEditar;
     $("buscaWeb").disabled = !podeEditar;
     if (podeEditar && abaAtual === "letras" && !musicaAberta) carregarRepertorio();
@@ -448,6 +458,31 @@
       : "";
     $("preto").classList.toggle("ativo", !!e.preto);
     desenharTocarPausar(e.midiaTocando);
+    desenharVolume(e.midiaVolume);
+  }
+
+  /**
+   * O volume que a cabine relata, sem atropelar o dedo.
+   *
+   * Enquanto o operador arrasta, o número na tela é o dele: sobrescrever com
+   * o que vem pelo SSE faria a barra pular para trás no meio do gesto.
+   */
+  var arrastandoVolume = false;
+  function desenharVolume(valor) {
+    var b = $("volume");
+    if (!b || arrastandoVolume) return;
+    var v = valor === null || valor === undefined ? 100 : valor;
+    b.value = String(v);
+    $("volumeRotulo").textContent = v + "%";
+    $("mudo").textContent = v === 0 ? "🔈" : "🔇";
+  }
+
+  function mandarVolume(v) {
+    $("volumeRotulo").textContent = v + "%";
+    $("mudo").textContent = v === 0 ? "🔈" : "🔇";
+    return pedir("/volume", { valor: v }).catch(function (e) {
+      if (e.message !== "sessao") conexao("off", e.message);
+    });
   }
 
   /**
@@ -834,6 +869,23 @@
   $("abaLetras").addEventListener("click", function () { trocarAba("letras"); });
   $("abaMidia").addEventListener("click", function () { trocarAba("midia"); });
   $("abaChat").addEventListener("click", function () { trocarAba("chat"); });
+
+  $("volume").addEventListener("pointerdown", function () { arrastandoVolume = true; });
+  $("volume").addEventListener("input", function () {
+    $("volumeRotulo").textContent = $("volume").value + "%";
+  });
+  ["pointerup", "pointercancel", "change"].forEach(function (evento) {
+    $("volume").addEventListener(evento, function () {
+      arrastandoVolume = false;
+      void mandarVolume(Number($("volume").value));
+    });
+  });
+  $("mudo").addEventListener("click", function () {
+    var atual = Number($("volume").value);
+    var novo = atual === 0 ? 100 : 0;
+    $("volume").value = String(novo);
+    void mandarVolume(novo);
+  });
 
   $("midiaBusca").addEventListener("input", desenharMidia);
   $("midiaFiltros").addEventListener("click", function (ev) {

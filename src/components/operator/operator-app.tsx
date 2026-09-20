@@ -26,6 +26,7 @@ import { RemoteControlDialog } from "@/components/operator/remote-control-dialog
 import { useRemoteControl } from "@/components/operator/use-remote-control";
 import { useAutoSlide } from "@/components/operator/use-auto-slide";
 import { PainelArrastavel, ReorganizeBar } from "@/components/operator/reorganize";
+import { chatEhColuna } from "@/lib/chat-visivel";
 import { TourBanner } from "@/components/operator/tour";
 import { UpdateBanner } from "@/components/operator/update-banner";
 import { YoutubePanel } from "@/components/operator/youtube-panel";
@@ -85,6 +86,9 @@ export function OperatorApp() {
 
   // O tutorial aponta para painéis que, em tela estreita, moram em abas.
   const ordemPaineis = useOpsStore((s) => s.ordemPaineis);
+  // O chat só entra na fileira quando é coluna: flutuante mora por cima e
+  // oculto não mora em lugar nenhum.
+  const ordemVisivel = ordemPaineis.filter((id) => id !== "chat" || chatEhColuna(chatPosicao));
   const tourTab = useOpsStore((s) => s.tourTab);
   useEffect(() => {
     if (tourTab) setMobileTab(tourTab);
@@ -166,6 +170,7 @@ export function OperatorApp() {
         bibleRef={bibleRef}
       />
     ),
+    chat: <ChatPanel />,
     culto: (
       <div ref={playlistRef} className="h-full">
         <PlaylistPanel />
@@ -424,20 +429,6 @@ export function OperatorApp() {
           mesmo assim no canto de baixo, longe da barra de controles.
         */}
         <div className="relative flex min-w-0 min-h-0 flex-1">
-          {chatPosicao === "esquerda" && (
-            <div className="hidden w-72 shrink-0 md:block">
-              <ChatPanel />
-            </div>
-          )}
-          {/*
-            `min-w-0` não é enfeite.
-
-            Item de flex nasce com `min-width: auto`, que o proíbe de encolher
-            abaixo do conteúdo. Bastou um vídeo com nome de oitenta caracteres
-            para esta coluna inchar até 1953px numa janela de 1569 — e empurrar
-            a coluna do chat inteira para fora da tela, junto com a barra de
-            rolagem que veio atrás.
-          */}
           <div className="min-w-0 min-h-0 flex-1">
           {bibleOpen ? (
             <BibleWorkspace previewFrame={previewFrame} onBack={() => setBibleOpen(false)} />
@@ -445,7 +436,7 @@ export function OperatorApp() {
             <>
           <div className="hidden h-full xl:block">
             <Group orientation="horizontal" className="h-full">
-              {ordemPaineis.flatMap((id, i) => {
+              {ordemVisivel.flatMap((id, i) => {
                 const coluna = (
                   <Panel
                     key={id}
@@ -491,11 +482,8 @@ export function OperatorApp() {
             </>
           )}
           </div>
-          {chatPosicao === "direita" && (
-            <div className="hidden w-72 shrink-0 md:block">
-              <ChatPanel />
-            </div>
-          )}
+          {/* Flutuante é o único que sobrepõe, e por isso é o único que
+              sobra aqui: coluna já está na fileira, junto com as outras. */}
           {chatPosicao === "flutuante" && <ChatPanel />}
         </div>
 

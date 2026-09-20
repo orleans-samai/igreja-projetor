@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { enderecosDeAcesso, estadoRemoto } from "./remote-control.ts";
+import { enderecosDeAcesso, estadoRemoto, volumeDePorcento } from "./remote-control.ts";
 import type { Deck } from "./types.ts";
 
 const deck: Deck = {
@@ -23,8 +23,9 @@ describe("estadoRemoto", () => {
       slideTotal: 3,
       noAr: true,
       preto: false,
-      // Música não tem play nem pause.
+      // Música não tem play nem pause, nem volume.
       midiaTocando: null,
+      midiaVolume: null,
     });
   });
 
@@ -36,6 +37,7 @@ describe("estadoRemoto", () => {
       noAr: false,
       preto: false,
       midiaTocando: null,
+      midiaVolume: null,
     });
   });
 
@@ -100,5 +102,41 @@ describe("estado da mídia no celular", () => {
   it("vídeo parado não conta como tocando", () => {
     assert.equal(estadoRemoto("presenting", midia({ mediaType: "video", mediaAcao: "parar" }), 0).midiaTocando, false);
     assert.equal(estadoRemoto("presenting", midia({ mediaType: "video" }), 0).midiaTocando, false);
+  });
+});
+
+describe("volume no celular", () => {
+  const video = (extra: Partial<Deck>): Deck => ({
+    kind: "media",
+    refId: "m1",
+    title: "Chamada",
+    subtitle: "",
+    slides: [],
+    mediaType: "video",
+    ...extra,
+  });
+
+  it("o celular recebe o volume em porcento", () => {
+    assert.equal(estadoRemoto("presenting", video({ mediaVolume: 1 }), 0).midiaVolume, 100);
+    assert.equal(estadoRemoto("presenting", video({ mediaVolume: 0.35 }), 0).midiaVolume, 35);
+    // Ausente é 1: nenhuma igreja que já usa o app ouve diferença.
+    assert.equal(estadoRemoto("presenting", video({}), 0).midiaVolume, 100);
+    assert.equal(estadoRemoto("presenting", video({ mediaMudo: true }), 0).midiaVolume, 0);
+  });
+
+  it("sem som no ar não há volume para mexer", () => {
+    assert.equal(estadoRemoto("idle", null, 0).midiaVolume, null);
+    assert.equal(estadoRemoto("presenting", video({ mediaType: "image" }), 0).midiaVolume, null);
+  });
+
+  it("o caminho de volta prende o valor entre 0 e 1", () => {
+    // O número vem de um aparelho na rede: aceitar 900 seria estourar o som.
+    assert.equal(volumeDePorcento(0), 0);
+    assert.equal(volumeDePorcento(50), 0.5);
+    assert.equal(volumeDePorcento(100), 1);
+    assert.equal(volumeDePorcento(900), 1);
+    assert.equal(volumeDePorcento(-5), 0);
+    assert.equal(volumeDePorcento("abc"), 1);
+    assert.equal(volumeDePorcento(undefined), 1);
   });
 });

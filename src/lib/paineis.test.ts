@@ -4,7 +4,7 @@ import { ORDEM_PADRAO, ordemValida, trocar, type PainelId } from "./paineis.ts";
 
 describe("ordemValida", () => {
   it("aceita uma ordem inteira e a mantém", () => {
-    const ordem: PainelId[] = ["preview", "temas", "biblioteca", "culto"];
+    const ordem: PainelId[] = ["preview", "temas", "chat", "biblioteca", "culto"];
     assert.deepEqual(ordemValida(ordem), ordem);
   });
 
@@ -15,21 +15,24 @@ describe("ordemValida", () => {
   });
 
   it("completa o painel que faltou, em vez de deixá-lo sumir", () => {
+    // O chat entrou depois: uma ordem gravada antes dele não pode deixar a
+    // coluna sumir da cabine sem caminho de volta.
     assert.deepEqual(ordemValida(["preview", "culto"]), [
       "preview",
       "culto",
       "biblioteca",
       "temas",
+      "chat",
     ]);
   });
 
   it("descarta repetido e desconhecido", () => {
     const saida = ordemValida(["temas", "temas", "inventado", 7, "culto"]);
-    assert.deepEqual(saida, ["temas", "culto", "biblioteca", "preview"]);
+    assert.deepEqual(saida, ["temas", "culto", "biblioteca", "preview", "chat"]);
     assert.equal(new Set(saida).size, saida.length);
   });
 
-  it("seja qual for a entrada, a cabine fica com os quatro painéis", () => {
+  it("seja qual for a entrada, a cabine fica com todos os painéis", () => {
     for (const entrada of [[], ["x"], ["temas"], [1, 2, 3], {}, ORDEM_PADRAO]) {
       const saida = ordemValida(entrada);
       assert.equal(saida.length, ORDEM_PADRAO.length);
@@ -45,6 +48,7 @@ describe("trocar", () => {
       "culto",
       "biblioteca",
       "temas",
+      "chat",
     ]);
   });
 

@@ -195,6 +195,15 @@ export interface Deck {
   mediaBusca?: number;
   /** 1, 1.25, 1.5 ou 2 — vira playbackRate no elemento que toca. */
   mediaVelocidade?: number;
+  /**
+   * De 0 a 1. Ausente é 1, que é como o vídeo sempre tocou — nenhuma igreja
+   * que já usa o app ouve diferença ao atualizar.
+   *
+   * Quem manda no som é o telão, não a cabine: se as duas tocassem, a igreja
+   * ouviria o louvor duas vezes, com meio segundo de atraso entre elas.
+   */
+  mediaVolume?: number;
+  mediaMudo?: boolean;
   /** Sobe a cada comando: sem isto, pedir "tocar" de novo depois do vídeo
    *  terminar sozinho seria um quadro idêntico ao anterior, e o telão não
    *  teria como distinguir do primeiro pedido (ver YoutubeFrame.busca). */

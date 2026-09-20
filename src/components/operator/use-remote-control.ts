@@ -4,7 +4,7 @@ import { nid } from "@/lib/fold";
 import { parseLyrics } from "@/lib/lyrics";
 import { loadSong, suggestSongs } from "@/lib/lyrics-suggestions";
 import { MEDIA_KINDS, listMedia, mediaKindLabel } from "@/lib/media-library";
-import { estadoRemoto, type AcaoRemota } from "@/lib/remote-control";
+import { estadoRemoto, volumeDePorcento, type AcaoRemota } from "@/lib/remote-control";
 import { useChatStore } from "@/store/chat-store";
 import { useLumenStore, type LumenState } from "@/store/lumen-store";
 
@@ -104,6 +104,13 @@ export function useRemoteControl() {
       }
       if (evento.tipo === "dispositivos") {
         if (evento.novo) toast(`${evento.novo} entrou pelo celular.`);
+        return;
+      }
+      if (evento.tipo === "volume") {
+        useLumenStore.getState().comandarMedia({
+          mediaVolume: volumeDePorcento(evento.valor),
+          mediaMudo: evento.valor === 0,
+        });
         return;
       }
       if (evento.tipo === "projetar") {

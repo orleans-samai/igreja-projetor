@@ -416,6 +416,8 @@ function MediaStage({
   tempo,
   busca,
   velocidade,
+  volume,
+  mudo,
 }: {
   src: string;
   type?: "image" | "video" | "audio";
@@ -430,6 +432,9 @@ function MediaStage({
   tempo?: number;
   busca?: number;
   velocidade?: number;
+  /** De 0 a 1; ausente é 1. Ver `Deck.mediaVolume`. */
+  volume?: number;
+  mudo?: boolean;
 }) {
   const [erro, setErro] = useState(false);
   const fit = fitMode === "cover" ? "object-cover" : "object-contain";
@@ -456,6 +461,20 @@ function MediaStage({
     if (!el || type !== "video") return;
     el.playbackRate = velocidade && velocidade > 0 ? velocidade : 1;
   }, [velocidade, type]);
+
+  /**
+   * O som sai daqui, e só daqui.
+   *
+   * O palco é monitor de quem canta: se ele também tocasse, a igreja ouviria
+   * o mesmo louvor duas vezes, defasado. Por isso o palco entra sempre mudo,
+   * e o volume que o operador (ou o celular) escolhe vale para a plateia.
+   */
+  useEffect(() => {
+    const el = videoRef.current;
+    if (!el || (type !== "video" && type !== "audio")) return;
+    el.muted = variant === "stage" || mudo === true;
+    el.volume = Math.min(1, Math.max(0, volume ?? 1));
+  }, [volume, mudo, type, variant]);
 
   // Comando → player. Sem `acao` (sessão salva antes deste recurso existir),
   // cai no autoplay de sempre em vez de travar num vídeo que nunca começa.
@@ -701,6 +720,8 @@ export function SlideCanvas({
           tempo={frame.deck.mediaTempo}
           busca={frame.deck.mediaBusca}
           velocidade={frame.deck.mediaVelocidade}
+          volume={frame.deck.mediaVolume}
+          mudo={frame.deck.mediaMudo}
         />
       )}
 

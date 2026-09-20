@@ -517,6 +517,7 @@ class RemoteControl {
       if (m === "POST" && p === "/chat") return await this._chat(req, res);
       if (m === "GET" && p === "/midia") return this._midia(res, url);
       if (m === "POST" && p === "/projetar") return await this._projetar(req, res);
+      if (m === "POST" && p === "/volume") return await this._volume(req, res);
       if (m === "POST" && p === "/buscar") return await this._buscar(req, res);
       if (m === "POST" && p === "/letra") return await this._letra(req, res);
     } catch {
@@ -732,6 +733,30 @@ class RemoteControl {
       return;
     }
     this.onEvento?.({ tipo: "projetar", kind: tipo, refId, de: disp.nome });
+    this._json(res, 200, { ok: true });
+  }
+
+  /** Volume do que toca no telão, de 0 a 100. Exige controle: é som que a
+   *  igreja inteira escuta, não uma preferência do aparelho. */
+  async _volume(req, res) {
+    let corpo;
+    try {
+      corpo = JSON.parse(await this._lerCorpo(req));
+    } catch {
+      corpo = {};
+    }
+    const disp = this._sessao(corpo.token);
+    if (!disp) {
+      this._json(res, 401, { ok: false, erro: "Sessão expirada. Entre novamente." });
+      return;
+    }
+    if (!podeFazer(disp.permissao, "controle")) return this._semPermissao(res, "controle");
+    const valor = Number(corpo.valor);
+    if (!Number.isFinite(valor) || valor < 0 || valor > 100) {
+      this._json(res, 400, { ok: false, erro: "Volume inválido." });
+      return;
+    }
+    this.onEvento?.({ tipo: "volume", valor: Math.round(valor), de: disp.nome });
     this._json(res, 200, { ok: true });
   }
 

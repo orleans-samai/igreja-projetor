@@ -2,8 +2,7 @@ import { MessageSquare, Send } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Hint } from "@/components/ui/tooltip";
-import { chatVisivel, fecharLeva, mostrarLeva } from "@/lib/chat-visivel";
+import { chatVisivel } from "@/lib/chat-visivel";
 import { cn } from "@/lib/cn";
 import type { MensagemChat } from "@/lib/remote-control";
 import { useChatStore } from "@/store/chat-store";
@@ -19,49 +18,6 @@ import { useLumenStore } from "@/store/lumen-store";
 
 function hora(ms: number): string {
   return new Date(ms).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
-}
-
-/** O botão que abre o chat, com o número de mensagens não lidas. */
-export function ChatButton() {
-  const aberto = useChatStore((s) => s.aberto);
-  const naoLidas = useChatStore((s) => s.naoLidas);
-  const posicao = useChatStore((s) => s.posicao);
-  const ultimaLateral = useChatStore((s) => s.ultimaLateral);
-  const abrir = useChatStore((s) => s.abrir);
-  const setPosicao = useChatStore((s) => s.setPosicao);
-  const suportado = typeof window !== "undefined" && window.lumenDesktop?.isDesktop;
-
-  // O botão continua existindo com o chat escondido: sem ele, quem apertasse
-  // o X ficaria sem caminho de volta que não passasse pelos Ajustes.
-  if (!suportado) return null;
-  const aVista = chatVisivel(posicao, aberto);
-
-  return (
-    <Hint label={aVista ? "Esconder o chat" : "Mostrar o chat dos celulares"}>
-      <Button
-        size="sm"
-        variant={aVista ? "secondary" : "ghost"}
-        onClick={() => {
-          if (!aVista) {
-            setPosicao(mostrarLeva(posicao, ultimaLateral));
-            abrir(true);
-            return;
-          }
-          const destino = fecharLeva(posicao);
-          if (destino) setPosicao(destino);
-        }}
-        aria-label={naoLidas > 0 ? `Chat, ${naoLidas} não lidas` : "Chat"}
-      >
-        <MessageSquare />
-        Chat
-        {naoLidas > 0 && (
-          <span className="tnum ml-0.5 rounded-sm bg-live px-1 text-caption font-semibold text-live-fg">
-            {naoLidas > 99 ? "99+" : naoLidas}
-          </span>
-        )}
-      </Button>
-    </Hint>
-  );
 }
 
 /**
@@ -154,8 +110,7 @@ export function ChatPanel() {
         posicao === "flutuante"
           ? "pop-layer absolute bottom-3 right-3 z-30 h-80 w-72 rounded-lg shadow-[var(--shadow-pop),var(--shadow-border)]"
           : "h-full w-full border-border",
-        posicao === "direita" && "border-l",
-        posicao === "esquerda" && "border-r",
+        posicao === "coluna" && "border-l border-border",
       )}
       aria-label="Chat com os celulares"
     >

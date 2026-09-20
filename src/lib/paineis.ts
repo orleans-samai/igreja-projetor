@@ -4,11 +4,21 @@
  * Cada igreja opera de um jeito: quem projeta sozinho quer o preview perto da
  * mão que clica, quem tem alguém montando o culto ao lado quer a ordem do
  * culto na ponta. A ordem é do operador, não do programa.
+ *
+ * O chat é uma coluna como as outras. Antes ele só sabia ficar na esquerda ou
+ * na direita, escolhido num menu — agora arrasta junto com o resto, no mesmo
+ * gesto, e para de ser um caso especial.
  */
 
-export type PainelId = "biblioteca" | "culto" | "preview" | "temas";
+export type PainelId = "biblioteca" | "culto" | "preview" | "temas" | "chat";
 
-export const ORDEM_PADRAO: readonly PainelId[] = ["biblioteca", "culto", "preview", "temas"];
+export const ORDEM_PADRAO: readonly PainelId[] = [
+  "biblioteca",
+  "culto",
+  "preview",
+  "temas",
+  "chat",
+];
 
 /**
  * O id `preview` continua sendo `preview` de propósito: ele está gravado na
@@ -20,6 +30,7 @@ export const NOME_PAINEL: Record<PainelId, string> = {
   culto: "Programação",
   preview: "No ar",
   temas: "Temas",
+  chat: "Chat",
 };
 
 /** Largura de partida e mínima de cada coluna — viajam junto com o painel. */
@@ -28,6 +39,7 @@ export const TAMANHO_PAINEL: Record<PainelId, { padrao: string; minimo: string }
   culto: { padrao: "22%", minimo: "16%" },
   preview: { padrao: "43%", minimo: "26%" },
   temas: { padrao: "16%", minimo: "12%" },
+  chat: { padrao: "17%", minimo: "12%" },
 };
 
 /**

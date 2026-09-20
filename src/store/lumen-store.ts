@@ -197,7 +197,9 @@ export interface LumenState {
   selectMedia: (id: string) => void;
   addMedia: (item: MediaItem) => void;
   comandarMedia: (
-    patch: Partial<Pick<Deck, "mediaAcao" | "mediaLoop" | "mediaVelocidade">>,
+    patch: Partial<
+      Pick<Deck, "mediaAcao" | "mediaLoop" | "mediaVelocidade" | "mediaVolume" | "mediaMudo">
+    >,
   ) => void;
   /** Ir para um ponto do vídeo no telão, em segundos. */
   buscarMedia: (tempo: number) => void;

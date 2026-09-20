@@ -3,8 +3,8 @@ import type { PosicaoChat } from "@/store/chat-store";
 /**
  * Quando o chat está à vista.
  *
- * Nas laterais ele é móvel da cabine, não uma janelinha: ocupa coluna
- * própria, não cobre nada e fica. Recado de culto só serve se for lido na
+ * Como coluna ele é móvel da cabine, não uma janelinha: ocupa lugar próprio
+ * na fileira, arrastável como as outras, não cobre nada e fica. Recado de culto só serve se for lido na
  * hora — "repete o refrão" que chega num painel fechado é recado perdido, e
  * era isso que acontecia, porque o painel nascia fechado.
  *
@@ -18,18 +18,11 @@ export function chatVisivel(posicao: PosicaoChat, aberto: boolean): boolean {
 }
 
 /**
- * Se o botão de fechar do próprio painel some o chat da tela.
+ * Se o chat ocupa uma das colunas arrastáveis da cabine.
  *
- * Na lateral, fechar quer dizer esconder de vez — e quem esconde de vez tem
- * que ter como trazer de volta, que é o botão Chat da barra de cima.
+ * É o que decide se ele entra na fileira de painéis: flutuante mora por cima
+ * e oculto não mora em lugar nenhum.
  */
-export function fecharLeva(posicao: PosicaoChat): PosicaoChat | null {
-  if (posicao === "oculto") return null;
-  return "oculto";
-}
-
-/** A lateral para onde o botão Chat devolve o painel escondido. */
-export function mostrarLeva(posicao: PosicaoChat, ultimaLateral: PosicaoChat): PosicaoChat {
-  if (posicao !== "oculto") return posicao;
-  return ultimaLateral === "esquerda" ? "esquerda" : "direita";
+export function chatEhColuna(posicao: PosicaoChat): boolean {
+  return posicao === "coluna";
 }
