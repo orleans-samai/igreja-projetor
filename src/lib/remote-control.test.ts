@@ -52,7 +52,6 @@ describe("enderecosDeAcesso", () => {
     const enderecos = enderecosDeAcesso({
       ligado: true,
       porta: 51234,
-      pin: "123456",
       enderecos: ["192.168.0.10", "192.168.0.11"],
       sessoesAtivas: 0,
     });
@@ -64,7 +63,7 @@ describe("enderecosDeAcesso", () => {
 
   it("desligado não oferece endereço nenhum", () => {
     assert.deepEqual(
-      enderecosDeAcesso({ ligado: false, porta: null, pin: null, enderecos: [], sessoesAtivas: 0 }),
+      enderecosDeAcesso({ ligado: false, porta: null, enderecos: [], sessoesAtivas: 0 }),
       [],
     );
   });

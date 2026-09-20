@@ -17,7 +17,7 @@ async function subir() {
   const rc = new RemoteControl(dir);
   const status = await rc.ligar();
   const base = `http://127.0.0.1:${status.porta}`;
-  return { rc, dir, base, pin: status.pin };
+  return { rc, dir, base };
 }
 
 async function derrubar({ rc, dir }) {
@@ -29,7 +29,6 @@ test("liga, escuta na rede (0.0.0.0) e desliga", async () => {
   const ctx = await subir();
   try {
     assert.equal(ctx.rc.status().ligado, true);
-    assert.match(ctx.rc.status().pin, /^\d{6}$/);
     const r = await fetch(ctx.base + "/");
     assert.equal(r.status, 200);
     assert.match(await r.text(), /<!doctype html>/i);
@@ -40,55 +39,68 @@ test("liga, escuta na rede (0.0.0.0) e desliga", async () => {
   await assert.rejects(fetch(ctx.base + "/"));
 });
 
-test("pareamento: PIN certo dá token, PIN errado não", async () => {
+test("entrar exige um nome, e o nome é o que a cabine lê", async () => {
   const ctx = await subir();
   try {
-    const errado = await fetch(ctx.base + "/parear", {
+    // Sem nome a cabine teria uma fila de aparelhos idênticos e nenhuma forma
+    // de escolher entre eles na hora de dar permissão.
+    const semNome = await fetch(ctx.base + "/parear", {
       method: "POST",
-      body: JSON.stringify({ pin: "000000" === ctx.pin ? "111111" : "000000" }),
+      body: JSON.stringify({}),
     });
-    assert.equal(errado.status, 401);
+    assert.equal(semNome.status, 400);
+    const curto = await fetch(ctx.base + "/parear", {
+      method: "POST",
+      body: JSON.stringify({ nome: "a" }),
+    });
+    assert.equal(curto.status, 400);
 
-    const certo = await fetch(ctx.base + "/parear", {
+    const ok = await fetch(ctx.base + "/parear", {
       method: "POST",
-      body: JSON.stringify({ pin: ctx.pin }),
+      body: JSON.stringify({ nome: "Celular do Pastor" }),
     });
-    assert.equal(certo.status, 200);
-    const { ok, token } = await certo.json();
-    assert.equal(ok, true);
-    assert.equal(typeof token, "string");
-    assert.ok(token.length > 10);
+    assert.equal(ok.status, 200);
+    const corpo = await ok.json();
+    assert.ok(corpo.token);
+    // Entra no chat e nada além: a barreira é o que se pode fazer, não a porta.
+    assert.equal(corpo.permissao, "chat");
+    assert.equal(ctx.rc.status().dispositivos[0].nome, "Celular do Pastor");
   } finally {
     await derrubar(ctx);
   }
 });
 
-test("cinco PINs errados bloqueiam o IP por um tempo", async () => {
+test("cinco tentativas sem nome bloqueiam o IP por um tempo", async () => {
   const ctx = await subir();
   try {
-    for (let i = 0; i < 5; i++) {
-      const r = await fetch(ctx.base + "/parear", { method: "POST", body: JSON.stringify({ pin: "000000" }) });
-      assert.equal(r.status, 401, `tentativa ${i + 1} deveria ser 401`);
+    for (let i = 0; i < 5; i += 1) {
+      const r = await fetch(ctx.base + "/parear", { method: "POST", body: JSON.stringify({}) });
+      assert.equal(r.status, 400);
     }
-    const bloqueado = await fetch(ctx.base + "/parear", { method: "POST", body: JSON.stringify({ pin: ctx.pin }) });
-    assert.equal(bloqueado.status, 429, "mesmo o PIN certo é recusado enquanto bloqueado");
+    // Não é mais senha para adivinhar, mas continua sendo porta aberta na
+    // rede: quem insiste em bater é segurado.
+    const bloqueado = await fetch(ctx.base + "/parear", {
+      method: "POST",
+      body: JSON.stringify({ nome: "Celular" }),
+    });
+    assert.equal(bloqueado.status, 429);
   } finally {
     await derrubar(ctx);
   }
 });
 
-async function parear(base, pin, nome) {
+async function parear(base, nome = "Celular") {
   const r = await fetch(base + "/parear", {
     method: "POST",
-    body: JSON.stringify({ pin, nome }),
+    body: JSON.stringify({ nome }),
   });
   const { token } = await r.json();
   return token;
 }
 
 /** Pareia e promove a controle, que é o que a cabine faz com um toque. */
-async function parearComControle(rc, base, pin, nome) {
-  const token = await parear(base, pin, nome);
+async function parearComControle(rc, base, nome = "Celular") {
+  const token = await parear(base, nome);
   const disp = rc.listarDispositivos()[0];
   rc.definirPermissao(disp.id, "controle");
   return token;
@@ -97,7 +109,7 @@ async function parearComControle(rc, base, pin, nome) {
 test("comando exige sessão válida e ação da lista", async () => {
   const ctx = await subir();
   try {
-    const token = await parearComControle(ctx.rc, ctx.base, ctx.pin);
+    const token = await parearComControle(ctx.rc, ctx.base);
     const recebidos = [];
     ctx.rc.onComando = (acao) => recebidos.push(acao);
 
@@ -124,18 +136,18 @@ test("comando exige sessão válida e ação da lista", async () => {
   }
 });
 
-test("regenerar o PIN encerra as sessões anteriores", async () => {
+test("desconectar todos encerra as sessões anteriores", async () => {
   const ctx = await subir();
   try {
-    const token = await parear(ctx.base, ctx.pin);
-    const novo = ctx.rc.regenerarPin();
-    assert.notEqual(novo.pin, ctx.pin);
+    const token = await parear(ctx.base);
+    const depois = ctx.rc.desconectarTodos();
+    assert.equal(depois.dispositivos.length, 0, "a lista de aparelhos devia ficar vazia");
 
     const comTokenVelho = await fetch(ctx.base + "/comando", {
       method: "POST",
       body: JSON.stringify({ token, acao: "proximo" }),
     });
-    assert.equal(comTokenVelho.status, 401, "sessão de antes do regenerar não deveria valer mais");
+    assert.equal(comTokenVelho.status, 401, "a sessão de antes não deveria valer mais");
   } finally {
     await derrubar(ctx);
   }
@@ -147,7 +159,7 @@ test("estado (SSE) exige token e recebe o que a cabine publica", async () => {
     const semToken = await fetch(ctx.base + "/estado");
     assert.equal(semToken.status, 401);
 
-    const token = await parear(ctx.base, ctx.pin);
+    const token = await parear(ctx.base);
     const controlador = new AbortController();
     const resposta = await fetch(ctx.base + "/estado?token=" + token, { signal: controlador.signal });
     assert.equal(resposta.status, 200);
@@ -178,7 +190,7 @@ test("as ações permitidas não incluem trocar de música ou apagar repertório
 test("quem pareia entra sem controle do telão, e a cabine é quem promove", async () => {
   const ctx = await subir();
   try {
-    const token = await parear(ctx.base, ctx.pin, "Celular do João");
+    const token = await parear(ctx.base, "Celular do João");
     const disp = ctx.rc.listarDispositivos()[0];
     assert.equal(disp.nome, "Celular do João");
     assert.equal(disp.permissao, "chat");
@@ -217,15 +229,15 @@ test("quem pareia entra sem controle do telão, e a cabine é quem promove", asy
 test("desconectar um aparelho não derruba os outros", async () => {
   const ctx = await subir();
   try {
-    const a = await parearComControle(ctx.rc, ctx.base, ctx.pin, "A");
-    const b = await parear(ctx.base, ctx.pin, "B");
-    const dispB = ctx.rc.listarDispositivos().find((d) => d.nome === "B");
+    const a = await parearComControle(ctx.rc, ctx.base, "Aparelho A");
+    const b = await parear(ctx.base, "Aparelho B");
+    const dispB = ctx.rc.listarDispositivos().find((d) => d.nome === "Aparelho B");
     ctx.rc.definirPermissao(dispB.id, "controle");
 
     ctx.rc.desconectar(dispB.id);
     assert.deepEqual(
       ctx.rc.listarDispositivos().map((d) => d.nome),
-      ["A"],
+      ["Aparelho A"],
     );
 
     const deB = await fetch(ctx.base + "/comando", {
@@ -246,7 +258,7 @@ test("desconectar um aparelho não derruba os outros", async () => {
 test("chat vai do celular para a cabine e volta, com quem e quando", async () => {
   const ctx = await subir();
   try {
-    const token = await parear(ctx.base, ctx.pin, "Louvor");
+    const token = await parear(ctx.base, "Louvor");
     const eventos = [];
     ctx.rc.onEvento = (e) => eventos.push(e);
 
@@ -283,7 +295,7 @@ test("chat vai do celular para a cabine e volta, com quem e quando", async () =>
 test("editar letra pelo celular chega à cabine como pedido, não como escrita direta", async () => {
   const ctx = await subir();
   try {
-    const token = await parear(ctx.base, ctx.pin, "Tablet");
+    const token = await parear(ctx.base, "Tablet");
     const disp = ctx.rc.listarDispositivos()[0];
     ctx.rc.definirPermissao(disp.id, "editor");
     ctx.rc.atualizarRepertorio([
@@ -324,7 +336,7 @@ test("editar letra pelo celular chega à cabine como pedido, não como escrita d
 test("o SSE abre com o retrato inteiro: estado, permissão e chat de antes", async () => {
   const ctx = await subir();
   try {
-    const token = await parear(ctx.base, ctx.pin, "Celular");
+    const token = await parear(ctx.base, "Celular");
     ctx.rc.atualizarEstado({ titulo: "Hino", slideAtual: 1, slideTotal: 3, noAr: true, preto: false });
     ctx.rc.mensagemDaCabine("Já vai começar", "Cabine");
 
@@ -348,7 +360,7 @@ test("a permissão padrão do pareamento é escolha da cabine", async () => {
   const ctx = await subir();
   try {
     ctx.rc.definirPermissaoPadrao("controle");
-    const token = await parear(ctx.base, ctx.pin, "Confiado");
+    const token = await parear(ctx.base, "Confiado");
     const r = await fetch(ctx.base + "/comando", {
       method: "POST",
       body: JSON.stringify({ token, acao: "proximo" }),
@@ -385,7 +397,7 @@ async function comCofre(dir) {
   return new CofreRemoto(dir);
 }
 
-test("porta e PIN sobrevivem a fechar e abrir o app", async () => {
+test("a porta sobrevive a fechar e abrir o app", async () => {
   const dir = await comPagina();
   try {
     const primeira = new RemoteControl(dir, await comCofre(dir));
@@ -397,7 +409,6 @@ test("porta e PIN sobrevivem a fechar e abrir o app", async () => {
     segunda.desligar();
 
     assert.equal(b.porta, a.porta, "a porta mudou entre uma abertura e outra");
-    assert.equal(b.pin, a.pin, "o PIN mudou entre uma abertura e outra");
     assert.equal(a.porta, 8787, "a porta preferida devia ser a 8787");
   } finally {
     await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
@@ -411,7 +422,7 @@ test("celular pareado continua entrando depois de o app fechar", async () => {
     const a = await primeira.ligar();
     const parear = await fetch(`http://127.0.0.1:${a.porta}/parear`, {
       method: "POST",
-      body: JSON.stringify({ pin: a.pin, nome: "Celular do Pastor" }),
+      body: JSON.stringify({ nome: "Celular do Pastor" }),
     });
     const { token } = await parear.json();
     assert.ok(token);
@@ -474,7 +485,7 @@ test("porta ocupada não impede abrir, e a nova vira a preferida", async () => {
 async function comPermissao(ctx, permissao) {
   const r = await fetch(`${ctx.base}/parear`, {
     method: "POST",
-    body: JSON.stringify({ pin: ctx.pin, nome: "Celular" }),
+    body: JSON.stringify({ nome: "Celular" }),
   });
   const { token } = await r.json();
   const id = ctx.rc.status().dispositivos[0].id;
@@ -630,7 +641,7 @@ test("o celular recebe o endereço que não vence, quando existe", async () => {
   const base = `http://127.0.0.1:${status.porta}`;
   try {
     const { token } = await (
-      await fetch(`${base}/parear`, { method: "POST", body: JSON.stringify({ pin: status.pin }) })
+      await fetch(`${base}/parear`, { method: "POST", body: JSON.stringify({ nome: "Celular" }) })
     ).json();
     const fluxo = await fetch(`${base}/estado?token=${token}`);
     const leitor = fluxo.body.getReader();

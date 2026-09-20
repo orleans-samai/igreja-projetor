@@ -13,7 +13,7 @@ test("arquivo ausente ou ilegível não derruba a abertura do app", async () => 
   const dir = await mkdtemp(path.join(os.tmpdir(), "lumen-cofre-"));
   try {
     const cofre = new CofreRemoto(dir);
-    assert.deepEqual(cofre.ler(), { porta: PORTA_PADRAO, pin: null, dispositivos: [] });
+    assert.deepEqual(cofre.ler(), { porta: PORTA_PADRAO, dispositivos: [] });
     writeFileSync(path.join(dir, "remote.json"), "{ isto não é json");
     assert.equal(cofre.ler().porta, PORTA_PADRAO);
   } finally {
@@ -28,7 +28,6 @@ test("grava e lê de volta o que a equipe precisa que não mude", async () => {
     const agora = Date.now();
     cofre.gravar({
       porta: 9123,
-      pin: "123456",
       dispositivos: [
         {
           token: "t".repeat(36),
@@ -42,7 +41,6 @@ test("grava e lê de volta o que a equipe precisa que não mude", async () => {
     });
     const lido = cofre.ler();
     assert.equal(lido.porta, 9123);
-    assert.equal(lido.pin, "123456");
     assert.equal(lido.dispositivos.length, 1);
     assert.equal(lido.dispositivos[0].nome, "Celular do Pastor");
     assert.equal(lido.dispositivos[0].permissao, "controle");
@@ -72,7 +70,6 @@ test("uma semana parado ainda entra; três meses não", () => {
 test("conteúdo estranho no arquivo não vira estado do servidor", () => {
   const limpo = saneia({
     porta: "8787",
-    pin: "abc",
     dispositivos: [
       { token: "curto", id: "x" },
       { token: "t".repeat(36) },
@@ -80,9 +77,8 @@ test("conteúdo estranho no arquivo não vira estado do servidor", () => {
       { token: "u".repeat(36), id: "ok", permissao: "administrador" },
     ],
   });
-  // Porta em texto e PIN com letra não são aproveitados: voltam ao padrão.
+  // Porta escrita como texto não é aproveitada: volta ao padrão.
   assert.equal(limpo.porta, PORTA_PADRAO);
-  assert.equal(limpo.pin, null);
   // Token curto, aparelho sem id e linha que não é objeto ficam de fora.
   assert.equal(limpo.dispositivos.length, 1);
   // Permissão inventada cai para a mais fraca, nunca para a mais forte.

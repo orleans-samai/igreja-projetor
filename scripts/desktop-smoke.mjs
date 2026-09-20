@@ -90,7 +90,6 @@ try {
   // o comando foi aceito.
   const remoteStatus = await page.evaluate(() => window.lumenDesktop.remoteControlStart());
   assert.equal(remoteStatus.ligado, true);
-  assert.match(remoteStatus.pin, /^\d{6}$/);
   const remoteBase = `http://127.0.0.1:${remoteStatus.porta}`;
   // O nome fixo na rede: http://lumen.local:<porta>, para o endereço não
   // morrer quando o roteador trocar o IP do computador. Se o Firewall ou uma
@@ -103,9 +102,9 @@ try {
   if (remoteStatus.nomeLocal) {
     assert.equal(remoteStatus.nomeLocal, "lumen.local");
   }
-  const pinErrado = await fetch(`${remoteBase}/parear`, { method: "POST", body: JSON.stringify({ pin: "000001" }) });
-  assert.equal(pinErrado.status, 401);
-  const pareado = await fetch(`${remoteBase}/parear`, { method: "POST", body: JSON.stringify({ pin: remoteStatus.pin, nome: "Smoke" }) }).then((r) => r.json());
+  const semNome = await fetch(`${remoteBase}/parear`, { method: "POST", body: JSON.stringify({}) });
+  assert.equal(semNome.status, 400, "entrar sem nome devia ser recusado");
+  const pareado = await fetch(`${remoteBase}/parear`, { method: "POST", body: JSON.stringify({ nome: "Smoke" }) }).then((r) => r.json());
   assert.equal(pareado.ok, true);
   // O PIN sozinho não comanda o telão: quem pareia entra como "chat" e a
   // cabine promove. Aqui isso passa pelo IPC de verdade, como no app.
@@ -127,6 +126,15 @@ try {
   // diferente de idle) atrapalhar o relançamento do Electron mais abaixo.
   await fetch(`${remoteBase}/comando`, { method: "POST", body: JSON.stringify({ token: pareado.token, acao: "parar" }) });
   await page.waitForFunction(() => JSON.parse(localStorage.getItem("lumen-live-frame") ?? "null")?.status === "idle");
+  // ---- Permissões: quem entrou pelo celular, e o que pode fazer ----
+  // Entrar deixou de pedir senha; esta lista virou a única barreira.
+  await page.getByRole("button", { name: "Permissões", exact: true }).click();
+  const dialogoPerm = page.getByRole("dialog", { name: "Permissões do celular" });
+  await dialogoPerm.waitFor({ state: "visible", timeout: 10000 });
+  await dialogoPerm.getByText("Smoke", { exact: true }).waitFor({ timeout: 10000 });
+  await page.keyboard.press("Escape");
+  await dialogoPerm.waitFor({ state: "hidden", timeout: 10000 });
+
   // ---- Logo e nome da igreja, à mão na barra de cima ----
   // Era a primeira coisa que alguém faz ao instalar o Lúmen, e a mais
   // escondida: ficava no fundo das Configurações, entre margens e transições.
@@ -196,7 +204,7 @@ try {
   // O nome primeiro: o campo do PIN pareia sozinho ao completar seis dígitos,
   // e depois disso a tela de pareamento já não existe para receber o nome.
   await celular.fill("#nome", "Celular do teste");
-  await celular.fill("#pin", remoteStatus.pin);
+  await celular.click("#entrar");
   await celular.waitForSelector("#conectado:not([hidden])", { timeout: 15000 });
 
   // Dois botões que nunca servem ao mesmo tempo roubavam espaço na tela do
@@ -552,7 +560,7 @@ try {
   assert.deepEqual(errors, []);
   const disk = JSON.parse(await readFile(path.join(profile, "data", "library.json"), "utf8"));
   assert.ok(disk.values["lumen-v2"]);
-  console.log(`PASS: offline, fonts, Bible, restart persistence, projector, media ranges, preflight, Auto-Slide, remote control (LAN + PIN + nome fixo na rede), update check, review before apply, 1366×768 at 100/125/150% and 800×600, no scroll at seven sizes from 800×600 to 2560×1440 and the chat stays on screen, church logo and name reachable from the menu bar, double-click to project, fixed text only in the footer, YouTube collapses the lyrics strip, phone has one play/pause button, sees the media folder, projects from it and searches lyrics through the cabine. Evidence: ${evidence}`);
+  console.log(`PASS: offline, fonts, Bible, restart persistence, projector, media ranges, preflight, Auto-Slide, remote control (LAN, entrada por nome, nome fixo na rede), update check, review before apply, 1366×768 at 100/125/150% and 800×600, no scroll at seven sizes from 800×600 to 2560×1440 and the chat stays on screen, church logo and name reachable from the menu bar, double-click to project, fixed text only in the footer, YouTube collapses the lyrics strip, phone has one play/pause button, sees the media folder, projects from it and searches lyrics through the cabine. Evidence: ${evidence}`);
 } finally {
   if (app) await app.close();
   console.log(`Isolated test profile: ${profile}`);

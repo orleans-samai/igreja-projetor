@@ -9,23 +9,25 @@ const { enderecosLan } = require("./mdns.cjs");
  *
  * Um servidor HTTP na rede local — não só em 127.0.0.1, como o do YouTube,
  * porque aqui quem precisa entrar é um aparelho de verdade, na mesma Wi-Fi da
- * igreja. Essa diferença é o motivo de existir um PIN: qualquer um na mesma
- * rede consegue abrir o endereço, então o gesto de digitar os seis dígitos
- * que estão na tela da cabine é o que prova que quem está pedindo controle
- * está fisicamente perto de quem já está de posse do programa.
+ * igreja.
  *
- * Depois do PIN, o aparelho guarda um token de sessão — o PIN não trafega de
- * novo a cada clique, e desligar ou regenerar o PIN invalida todas as sessões
- * de uma vez, inclusive as que ninguém está mais olhando.
+ * Entrar não pede senha: pede nome. Quem abre o endereço se identifica e
+ * entra como "chat", que é conversar com a cabine e mais nada. A barreira não
+ * está na porta, está no que se pode fazer depois dela — e quem decide isso é
+ * o operador, vendo a lista de aparelhos com o nome de cada pessoa.
  *
- * O PIN prova presença, não intenção. Por isso ele sozinho não dá o telão:
- * quem pareia entra como "chat", e é a cabine que promove o aparelho a
- * editor ou a controle, vendo o nome dele na lista. Um celular esquecido
- * pareado na semana passada não avança slide no meio da pregação.
+ * Foi uma troca consciente. O PIN de seis dígitos provava presença, mas
+ * cobrava isso de toda a equipe, toda semana, no minuto em que o culto ia
+ * começar. Numa rede de igreja o custo era alto e o ganho pequeno: quem já
+ * está na Wi-Fi já está dentro. Agora o aparelho desconhecido aparece na
+ * cabine com nome e hora, e o operador o promove — ou o desconecta.
+ *
+ * O aparelho guarda um token de sessão; desconectar um aparelho, ou todos,
+ * invalida o token na hora, inclusive o de quem ninguém está mais olhando.
  *
  * O que trafega:
  *
- *   /parear      seis dígitos viram um token de sessão
+ *   /parear      um nome vira um token de sessão
  *   /estado      SSE: o que está no ar, o chat e a permissão do aparelho
  *   /comando     transporte do telão                        (permissão: controle)
  *   /repertorio  lista de músicas                           (permissão: editor)
@@ -78,10 +80,6 @@ function podeFazer(permissao, minima) {
   return tem >= 0 && precisa >= 0 && tem >= precisa;
 }
 
-function gerarPin() {
-  return String(nodeCrypto.randomInt(0, 1_000_000)).padStart(6, "0");
-}
-
 /**
  * Tira caracteres de controle de texto que veio do celular.
  *
@@ -119,7 +117,7 @@ class RemoteControl {
      * porta 5353 do sistema para provar o que veio provar.
      */
     this.anunciante = anunciante;
-    /** Onde porta, PIN e aparelhos pareados sobrevivem ao fechar do app.
+    /** Onde porta e aparelhos pareados sobrevivem ao fechar do app.
      *  Sem cofre (nos testes) o controle volta a ser de uma sessão só. */
     this.cofre = cofre;
     const guardado = cofre ? cofre.ler() : null;
@@ -129,7 +127,6 @@ class RemoteControl {
      *  para a equipe durante a semana. Zero (sem cofre) é "qualquer uma": sem
      *  lugar para lembrar, insistir numa porta fixa só criaria disputa. */
     this.portaPreferida = guardado ? guardado.porta : 0;
-    this.pin = guardado ? guardado.pin : null;
     /** token → dispositivo. Substitui o Set de tokens: agora cada aparelho
      *  tem nome, permissão e histórico, que é o que a cabine precisa ver. */
     this.dispositivos = new Map();
@@ -175,7 +172,6 @@ class RemoteControl {
     if (!this.cofre) return;
     this.cofre.gravar({
       porta: this.porta ?? this.portaPreferida,
-      pin: this.pin,
       dispositivos: [...this.dispositivos].map(([token, d]) => ({ token, ...d })),
     });
   }
@@ -201,7 +197,6 @@ class RemoteControl {
     return {
       ligado: this.ligado(),
       porta: this.porta,
-      pin: this.pin,
       enderecos: this.ligado() ? enderecosLan() : [],
       /** "lumen.local" quando o nome está de pé na rede; null quando não. */
       nomeLocal: this.ligado() && this.anunciante?.ativo ? this.anunciante.host : null,
@@ -241,10 +236,6 @@ class RemoteControl {
 
   async ligar() {
     if (this.ligado()) return this.status();
-    // O PIN nasce uma vez e fica. Trocar a cada abertura obrigava a equipe
-    // inteira a parear de novo toda semana; para trocar de propósito existe
-    // "gerar novo PIN", que é o botão de encerrar tudo.
-    if (!this.pin) this.pin = gerarPin();
     this.tentativas.clear();
     this.chat = [];
     let server;
@@ -276,7 +267,7 @@ class RemoteControl {
     }
     this.assinantes.clear();
     // Os aparelhos ficam: quem pareou no domingo passado abre o link e entra,
-    // sem PIN. É exatamente o que "desligar e ligar de novo" tem que custar.
+    // sem se identificar de novo. É o que "desligar e ligar" tem que custar.
     this._salvar();
     this.ultimoEstado = null;
     this.chat = [];
@@ -291,10 +282,9 @@ class RemoteControl {
     return this.status();
   }
 
-  /** Novo PIN e todas as sessões antigas param de valer — é o "encerrar tudo". */
-  regenerarPin() {
+  /** Todas as sessões param de valer — é o "encerrar tudo" da cabine. */
+  desconectarTodos() {
     if (!this.ligado()) return this.status();
-    this.pin = gerarPin();
     this.dispositivos.clear();
     this._transmitir({ tipo: "desconectado" });
     for (const res of this.assinantes.keys()) {
@@ -624,17 +614,20 @@ class RemoteControl {
     } catch {
       corpo = {};
     }
-    const digitado = String(corpo.pin || "").trim();
-    if (!this.pin || digitado !== this.pin) {
+    // O nome é o que a cabine vai ler na lista para decidir o que este
+    // aparelho pode fazer. Sem nome, o operador teria uma fila de "Celular"
+    // idênticos e nenhuma forma de escolher entre eles.
+    const nome = nomeLimpo(corpo.nome, "");
+    if (nome.length < 2) {
       this._registrarFalha(ip);
-      this._json(res, 401, { ok: false, erro: "PIN incorreto." });
+      this._json(res, 400, { ok: false, erro: "Escreva seu nome para entrar." });
       return;
     }
     const token = nodeCrypto.randomUUID();
     const agora = Date.now();
     const disp = {
       id: nodeCrypto.randomUUID(),
-      nome: nomeLimpo(corpo.nome, "Celular"),
+      nome,
       permissao: this.permissaoPadrao,
       criadoEm: agora,
       ultimoVisto: agora,

@@ -14,7 +14,15 @@ import {
   type RemoteStatus,
 } from "@/lib/remote-control";
 
+const VAZIO: RemoteStatus = {
+  ligado: false,
+  porta: null,
+  enderecos: [],
+  sessoesAtivas: 0,
+};
+
 const PERMISSOES_UI: PermissaoRemota[] = ["chat", "editor", "controle"];
+
 
 /**
  * Quem está conectado, o que cada um pode, e como tirar alguém.
@@ -23,7 +31,7 @@ const PERMISSOES_UI: PermissaoRemota[] = ["chat", "editor", "controle"];
  * quando o aparelho deu notícia pela última vez. Desconectar vale só para
  * aquele aparelho — os outros continuam trabalhando.
  */
-function Dispositivos({
+export function Dispositivos({
   status,
   aoMudar,
 }: {
@@ -102,22 +110,17 @@ function Dispositivos({
   );
 }
 
-const VAZIO: RemoteStatus = {
-  ligado: false,
-  porta: null,
-  pin: null,
-  enderecos: [],
-  sessoesAtivas: 0,
-};
 
 /**
- * Ligar, desligar e mostrar o PIN do controle remoto.
+ * O endereço para a equipe, e quem está conectado.
  *
- * Fica desligado até o operador pedir: um servidor escutando na rede da
- * igreja o tempo todo, sem necessidade, é superfície exposta à toa. O PIN
- * muda a cada vez que liga, e "Gerar novo PIN" encerra de uma vez qualquer
- * aparelho pareado antes — o jeito de tirar alguém do controle sem precisar
- * saber quem foi.
+ * O controle sobe junto com o app: deixar isso para um clique significava
+ * que, no domingo, ninguém lembrava — e a equipe chegava com o endereço na
+ * mão e nada atendendo do outro lado. Desligar continua possível, para a
+ * semana em que a igreja não quiser ninguém entrando.
+ *
+ * Entrar não pede senha, pede nome. "Desconectar todos" encerra de uma vez
+ * qualquer aparelho de antes, sem precisar saber quem era.
  */
 export function RemoteControlDialog({
   open,
@@ -138,8 +141,8 @@ export function RemoteControlDialog({
       void window.lumenDesktop!.remoteControlStatus().then((s) => vivo && setStatus(s));
     };
     atualizar();
-    // As sessões pareadas só mudam quando alguém digita o PIN no celular —
-    // um relógio lento é o bastante para o número na tela não ficar velho.
+    // A lista só muda quando alguém entra ou sai pelo celular — um relógio
+    // lento basta para ela não ficar velha na tela.
     const id = window.setInterval(atualizar, 4000);
     return () => {
       vivo = false;
@@ -165,10 +168,10 @@ export function RemoteControlDialog({
     }
   };
 
-  const gerarNovoPin = async () => {
+  const desconectarTodos = async () => {
     setOcupado(true);
     try {
-      setStatus(await window.lumenDesktop!.remoteControlRegeneratePin());
+      setStatus(await window.lumenDesktop!.remoteControlDisconnectAll());
     } finally {
       setOcupado(false);
     }
@@ -179,27 +182,27 @@ export function RemoteControlDialog({
   const fixo = enderecoFixo(status);
   const [copiado, setCopiado] = useState(false);
 
-  // O QR carrega o PIN junto no endereço: aponta a câmera e o celular já
-  // pareia sozinho, sem digitar nada. Só existe enquanto o servidor estiver
-  // de pé — gerar um QR para um PIN que já morreu seria um convite que não
-  // funciona.
   useEffect(() => {
-    if (!enderecoPrincipal || !status.pin) {
+    // O QR leva o endereço fixo quando ele existe: é o que sobrevive à troca
+    // de IP pelo roteador, e por isso é o único que vale imprimir e colar na
+    // parede da cabine. Sem o nome de pé, cai no IP, que funciona hoje.
+    const alvo = fixo ?? enderecoPrincipal;
+    if (!alvo) {
       setQr(null);
       return;
     }
     let vivo = true;
-    QRCode.toDataURL(`${enderecoPrincipal}/?pin=${status.pin}`, {
+    QRCode.toDataURL(alvo, {
       margin: 1,
-      width: 176,
-      color: { dark: "#17171a", light: "#e9e8e5" },
+      width: 320,
+      color: { dark: "#0f1115", light: "#ffffff" },
     })
       .then((url) => vivo && setQr(url))
       .catch(() => vivo && setQr(null));
     return () => {
       vivo = false;
     };
-  }, [enderecoPrincipal, status.pin]);
+  }, [enderecoPrincipal, fixo]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -227,16 +230,22 @@ export function RemoteControlDialog({
                   {qr && (
                     <img
                       src={qr}
-                      alt="QR code para parear o celular"
-                      className="size-24 shrink-0 rounded-md"
+                      alt="QR code para entrar pelo celular"
+                      className="size-28 shrink-0 rounded-md"
                     />
                   )}
-                  <div className="min-w-0 flex-1 text-center">
+                  <div className="min-w-0 flex-1">
                     <p className="text-caption font-medium uppercase tracking-wide text-subtle">
-                      {qr ? "Aponte a câmera, ou digite o PIN" : "PIN para parear"}
+                      Aponte a câmera do celular
                     </p>
-                    <p className="tnum mt-1 text-display-sm font-semibold tracking-[0.2em] text-fg">
-                      {status.pin}
+                    <p className="mt-1 text-body text-fg">{fixo ?? enderecoPrincipal}</p>
+                    {/* Vale imprimir só se o QR levar o nome fixo: um QR com
+                        o número do computador vira papel inútil na semana em
+                        que o roteador entregar outro. */}
+                    <p className="mt-1 text-secondary text-muted">
+                      {fixo
+                        ? "Este QR não vence — dá para imprimir e deixar colado na cabine."
+                        : "Este QR leva o número de hoje. Se o roteador trocar, ele deixa de valer."}
                     </p>
                   </div>
                 </div>
@@ -281,19 +290,19 @@ export function RemoteControlDialog({
                       ))}
                     </ul>
                   )}
-                  {/* O endereço deixou de envelhecer: porta e PIN são os
-                      mesmos toda vez, e quem já pareou entra sem PIN. Dizer
-                      isto aqui é o que dá ao operador coragem de mandar o
-                      endereço no grupo da igreja durante a semana. */}
+                  {/* O endereço deixou de envelhecer: a porta é a mesma toda
+                      vez, e quem já entrou continua entrando. Dizer isto aqui
+                      é o que dá ao operador coragem de mandar o endereço no
+                      grupo da igreja durante a semana. */}
                   {enderecos.length > 0 && (
                     <p className="mt-1.5 text-secondary text-muted">
-                      Este endereço e este PIN não mudam quando o Lúmen fecha e abre. Quem já
-                      pareou entra direto, sem digitar o PIN de novo.
+                      Este endereço não muda quando o Lúmen fecha e abre. Quem já entrou uma
+                      vez continua entrando, sem se identificar de novo.
                     </p>
                   )}
                 </div>
 
-                {enderecoPrincipal && status.pin && (
+                {(fixo || enderecoPrincipal) && (
                   <Button
                     variant="ghost"
                     onClick={async () => {
@@ -301,7 +310,7 @@ export function RemoteControlDialog({
                         "Lúmen — controle pelo celular",
                         fixo,
                         fixo ? `Se não abrir: ${enderecoPrincipal}` : enderecoPrincipal,
-                        `PIN: ${status.pin}`,
+                        "Basta escrever o seu nome para entrar.",
                       ]
                         .filter(Boolean)
                         .join("\n");
@@ -310,13 +319,11 @@ export function RemoteControlDialog({
                         setCopiado(true);
                         window.setTimeout(() => setCopiado(false), 2000);
                       } catch {
-                        // Sem permissão da área de transferência, o endereço
-                        // continua na tela para ser copiado à mão.
                         setCopiado(false);
                       }
                     }}
                   >
-                    <Copy /> {copiado ? "Copiado" : "Copiar endereço e PIN"}
+                    <Copy /> {copiado ? "Copiado" : "Copiar endereço"}
                   </Button>
                 )}
 
@@ -350,14 +357,19 @@ export function RemoteControlDialog({
                     ))}
                   </div>
                   <p className="mt-1 text-caption text-subtle">
-                    O PIN prova que a pessoa está na sala, não que ela deve comandar o telão.
-                    Por isso o padrão é entrar só no chat e a cabine liberar o resto.
+                    Estar na Wi-Fi da igreja não quer dizer que a pessoa deva comandar o telão.
+                    Por isso todo mundo entra só no chat, e é a cabine que libera o resto.
                   </p>
                 </div>
 
                 <div className="flex flex-wrap gap-2 border-t border-border pt-3">
-                  <Button size="sm" variant="secondary" onClick={() => void gerarNovoPin()} loading={ocupado}>
-                    <RefreshCw /> Gerar novo PIN
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => void desconectarTodos()}
+                    loading={ocupado}
+                  >
+                    <RefreshCw /> Desconectar todos
                   </Button>
                   <Button size="sm" variant="ghost" onClick={() => void desligar()} loading={ocupado}>
                     <Power /> Desativar

@@ -236,7 +236,7 @@ declare global {
       remoteControlStart: () => Promise<import("./remote-control").RemoteStatus>;
       remoteControlStop: () => Promise<import("./remote-control").RemoteStatus>;
       remoteControlStatus: () => Promise<import("./remote-control").RemoteStatus>;
-      remoteControlRegeneratePin: () => Promise<import("./remote-control").RemoteStatus>;
+      remoteControlDisconnectAll: () => Promise<import("./remote-control").RemoteStatus>;
       remoteControlPushRepertoire: (
         lista: { id: string; titulo: string; artista: string; letra: string }[],
       ) => void;

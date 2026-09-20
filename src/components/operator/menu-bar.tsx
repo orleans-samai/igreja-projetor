@@ -2,6 +2,7 @@ import {
   Check,
   GraduationCap,
   ImageUp,
+  Smartphone,
   Menu as MenuIcon,
   Play,
   Search,
@@ -50,6 +51,7 @@ export function MenuBar({
   onAutoSlide,
   onRemoteControl,
   onLogo,
+  onPermissoes,
   onOptimize,
 }: {
   onNewSong: () => void;
@@ -63,6 +65,7 @@ export function MenuBar({
   onAutoSlide: () => void;
   onRemoteControl: () => void;
   onLogo: () => void;
+  onPermissoes: () => void;
   onOptimize: () => void;
 }) {
   const church = useLumenStore((s) => s.settings.churchName);
@@ -371,7 +374,7 @@ export function MenuBar({
       {/* `min-w-0` deixa esta faixa ceder: numa janela estreita quem some é
           um menu, nunca o botão de parar a projeção. */}
       <nav className="hidden min-w-0 items-center gap-0.5 overflow-hidden sm:flex" aria-label="Menu principal">
-        {sections.map((section) => (
+        {sections.flatMap((section, indice) => [
           <Menu key={section.label}>
             <MenuTrigger asChild>
               <button
@@ -399,8 +402,26 @@ export function MenuBar({
                 </MenuItem>
               ))}
             </MenuContent>
-          </Menu>
-        ))}
+          </Menu>,
+          // Permissões vem logo depois de Arquivo: quem entrou pelo celular e
+          // o que cada pessoa pode fazer é decisão de quem opera, e agora que
+          // entrar não pede senha é a única barreira que existe.
+          indice === 0 ? (
+            <button
+              key="permissoes"
+              type="button"
+              onClick={onPermissoes}
+              className={cn(
+                "flex items-center gap-1.5 rounded-md px-2 py-1 text-secondary text-muted",
+                "transition-colors duration-[var(--motion-fast)] ease-[var(--ease-out)]",
+                "hover:bg-elevated hover:text-fg",
+                "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring",
+              )}
+            >
+              <Smartphone className="size-3.5" aria-hidden /> Permissões
+            </button>
+          ) : null,
+        ])}
 
         {/* Não é um menu, é um modo — e por isso mostra que está ligado. */}
         <button
@@ -512,6 +533,7 @@ export function MenuBar({
           ))}
           <Section first={false} label="Igreja">
             <MenuItem onSelect={onLogo}>Logo e nome da igreja</MenuItem>
+            <MenuItem onSelect={onPermissoes}>Permissões do celular</MenuItem>
           </Section>
         </MenuContent>
       </Menu>

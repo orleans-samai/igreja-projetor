@@ -95,7 +95,6 @@ export const AJUDA_PERMISSAO: Record<PermissaoRemota, string> = {
 export interface RemoteStatus {
   ligado: boolean;
   porta: number | null;
-  pin: string | null;
   enderecos: string[];
   /** "lumen.local" quando o nome está de pé na rede; null quando não subiu. */
   nomeLocal?: string | null;

@@ -352,6 +352,10 @@ if (!gotLock) {
     screen.on("display-metrics-changed", displaysChanged);
     blockerId = powerSaveBlocker.start("prevent-display-sleep");
     buildMenu();
+    // O controle pelo celular sobe junto com o app. Deixar isso para um
+    // clique significava que, no domingo, ninguém lembrava — e a equipe
+    // chegava com o endereço na mão e nada atendendo do outro lado.
+    remoteControl.ligar().catch(reportError);
     openCabine();
     const ext = externalDisplay();
     if (ext && !process.env.LUMEN_TEST_DATA) openProjector();
@@ -446,7 +450,7 @@ handle("lumen:update-status", () => updater.status());
 handle("lumen:remote-control-start", () => remoteControl.ligar());
 handle("lumen:remote-control-stop", () => remoteControl.desligar());
 handle("lumen:remote-control-status", () => remoteControl.status());
-handle("lumen:remote-control-regenerate-pin", () => remoteControl.regenerarPin());
+handle("lumen:remote-control-disconnect-all", () => remoteControl.desconectarTodos());
 onEvent("lumen:remote-control-state", (payload) => remoteControl.atualizarEstado(payload));
 onEvent("lumen:remote-control-repertoire", (lista) => remoteControl.atualizarRepertorio(lista));
 onEvent("lumen:remote-control-media", (lista) => remoteControl.atualizarMidia(lista));

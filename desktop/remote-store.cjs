@@ -9,8 +9,8 @@ const path = require("node:path");
  * endereço que o operador tinha mandado no grupo da igreja durante a semana
  * já não existia no domingo — e não havia jeito de a equipe adivinhar o novo.
  *
- * Aqui mora a parte estável: a porta escolhida, o PIN e os aparelhos que já
- * passaram pelo PIN uma vez. Fica num arquivo só do processo principal, fora
+ * Aqui mora a parte estável: a porta escolhida e os aparelhos que já se
+ * identificaram uma vez. Fica num arquivo só do processo principal, fora
  * do backup exportável — token de acesso não viaja dentro de um .lumen que a
  * igreja manda por e-mail.
  */
@@ -50,7 +50,6 @@ function saneia(bruto, agora = Date.now(), permissoes = ["chat", "editor", "cont
   const d = bruto && typeof bruto === "object" && !Array.isArray(bruto) ? bruto : {};
   const porta =
     Number.isInteger(d.porta) && d.porta > 1024 && d.porta <= 65535 ? d.porta : PORTA_PADRAO;
-  const pin = typeof d.pin === "string" && /^[0-9]{4,8}$/.test(d.pin) ? d.pin : null;
   const dispositivos = (Array.isArray(d.dispositivos) ? d.dispositivos : [])
     .filter(
       (x) =>
@@ -72,7 +71,7 @@ function saneia(bruto, agora = Date.now(), permissoes = ["chat", "editor", "cont
     .filter((x) => agora - x.ultimoVisto < VALIDADE_MS)
     .sort((a, b) => b.ultimoVisto - a.ultimoVisto)
     .slice(0, MAX_DISPOSITIVOS);
-  return { porta, pin, dispositivos };
+  return { porta, dispositivos };
 }
 
 class CofreRemoto {

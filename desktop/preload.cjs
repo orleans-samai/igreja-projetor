@@ -15,7 +15,7 @@ contextBridge.exposeInMainWorld("lumenDesktop", {
   remoteControlStart: () => ipcRenderer.invoke("lumen:remote-control-start"),
   remoteControlStop: () => ipcRenderer.invoke("lumen:remote-control-stop"),
   remoteControlStatus: () => ipcRenderer.invoke("lumen:remote-control-status"),
-  remoteControlRegeneratePin: () => ipcRenderer.invoke("lumen:remote-control-regenerate-pin"),
+  remoteControlDisconnectAll: () => ipcRenderer.invoke("lumen:remote-control-disconnect-all"),
   remoteControlPushState: (payload) => ipcRenderer.send("lumen:remote-control-state", payload),
   onRemoteCommand: (cb) => {
     const listener = (_event, acao) => cb(acao);

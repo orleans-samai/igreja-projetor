@@ -117,12 +117,11 @@
   #pareamento { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 16px; text-align: center; }
   #pareamento h1 { font-size: 20px; margin: 0; }
   #pareamento p { color: var(--muted); margin: 0; }
-  #pin, .campo {
+  .campo {
     width: 100%; background: var(--elevated); color: var(--fg);
     border: 1px solid var(--border); border-radius: 12px; padding: 14px;
   }
-  #pin { font-size: 38px; letter-spacing: .3em; text-align: center; padding-left: .3em; font-variant-numeric: tabular-nums; }
-  #pin:focus, .campo:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .campo:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
   #erroPin { color: var(--danger); min-height: 20px; font-size: 13px; }
 
   /* ─ Letras ─ */
@@ -154,12 +153,12 @@
   <section id="pareamento">
     <div>
       <h1>Entrar no Lúmen</h1>
-      <p>Digite o PIN de 6 dígitos que está na tela do computador, em Tela → Controle remoto pelo celular.</p>
+      <p>Escreva o seu nome. É ele que aparece na cabine, e é por ele que o operador libera o que você pode fazer.</p>
     </div>
-    <input id="pin" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="000000" autocomplete="one-time-code">
-    <input id="nome" class="campo" maxlength="32" placeholder="Seu nome (aparece na cabine)" autocomplete="name">
+    <input id="nome" class="campo" maxlength="32" placeholder="Seu nome" autocomplete="name" autofocus>
     <p id="erroPin"></p>
     <button class="botao botao-principal" id="entrar">Entrar</button>
+    <p class="dica">Você entra no chat. Para mexer nos slides ou nas letras, peça na cabine.</p>
   </section>
 
   <!-- ─ Conectado ─ -->
@@ -300,7 +299,6 @@
     $("conectado").hidden = true;
     $("pareamento").hidden = false;
     $("erroPin").textContent = msg || "";
-    $("pin").value = "";
   }
 
   function mostrarPainel() {
@@ -485,13 +483,26 @@
       });
   }
 
-  function parear(pin) {
+  /**
+   * Entrar é dizer quem você é.
+   *
+   * Não há senha: quem está na Wi-Fi da igreja já está dentro, e cobrar seis
+   * dígitos de toda a equipe, toda semana, no minuto em que o culto começa,
+   * custava mais do que protegia. O que protege é o nome ir para a lista da
+   * cabine, onde o operador decide o que cada um pode fazer.
+   */
+  function parear() {
     $("erroPin").textContent = "";
     var nome = $("nome").value.trim();
-    return fetch("/parear", { method: "POST", body: JSON.stringify({ pin: pin, nome: nome }) })
+    if (nome.length < 2) {
+      $("erroPin").textContent = "Escreva o seu nome para entrar.";
+      $("nome").focus();
+      return Promise.resolve();
+    }
+    return fetch("/parear", { method: "POST", body: JSON.stringify({ nome: nome }) })
       .then(function (r) { return r.json(); })
       .then(function (d) {
-        if (!d.ok) { $("erroPin").textContent = d.erro || "PIN incorreto."; return; }
+        if (!d.ok) { $("erroPin").textContent = d.erro || "Não consegui entrar."; return; }
         token = d.token;
         localStorage.setItem(CHAVE, d.token);
         if (nome) localStorage.setItem(CHAVE_NOME, nome);
@@ -804,12 +815,14 @@
   // ─────────────────────────────────────────── ligações
 
   $("entrar").addEventListener("click", function () {
-    if ($("pin").value.length === 6) void parear($("pin").value);
+    void parear();
   });
-  $("pin").addEventListener("input", function () {
-    var v = $("pin");
-    v.value = v.value.replace(/\D/g, "").slice(0, 6);
-    if (v.value.length === 6) void parear(v.value);
+  // Enter no teclado do celular entra, sem procurar o botão.
+  $("nome").addEventListener("keydown", function (ev) {
+    if (ev.key === "Enter") {
+      ev.preventDefault();
+      void parear();
+    }
   });
   $("sair").addEventListener("click", function () {
     localStorage.removeItem(CHAVE);
@@ -910,22 +923,15 @@
   var nomeSalvo = localStorage.getItem(CHAVE_NOME);
   if (nomeSalvo) $("nome").value = nomeSalvo;
 
-  // O QR code carrega o PIN na própria URL, para parear com uma câmera só.
-  var pinDaUrl = new URLSearchParams(location.search).get("pin");
-  if (pinDaUrl) {
-    // Some da URL assim que lido: um PIN não devia sobreviver no histórico
-    // do navegador depois de já ter servido para parear.
-    history.replaceState(null, "", location.pathname);
-  }
-
   token = localStorage.getItem(CHAVE);
   if (token) {
     conectar();
     recuperarRascunho();
-  } else if (pinDaUrl && /^\d{6}$/.test(pinDaUrl)) {
-    void parear(pinDaUrl);
   } else {
     mostrarPareamento();
+    // Quem já entrou uma vez neste aparelho só precisa confirmar: o nome
+    // volta preenchido e o Enter resolve.
+    $("nome").focus();
   }
 })();
 </script>
