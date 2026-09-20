@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="pt-BR">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>Lúmen — enviar para o culto</title>
+<!--
+  A página por onde o dirigente manda arquivo para a cabine.
+
+  É a única do Lúmen que pede senha, e por um motivo: mandar arquivo para o
+  computador da igreja é bem mais arriscado que mandar recado no chat, e aqui
+  não há operador olhando quem entrou. Sem senha definida na cabine, a página
+  não abre.
+-->
+<style>
+  :root {
+    --bg: #0f1115; --surface: #171a21; --elevada: #1e222b; --borda: #2a2f3a;
+    --fg: #e8eaee; --muted: #a3aab8; --subtle: #6f7784;
+    --accent: #7d9bb8; --ok: #6ea97f; --perigo: #d2564c;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); }
+  body {
+    font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    display: flex; flex-direction: column; align-items: center;
+    padding: 24px 16px calc(24px + env(safe-area-inset-bottom));
+  }
+  main { width: 100%; max-width: 420px; display: flex; flex-direction: column; gap: 18px; }
+  .marca { display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; }
+  .marca img { max-width: 190px; max-height: 110px; object-fit: contain; }
+  .marca .semLogo {
+    width: 72px; height: 72px; border-radius: 18px; background: var(--elevada);
+    display: grid; place-items: center; font-size: 30px;
+  }
+  .marca h1 { margin: 0; font-size: 21px; font-weight: 600; }
+  .marca p { margin: 0; color: var(--muted); font-size: 13px; }
+  label.rotulo { display: block; font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 6px; }
+  .campo {
+    width: 100%; padding: 14px; font-size: 17px; color: var(--fg);
+    background: var(--elevada); border: 1px solid var(--borda); border-radius: 10px;
+  }
+  .campo:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .botao {
+    width: 100%; padding: 15px; font-size: 16px; font-weight: 600; color: var(--fg);
+    background: var(--elevada); border: 1px solid var(--borda); border-radius: 10px;
+    cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;
+  }
+  .botao:disabled { opacity: .5; cursor: default; }
+  .principal { background: var(--accent); border-color: var(--accent); color: #0f1115; }
+  .aviso { margin: 0; font-size: 13px; color: var(--muted); }
+  .erro { margin: 0; font-size: 13px; color: var(--perigo); min-height: 1.2em; }
+  .ok { color: var(--ok); }
+  .solta {
+    border: 2px dashed var(--borda); border-radius: 14px; padding: 26px 16px;
+    text-align: center; color: var(--muted); background: var(--surface);
+  }
+  .solta.sobre { border-color: var(--accent); color: var(--fg); }
+  .solta strong { display: block; color: var(--fg); font-size: 16px; margin-bottom: 4px; }
+  ul.lista { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+  ul.lista li {
+    background: var(--surface); border: 1px solid var(--borda); border-radius: 10px;
+    padding: 10px 12px; font-size: 14px;
+  }
+  ul.lista .nome { display: block; word-break: break-word; }
+  ul.lista .estado { font-size: 12px; color: var(--muted); }
+  [hidden] { display: none !important; }
+</style>
+
+<main>
+  <div class="marca">
+    <div id="logoCaixa"><div class="semLogo">✝</div></div>
+    <h1 id="nomeIgreja">Lúmen</h1>
+    <p>Enviar arquivos para o culto</p>
+  </div>
+
+  <!-- ─ Senha ─ -->
+  <section id="entrada">
+    <label class="rotulo" for="senha">Senha</label>
+    <input id="senha" class="campo" type="password" autocomplete="current-password" placeholder="Senha do culto">
+    <p class="erro" id="erro"></p>
+    <button class="botao principal" id="entrar">Entrar</button>
+  </section>
+
+  <!-- ─ Envio ─ -->
+  <section id="envio" hidden style="display:flex;flex-direction:column;gap:14px">
+    <label class="solta" id="solta" for="arquivo">
+      <strong>Escolher arquivos</strong>
+      PowerPoint, PDF, vídeo, áudio ou imagem
+      <input id="arquivo" type="file" multiple hidden
+             accept=".pptx,.ppt,.odp,.pdf,video/*,audio/*,image/*">
+    </label>
+    <ul class="lista" id="fila"></ul>
+    <p class="erro" id="erroEnvio"></p>
+    <button class="botao principal" id="enviar" disabled>ENVIAR PARA O CULTO</button>
+    <p class="aviso">
+      O que chega aparece na cabine. Vídeo, áudio e imagem entram direto na
+      programação do culto; apresentação e PDF ficam guardados para o operador
+      abrir — o Lúmen ainda não projeta esses dois sozinho.
+    </p>
+    <button class="botao" id="sair">Sair</button>
+  </section>
+</main>
+
+<script>
+(function () {
+  "use strict";
+  var $ = function (id) { return document.getElementById(id); };
+  var CHAVE = "lumen-dirigente-token";
+  var token = null;
+  var escolhidos = [];
+
+  function mostrar(qual) {
+    $("entrada").hidden = qual !== "entrada";
+    $("envio").hidden = qual !== "envio";
+  }
+
+  fetch("/dirigente/igreja")
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      if (d.nome) $("nomeIgreja").textContent = d.nome;
+      if (d.logo) {
+        var img = document.createElement("img");
+        img.src = d.logo;
+        img.alt = d.nome || "Logo da igreja";
+        $("logoCaixa").innerHTML = "";
+        $("logoCaixa").appendChild(img);
+      }
+      if (!d.ligada) {
+        $("erro").textContent = "O envio de arquivos está desligado na cabine.";
+        $("entrar").disabled = true;
+        $("senha").disabled = true;
+      }
+    })
+    .catch(function () { /* sem rede: a senha ainda pode ser tentada */ });
+
+  function entrar() {
+    var senha = $("senha").value;
+    if (!senha) { $("erro").textContent = "Escreva a senha."; return; }
+    $("entrar").disabled = true;
+    $("erro").textContent = "";
+    fetch("/dirigente/entrar", { method: "POST", body: JSON.stringify({ senha: senha }) })
+      .then(function (r) { return r.json().then(function (d) { return { s: r.status, d: d }; }); })
+      .then(function (r) {
+        if (!r.d.ok) { $("erro").textContent = r.d.erro || "Não consegui entrar."; return; }
+        token = r.d.token;
+        try { sessionStorage.setItem(CHAVE, token); } catch (e) { /* aba privada */ }
+        $("senha").value = "";
+        mostrar("envio");
+      })
+      .catch(function () { $("erro").textContent = "Sem conexão com a cabine."; })
+      .finally(function () { $("entrar").disabled = false; });
+  }
+
+  $("entrar").addEventListener("click", entrar);
+  $("senha").addEventListener("keydown", function (ev) {
+    if (ev.key === "Enter") { ev.preventDefault(); entrar(); }
+  });
+
+  function desenharFila() {
+    var ul = $("fila");
+    ul.innerHTML = "";
+    escolhidos.forEach(function (item) {
+      var li = document.createElement("li");
+      var nome = document.createElement("span");
+      nome.className = "nome";
+      nome.textContent = item.file.name;
+      var estado = document.createElement("span");
+      estado.className = "estado" + (item.estado === "enviado" ? " ok" : "");
+      estado.textContent = item.mensagem || (Math.round(item.file.size / 1024) + " KB");
+      li.appendChild(nome);
+      li.appendChild(estado);
+      ul.appendChild(li);
+    });
+    $("enviar").disabled = escolhidos.length === 0;
+  }
+
+  function receber(lista) {
+    for (var i = 0; i < lista.length; i += 1) {
+      escolhidos.push({ file: lista[i], estado: "pronto", mensagem: "" });
+    }
+    desenharFila();
+  }
+
+  $("arquivo").addEventListener("change", function () {
+    receber($("arquivo").files);
+    $("arquivo").value = "";
+  });
+
+  // Arrastar e soltar, para quem estiver no computador em vez do celular.
+  ["dragenter", "dragover"].forEach(function (e) {
+    $("solta").addEventListener(e, function (ev) {
+      ev.preventDefault();
+      $("solta").classList.add("sobre");
+    });
+  });
+  ["dragleave", "drop"].forEach(function (e) {
+    $("solta").addEventListener(e, function (ev) {
+      ev.preventDefault();
+      $("solta").classList.remove("sobre");
+      if (e === "drop" && ev.dataTransfer) receber(ev.dataTransfer.files);
+    });
+  });
+
+  function enviarUm(item) {
+    item.estado = "enviando";
+    item.mensagem = "enviando…";
+    desenharFila();
+    return fetch("/dirigente/enviar", {
+      method: "POST",
+      headers: {
+        "x-lumen-dirigente": token,
+        // O nome vai codificado: cabeçalho HTTP não carrega acento cru.
+        "x-lumen-arquivo": encodeURIComponent(item.file.name),
+        "content-type": "application/octet-stream",
+      },
+      body: item.file,
+    })
+      .then(function (r) { return r.json().then(function (d) { return { s: r.status, d: d }; }); })
+      .then(function (r) {
+        if (r.s === 401) {
+          token = null;
+          mostrar("entrada");
+          $("erro").textContent = "A sessão expirou. Entre novamente.";
+          throw new Error("sessao");
+        }
+        if (!r.d.ok) {
+          item.estado = "erro";
+          item.mensagem = r.d.erro || "não deu";
+          return;
+        }
+        item.estado = "enviado";
+        item.mensagem = r.d.projetavel ? "no culto ✓" : "guardado na cabine ✓";
+      })
+      .catch(function (e) {
+        if (e.message === "sessao") throw e;
+        item.estado = "erro";
+        item.mensagem = "sem conexão";
+      })
+      .finally(desenharFila);
+  }
+
+  $("enviar").addEventListener("click", function () {
+    $("enviar").disabled = true;
+    $("erroEnvio").textContent = "";
+    var fila = escolhidos.filter(function (i) { return i.estado !== "enviado"; });
+    // Um de cada vez: numa Wi-Fi de igreja, quatro envios juntos derrubam os
+    // quatro, e o dirigente não sabe qual chegou.
+    fila
+      .reduce(function (antes, item) {
+        return antes.then(function () { return enviarUm(item); });
+      }, Promise.resolve())
+      .catch(function () { /* sessão caiu; a tela já avisou */ })
+      .finally(function () {
+        $("enviar").disabled = escolhidos.length === 0;
+      });
+  });
+
+  $("sair").addEventListener("click", function () {
+    token = null;
+    escolhidos = [];
+    desenharFila();
+    try { sessionStorage.removeItem(CHAVE); } catch (e) { /* aba privada */ }
+    mostrar("entrada");
+  });
+
+  try { token = sessionStorage.getItem(CHAVE); } catch (e) { token = null; }
+  mostrar(token ? "envio" : "entrada");
+})();
+</script>
+</html>

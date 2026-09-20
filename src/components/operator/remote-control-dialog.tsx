@@ -2,6 +2,7 @@ import { Copy, Power, RefreshCw, Smartphone } from "lucide-react";
 import QRCode from "qrcode";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { cn } from "@/lib/cn";
 import {
@@ -181,6 +182,7 @@ export function RemoteControlDialog({
   const enderecoPrincipal = enderecos[0] ?? null;
   const fixo = enderecoFixo(status);
   const [copiado, setCopiado] = useState(false);
+  const [senhaDirigente, setSenhaDirigente] = useState("");
 
   useEffect(() => {
     // O QR leva o endereço fixo quando ele existe: é o que sobrevive à troca
@@ -359,6 +361,63 @@ export function RemoteControlDialog({
                   <p className="mt-1 text-caption text-subtle">
                     Estar na Wi-Fi da igreja não quer dizer que a pessoa deva comandar o telão.
                     Por isso todo mundo entra só no chat, e é a cabine que libera o resto.
+                  </p>
+                </div>
+
+                {/* A página do dirigente é a única do Lúmen que pede senha:
+                    mandar arquivo para o computador da igreja é bem mais
+                    arriscado que mandar recado no chat, e aqui não há
+                    operador olhando quem entrou. */}
+                <div className="border-t border-border pt-3">
+                  <p className="text-caption font-medium uppercase tracking-wide text-subtle">
+                    Enviar arquivos para o culto
+                  </p>
+                  <p className="mt-1 text-body text-fg">{`${fixo ?? enderecoPrincipal}/dirigente`}</p>
+                  <p className="mt-1 text-secondary text-muted">
+                    Para o dirigente mandar a apresentação de casa. Sem senha definida, a página
+                    não abre.
+                  </p>
+                  <div className="mt-2 flex items-center gap-1.5">
+                    <Input
+                      type="password"
+                      value={senhaDirigente}
+                      onChange={(e) => setSenhaDirigente(e.target.value)}
+                      placeholder={status.temSenhaDirigente ? "Trocar a senha" : "Definir uma senha"}
+                      aria-label="Senha da página de envio"
+                      autoComplete="new-password"
+                    />
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      disabled={senhaDirigente.trim().length < 4}
+                      onClick={async () => {
+                        const d = window.lumenDesktop;
+                        if (!d) return;
+                        setStatus(await d.remoteControlSetDirigentePassword(senhaDirigente.trim()));
+                        setSenhaDirigente("");
+                      }}
+                    >
+                      Guardar
+                    </Button>
+                    {status.temSenhaDirigente && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={async () => {
+                          const d = window.lumenDesktop;
+                          if (!d) return;
+                          setStatus(await d.remoteControlSetDirigentePassword(""));
+                          setSenhaDirigente("");
+                        }}
+                      >
+                        Desligar
+                      </Button>
+                    )}
+                  </div>
+                  <p className="mt-1 text-caption text-subtle">
+                    {status.temSenhaDirigente
+                      ? "A página está no ar. Quatro letras ou mais para trocar a senha."
+                      : "Desligada. Defina uma senha de quatro letras ou mais para abrir."}
                   </p>
                 </div>
 

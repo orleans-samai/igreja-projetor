@@ -75,7 +75,17 @@ export type EventoRemoto =
   | { tipo: "letra-musica"; pedido: number; fonte: string }
   // Volume do que toca no telão, pedido pelo celular. Não cabe na lista de
   // ações porque carrega um número, não é um botão fixo.
-  | { tipo: "volume"; valor: number; de: string };
+  | { tipo: "volume"; valor: number; de: string }
+  // Arquivo que chegou pela página do dirigente. `projetavel` é falso para
+  // apresentação e PDF: eles ficam guardados, porque o Lúmen ainda não sabe
+  // desenhá-los no telão — e dizer que sabe seria pior.
+  | {
+      tipo: "arquivo";
+      nome: string;
+      kind: "video" | "audio" | "image" | null;
+      id: string | null;
+      projetavel: boolean;
+    };
 
 /** Um achado da internet, do jeito que o celular precisa ver. */
 export interface AchadoRemoto {
@@ -112,6 +122,8 @@ export interface RemoteStatus {
   nomeLocal?: string | null;
   /** Por que o nome não subiu — a cabine explica em vez de esconder. */
   avisoNome?: string | null;
+  /** Se a página de envio de arquivos já tem senha — e portanto abre. */
+  temSenhaDirigente?: boolean;
   sessoesAtivas: number;
   dispositivos?: DispositivoRemoto[];
   permissaoPadrao?: PermissaoRemota;

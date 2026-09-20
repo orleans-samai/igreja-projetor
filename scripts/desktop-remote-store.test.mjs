@@ -13,7 +13,11 @@ test("arquivo ausente ou ilegível não derruba a abertura do app", async () => 
   const dir = await mkdtemp(path.join(os.tmpdir(), "lumen-cofre-"));
   try {
     const cofre = new CofreRemoto(dir);
-    assert.deepEqual(cofre.ler(), { porta: PORTA_PADRAO, dispositivos: [] });
+    assert.deepEqual(cofre.ler(), {
+      porta: PORTA_PADRAO,
+      dispositivos: [],
+      senhaDirigente: null,
+    });
     writeFileSync(path.join(dir, "remote.json"), "{ isto não é json");
     assert.equal(cofre.ler().porta, PORTA_PADRAO);
   } finally {
@@ -99,4 +103,28 @@ test("a lista de aparelhos não cresce sem fim", () => {
   assert.equal(limpo.dispositivos.length, 50);
   // Fica quem apareceu por último, não quem pareou primeiro.
   assert.equal(limpo.dispositivos[0].nome, "Celular 0");
+});
+
+test("a senha do dirigente é guardada cozida, nunca em claro", () => {
+  const { cozinharSenha, senhaConfere } = cofreModule;
+  const guardada = cozinharSenha("culto2026");
+  assert.notEqual(guardada.chave, "culto2026");
+  assert.match(guardada.sal, /^[0-9a-f]{32}$/);
+  assert.equal(senhaConfere(guardada, "culto2026"), true);
+  assert.equal(senhaConfere(guardada, "culto2025"), false);
+  // Sal por senha: a mesma senha guardada duas vezes não dá o mesmo resultado,
+  // então quem lê o arquivo não descobre que duas igrejas usam a mesma.
+  assert.notEqual(cozinharSenha("culto2026").chave, guardada.chave);
+  // Sem nada guardado, nada confere — nem string vazia.
+  assert.equal(senhaConfere(null, ""), false);
+  assert.equal(senhaConfere({ sal: "x" }, ""), false);
+});
+
+test("senha estranha no arquivo não vira senha válida", () => {
+  assert.equal(saneia({ senhaDirigente: "culto2026" }).senhaDirigente, null);
+  assert.equal(saneia({ senhaDirigente: { sal: 1, chave: 2 } }).senhaDirigente, null);
+  assert.deepEqual(saneia({ senhaDirigente: { sal: "aa", chave: "bb" } }).senhaDirigente, {
+    sal: "aa",
+    chave: "bb",
+  });
 });

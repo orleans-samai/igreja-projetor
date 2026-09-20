@@ -85,6 +85,16 @@ export function useRemoteControl() {
     void espelharMidia();
   }, [espelharMidia, live?.refId]);
 
+  // A página do dirigente abre com a cara da casa: logo e nome vêm daqui,
+  // porque é a cabine quem guarda as configurações da igreja.
+  const churchName = useLumenStore((s) => s.settings.churchName);
+  const logoUrl = useLumenStore((s) => s.settings.logoUrl);
+  useEffect(() => {
+    const d = window.lumenDesktop;
+    if (!d?.isDesktop) return;
+    d.remoteControlPushChurch({ nome: churchName, logo: logoUrl });
+  }, [churchName, logoUrl]);
+
   useEffect(() => {
     const d = window.lumenDesktop;
     if (!d?.isDesktop) return;
@@ -104,6 +114,28 @@ export function useRemoteControl() {
       }
       if (evento.tipo === "dispositivos") {
         if (evento.novo) toast(`${evento.novo} entrou pelo celular.`);
+        return;
+      }
+      if (evento.tipo === "arquivo") {
+        const st = useLumenStore.getState();
+        if (evento.projetavel && evento.kind && evento.id) {
+          // Vídeo, áudio e imagem já servem para projetar, então entram na
+          // programação do culto de hoje — que é o que o dirigente pediu ao
+          // apertar "enviar para o culto".
+          st.addToPlaylist({
+            type: "media",
+            refId: evento.id,
+            notes: "",
+            title: evento.nome,
+            subtitle: "Recebido",
+          });
+          toast(`“${evento.nome}” entrou na programação do culto.`);
+        } else {
+          // Apresentação e PDF ficam guardados: o Lúmen ainda não os desenha
+          // no telão, e pôr na programação um item que não projeta seria
+          // descobrir isso no meio do culto.
+          toast(`“${evento.nome}” chegou e está guardado na cabine.`);
+        }
         return;
       }
       if (evento.tipo === "volume") {

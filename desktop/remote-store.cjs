@@ -1,3 +1,4 @@
+const nodeCrypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
 
@@ -46,6 +47,33 @@ function instante(v, padrao) {
  * por uma queda de energia ou vir de uma versão futura do Lúmen. Nada daqui
  * pode derrubar a abertura do app.
  */
+/**
+ * Guarda a senha do dirigente sem guardar a senha.
+ *
+ * A página de envio de arquivos é a única do Lúmen que pede senha, e por um
+ * motivo: mandar arquivo para o computador da igreja é bem mais arriscado que
+ * mandar recado no chat. Mas senha em texto claro num JSON do disco seria
+ * pior que não ter senha nenhuma — quem lê o arquivo lê a senha.
+ *
+ * scrypt com sal por senha: conferir custa milissegundos, adivinhar custa
+ * caro, e o que fica no disco não serve para entrar em mais lugar nenhum.
+ */
+function cozinharSenha(senha, sal = nodeCrypto.randomBytes(16).toString("hex")) {
+  const chave = nodeCrypto.scryptSync(String(senha), sal, 32).toString("hex");
+  return { sal, chave };
+}
+
+/** Comparação em tempo constante: desistir na primeira letra errada conta. */
+function senhaConfere(guardada, tentativa) {
+  if (!guardada || typeof guardada.sal !== "string" || typeof guardada.chave !== "string") {
+    return false;
+  }
+  const feita = cozinharSenha(tentativa, guardada.sal).chave;
+  const a = Buffer.from(feita, "hex");
+  const b = Buffer.from(guardada.chave, "hex");
+  return a.length === b.length && nodeCrypto.timingSafeEqual(a, b);
+}
+
 function saneia(bruto, agora = Date.now(), permissoes = ["chat", "editor", "controle"]) {
   const d = bruto && typeof bruto === "object" && !Array.isArray(bruto) ? bruto : {};
   const porta =
@@ -71,7 +99,12 @@ function saneia(bruto, agora = Date.now(), permissoes = ["chat", "editor", "cont
     .filter((x) => agora - x.ultimoVisto < VALIDADE_MS)
     .sort((a, b) => b.ultimoVisto - a.ultimoVisto)
     .slice(0, MAX_DISPOSITIVOS);
-  return { porta, dispositivos };
+  const s = d.senhaDirigente;
+  const senhaDirigente =
+    s && typeof s === "object" && typeof s.sal === "string" && typeof s.chave === "string"
+      ? { sal: s.sal, chave: s.chave }
+      : null;
+  return { porta, dispositivos, senhaDirigente };
 }
 
 class CofreRemoto {
@@ -105,4 +138,12 @@ class CofreRemoto {
   }
 }
 
-module.exports = { CofreRemoto, saneia, PORTA_PADRAO, VALIDADE_MS, MAX_DISPOSITIVOS };
+module.exports = {
+  CofreRemoto,
+  saneia,
+  cozinharSenha,
+  senhaConfere,
+  PORTA_PADRAO,
+  VALIDADE_MS,
+  MAX_DISPOSITIVOS,
+};

@@ -3,6 +3,7 @@ const path = require("node:path");
 const nodeCrypto = require("node:crypto");
 const fsp = require("node:fs/promises");
 const { enderecosLan } = require("./mdns.cjs");
+const { senhaConfere, cozinharSenha } = require("./remote-store.cjs");
 
 /**
  * Controle remoto pelo celular.
@@ -50,6 +51,10 @@ const MAX_BODY_VOZ = 1536 * 1024;
 const AUDIOS_ACEITOS = /^data:audio\/(webm|ogg|mp4|mpeg|wav)(;[^,]*)?,/i;
 /** Recado mais comprido que isto é conversa, não recado. */
 const MAX_SEGUNDOS_VOZ = 120;
+/** Teto do que a página do dirigente pode largar no computador da igreja. */
+const MAX_ARQUIVO_DIRIGENTE = 64 * 1024 * 1024;
+/** Uma sessão de envio dura um culto, não uma semana. */
+const SESSAO_DIRIGENTE_MS = 6 * 60 * 60 * 1000;
 const JANELA_TENTATIVAS_MS = 3 * 60 * 1000;
 const LIMITE_TENTATIVAS = 5;
 /** O aparelho que não dá notícia há tanto tempo aparece como desconectado. */
@@ -167,6 +172,18 @@ class RemoteControl {
      */
     this.pedidos = new Map();
     this.proximoPedido = 1;
+    /**
+     * A senha da página de envio de arquivos — a única do Lúmen que pede uma.
+     * Mandar arquivo para o computador da igreja é bem mais arriscado que
+     * mandar recado no chat, e aqui não há operador olhando a lista.
+     */
+    this.senhaDirigente = guardado ? guardado.senhaDirigente : null;
+    /** token → quando entrou. Sessão de envio dura um culto, não uma semana. */
+    this.sessoesDirigente = new Map();
+    /** Nome e logo da igreja, para a página abrir com a cara da casa. */
+    this.igreja = { nome: "", logo: "" };
+    /** Ligado pelo processo principal: é ele que sabe escrever no disco. */
+    this.aoReceberArquivo = null;
     this.chat = [];
     /** Permissão de quem acabou de parear. A cabine pode afrouxar isto. */
     this.permissaoPadrao = "chat";
@@ -184,6 +201,7 @@ class RemoteControl {
     if (!this.cofre) return;
     this.cofre.gravar({
       porta: this.porta ?? this.portaPreferida,
+      senhaDirigente: this.senhaDirigente,
       dispositivos: [...this.dispositivos].map(([token, d]) => ({ token, ...d })),
     });
   }
@@ -210,6 +228,8 @@ class RemoteControl {
       ligado: this.ligado(),
       porta: this.porta,
       enderecos: this.ligado() ? enderecosLan() : [],
+      /** Se a página de envio de arquivos já tem senha definida. */
+      temSenhaDirigente: Boolean(this.senhaDirigente),
       /** "lumen.local" quando o nome está de pé na rede; null quando não. */
       nomeLocal: this.ligado() && this.anunciante?.ativo ? this.anunciante.host : null,
       /** Por que o nome não subiu — para a cabine poder explicar em vez de sumir. */
@@ -356,6 +376,39 @@ class RemoteControl {
   }
 
   /** A lista de músicas que o celular pode abrir para editar. */
+  /**
+   * Define (ou tira) a senha da página de envio de arquivos.
+   *
+   * Vazio desliga a página: sem senha ela não abre, porque receber arquivo de
+   * qualquer um na Wi-Fi é o tipo de porta que não se deixa encostada.
+   */
+  definirSenhaDirigente(senha) {
+    const limpa = String(senha || "").trim();
+    this.senhaDirigente = limpa.length >= 4 ? cozinharSenha(limpa) : null;
+    this.sessoesDirigente.clear();
+    this._salvar();
+    return this.status();
+  }
+
+  /** Nome e logo da igreja, para a página do dirigente ter a cara da casa. */
+  atualizarIgreja(dados) {
+    this.igreja = {
+      nome: semControle(String(dados?.nome || "")).slice(0, 80),
+      // A logo já vem reduzida pela cabine (ver logo-imagem.ts).
+      logo: typeof dados?.logo === "string" && dados.logo.startsWith("data:image/") ? dados.logo : "",
+    };
+  }
+
+  _sessaoDirigente(token) {
+    const em = this.sessoesDirigente.get(String(token || ""));
+    if (!em) return false;
+    if (Date.now() - em > SESSAO_DIRIGENTE_MS) {
+      this.sessoesDirigente.delete(String(token));
+      return false;
+    }
+    return true;
+  }
+
   /** A pasta de mídia do PC, espelhada para o celular. */
   atualizarMidia(lista) {
     this.midia = (Array.isArray(lista) ? lista : [])
@@ -530,6 +583,10 @@ class RemoteControl {
       if (m === "POST" && p === "/musica") return await this._salvarMusica(req, res);
       if (m === "POST" && p === "/chat") return await this._chat(req, res);
       if (m === "POST" && p === "/voz") return await this._voz(req, res);
+      if (m === "GET" && p === "/dirigente") return await this._paginaDirigente(res);
+      if (m === "GET" && p === "/dirigente/igreja") return this._igrejaDirigente(res);
+      if (m === "POST" && p === "/dirigente/entrar") return await this._entrarDirigente(req, res);
+      if (m === "POST" && p === "/dirigente/enviar") return await this._enviarDirigente(req, res);
       if (m === "GET" && p === "/midia") return this._midia(res, url);
       if (m === "POST" && p === "/projetar") return await this._projetar(req, res);
       if (m === "POST" && p === "/volume") return await this._volume(req, res);
@@ -872,6 +929,114 @@ class RemoteControl {
    * fechar o Lúmen, como qualquer recado de culto. Quem manda precisa só de
    * chat — falar é a coisa mais básica que o aparelho faz aqui.
    */
+  async _paginaDirigente(res) {
+    try {
+      const html = await fsp.readFile(path.join(this.wwwRoot, "dirigente.html"));
+      res.writeHead(200, {
+        "content-type": "text/html; charset=utf-8",
+        "cache-control": "no-store",
+        "x-content-type-options": "nosniff",
+      });
+      res.end(html);
+    } catch {
+      res.writeHead(500, { "content-type": "text/plain; charset=utf-8" });
+      res.end("Página ausente. Reinstale o Lúmen.");
+    }
+  }
+
+  _igrejaDirigente(res) {
+    this._json(res, 200, {
+      ok: true,
+      nome: this.igreja.nome,
+      logo: this.igreja.logo,
+      ligada: Boolean(this.senhaDirigente),
+    });
+  }
+
+  async _entrarDirigente(req, res) {
+    const ip = req.socket.remoteAddress || "?";
+    if (this._limitado(ip)) {
+      this._json(res, 429, { ok: false, erro: "Muitas tentativas. Aguarde alguns minutos." });
+      return;
+    }
+    if (!this.senhaDirigente) {
+      this._json(res, 403, { ok: false, erro: "O envio de arquivos está desligado na cabine." });
+      return;
+    }
+    let corpo;
+    try {
+      corpo = JSON.parse(await this._lerCorpo(req));
+    } catch {
+      corpo = {};
+    }
+    if (!senhaConfere(this.senhaDirigente, String(corpo.senha || ""))) {
+      this._registrarFalha(ip);
+      this._json(res, 401, { ok: false, erro: "Senha incorreta." });
+      return;
+    }
+    const token = nodeCrypto.randomUUID();
+    this.sessoesDirigente.set(token, Date.now());
+    this._json(res, 200, { ok: true, token });
+  }
+
+  /**
+   * Recebe um arquivo da página do dirigente.
+   *
+   * Os bytes vêm crus, não em JSON: uma apresentação de 40 MB viraria 54 em
+   * base64, e a diferença é sentida numa Wi-Fi de igreja. O nome viaja num
+   * cabeçalho, e quem escreve no disco é o processo principal.
+   */
+  async _enviarDirigente(req, res) {
+    if (!this._sessaoDirigente(req.headers["x-lumen-dirigente"])) {
+      this._json(res, 401, { ok: false, erro: "Sessão expirada. Entre novamente." });
+      return;
+    }
+    if (!this.aoReceberArquivo) {
+      this._json(res, 503, { ok: false, erro: "A cabine não está pronta para receber." });
+      return;
+    }
+    const nome = decodeURIComponent(String(req.headers["x-lumen-arquivo"] || "arquivo"));
+    let dados;
+    try {
+      dados = await this._lerBytes(req, MAX_ARQUIVO_DIRIGENTE);
+    } catch {
+      this._json(res, 413, { ok: false, erro: "Arquivo grande demais (máximo 64 MB)." });
+      return;
+    }
+    const r = await this.aoReceberArquivo(nome, dados);
+    if (!r?.ok) {
+      this._json(res, 400, { ok: false, erro: r?.error || "Não consegui guardar o arquivo." });
+      return;
+    }
+    this.onEvento?.({
+      tipo: "arquivo",
+      nome: r.nome,
+      kind: r.kind,
+      id: r.id,
+      projetavel: Boolean(r.projetavel),
+    });
+    this._json(res, 200, { ok: true, nome: r.nome, projetavel: Boolean(r.projetavel) });
+  }
+
+  /** Corpo cru, com teto — o `_lerCorpo` monta texto, e aqui vêm bytes. */
+  _lerBytes(req, max) {
+    return new Promise((resolve, reject) => {
+      const partes = [];
+      let total = 0;
+      req.on("data", (pedaco) => {
+        total += pedaco.length;
+        if (total > max) {
+          reject(new Error("grande demais"));
+          req.destroy();
+          return;
+        }
+        partes.push(pedaco);
+      });
+      req.on("end", () => resolve(Buffer.concat(partes)));
+      req.on("error", reject);
+    });
+  }
+
   async _voz(req, res) {
     let corpo;
     try {

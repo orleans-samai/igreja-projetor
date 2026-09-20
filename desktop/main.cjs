@@ -38,6 +38,8 @@ remoteControl.onComando = (acao) => {
 // O mesmo caminho para o que não é transporte: recado do chat, letra
 // editada no celular, aparelho que entrou ou saiu. A cabine é quem guarda o
 // repertório e quem decide o que fazer com cada pedido.
+// Quem escreve no disco é o processo principal; o servidor só entrega bytes.
+remoteControl.aoReceberArquivo = (nome, dados) => media.receber(nome, dados);
 remoteControl.onEvento = (evento) => {
   if (cabine && !cabine.isDestroyed()) cabine.webContents.send("lumen:remote-event", evento);
 };
@@ -454,6 +456,8 @@ handle("lumen:remote-control-disconnect-all", () => remoteControl.desconectarTod
 onEvent("lumen:remote-control-state", (payload) => remoteControl.atualizarEstado(payload));
 onEvent("lumen:remote-control-repertoire", (lista) => remoteControl.atualizarRepertorio(lista));
 onEvent("lumen:remote-control-media", (lista) => remoteControl.atualizarMidia(lista));
+onEvent("lumen:remote-control-church", (dados) => remoteControl.atualizarIgreja(dados));
+handle("lumen:remote-control-dirigente-password", (senha) => remoteControl.definirSenhaDirigente(senha));
 onEvent("lumen:remote-control-answer", (pedido, resposta) => remoteControl.responderPedido(pedido, resposta));
 handle("lumen:remote-control-devices", () => remoteControl.listarDispositivos());
 handle("lumen:remote-control-permission", (id, permissao) => remoteControl.definirPermissao(id, permissao));

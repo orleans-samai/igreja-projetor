@@ -21,6 +21,14 @@ const KINDS = {
   image: [".jpg", ".jpeg", ".png", ".webp", ".gif", ".avif", ".bmp"],
 };
 const PASTA_PADRAO = { video: "video", audio: "audio", image: "imagem" };
+/**
+ * Apresentação e documento: o Lúmen ainda não projeta estes arquivos, mas
+ * recebe e guarda, para o operador achá-los na hora do culto. Ver `receber`.
+ */
+const DOCUMENTOS = [".pptx", ".ppt", ".odp", ".pdf"];
+const PASTA_RECEBIDOS = "recebidos";
+/** Teto do que a rede pode largar no computador da igreja de uma vez. */
+const MAX_ARQUIVO = 64 * 1024 * 1024;
 
 let dataDir = "";
 let configFile = "";
@@ -352,4 +360,86 @@ async function resolveMedia(pathname) {
   }
 }
 
-module.exports = { init, ensure, folders, list, open, choose, apply, reset, resolveMedia, KINDS };
+/**
+ * Um nome de arquivo que veio da rede, seguro para virar caminho no disco.
+ *
+ * Tira diretório, tira o que o Windows recusa e tira ponto do começo. O que
+ * chega aqui foi digitado por alguém num celular da igreja, e "../../" num
+ * nome de arquivo é o jeito mais antigo de escrever fora da pasta.
+ */
+function nomeSeguro(bruto) {
+  // Caractere de controle e os que o Windows recusa saem por codepoint: uma
+  // classe de regex com eles dentro é ilegível e o lint reclama com razão.
+  const proibidos = new Set(["<", ">", ":", '"', "/", "\\", "|", "?", "*"]);
+  const so = [...path.basename(String(bruto || ""))]
+    .map((c) => (c.codePointAt(0) < 0x20 || proibidos.has(c) ? "_" : c))
+    .join("");
+  const limpo = so.replace(/^\.+/, "").trim().slice(0, 120);
+  return limpo || "arquivo";
+}
+
+/**
+ * Guarda um arquivo que chegou pela rede.
+ *
+ * Vídeo, áudio e imagem vão para a pasta de mídia da igreja e já servem para
+ * projetar. Apresentação e PDF vão para "recebidos": o Lúmen ainda não sabe
+ * desenhá-los no telão, e fingir que sabe seria pior — o operador precisa
+ * saber que o arquivo chegou e onde ele está.
+ *
+ * Extensão fora das duas listas não entra: o computador da cabine não é
+ * depósito de arquivo qualquer que estiver na Wi-Fi.
+ */
+async function receber(nomeBruto, dados) {
+  if (!Buffer.isBuffer(dados) || dados.length === 0) {
+    return { ok: false, error: "Arquivo vazio." };
+  }
+  if (dados.length > MAX_ARQUIVO) {
+    return { ok: false, error: "Arquivo grande demais (máximo 64 MB)." };
+  }
+  const nome = nomeSeguro(nomeBruto);
+  const ext = path.extname(nome).toLowerCase();
+  const kind = Object.keys(KINDS).find((k) => KINDS[k].includes(ext)) || null;
+  const documento = DOCUMENTOS.includes(ext);
+  if (!kind && !documento) {
+    return { ok: false, error: "Tipo de arquivo não aceito." };
+  }
+  const dir = kind ? dirFor(kind) : path.join(dataDir, PASTA_RECEBIDOS);
+  await fsp.mkdir(dir, { recursive: true });
+  // Nome repetido não sobrescreve o que já está lá: no domingo, dois "culto.pptx"
+  // de pessoas diferentes seriam um arquivo só, e o primeiro sumiria.
+  let destino = path.join(dir, nome);
+  const base = nome.slice(0, nome.length - ext.length);
+  for (let n = 2; n < 100; n += 1) {
+    try {
+      await fsp.access(destino);
+      destino = path.join(dir, `${base} (${n})${ext}`);
+    } catch {
+      break;
+    }
+  }
+  await fsp.writeFile(destino, dados);
+  return {
+    ok: true,
+    nome: path.basename(destino),
+    caminho: destino,
+    kind,
+    projetavel: Boolean(kind),
+    id: kind ? idFor(kind, path.basename(destino)) : null,
+  };
+}
+
+module.exports = {
+  init,
+  ensure,
+  folders,
+  list,
+  open,
+  choose,
+  apply,
+  reset,
+  resolveMedia,
+  receber,
+  KINDS,
+  DOCUMENTOS,
+  MAX_ARQUIVO,
+};

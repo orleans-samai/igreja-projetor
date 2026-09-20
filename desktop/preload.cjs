@@ -24,6 +24,9 @@ contextBridge.exposeInMainWorld("lumenDesktop", {
   },
   remoteControlPushRepertoire: (lista) => ipcRenderer.send("lumen:remote-control-repertoire", lista),
   remoteControlPushMedia: (lista) => ipcRenderer.send("lumen:remote-control-media", lista),
+  remoteControlPushChurch: (dados) => ipcRenderer.send("lumen:remote-control-church", dados),
+  remoteControlSetDirigentePassword: (senha) =>
+    ipcRenderer.invoke("lumen:remote-control-dirigente-password", senha),
   remoteControlAnswer: (pedido, resposta) =>
     ipcRenderer.send("lumen:remote-control-answer", pedido, resposta),
   remoteControlDevices: () => ipcRenderer.invoke("lumen:remote-control-devices"),

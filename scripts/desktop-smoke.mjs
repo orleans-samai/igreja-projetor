@@ -353,6 +353,22 @@ try {
 
   await celular.close();
 
+  // ---- A página do dirigente: existe, tem a cara da igreja, e é fechada ----
+  const paginaDirigente = await fetch(`${remoteBase}/dirigente`);
+  assert.equal(paginaDirigente.status, 200);
+  assert.match(await paginaDirigente.text(), /ENVIAR PARA O CULTO/);
+  const igrejaNaPagina = await fetch(`${remoteBase}/dirigente/igreja`).then((r) => r.json());
+  // O nome vem da cabine, não está escrito na página.
+  assert.equal(igrejaNaPagina.nome, "Igreja da Vila");
+  // Sem senha definida ela não abre: receber arquivo de qualquer um na Wi-Fi
+  // seria deixar a porta encostada.
+  assert.equal(igrejaNaPagina.ligada, false);
+  const dirigenteFechado = await fetch(`${remoteBase}/dirigente/entrar`, {
+    method: "POST",
+    body: JSON.stringify({ senha: "seja o que for" }),
+  });
+  assert.equal(dirigenteFechado.status, 403);
+
   // ---- A cabine não rola, nem para o lado nem para baixo ----
   // Controle que saiu da tela é controle que não existe: no meio do culto
   // ninguém procura barra de rolagem para achar o botão de parar. Um vídeo
@@ -662,7 +678,7 @@ try {
   assert.deepEqual(errors, []);
   const disk = JSON.parse(await readFile(path.join(profile, "data", "library.json"), "utf8"));
   assert.ok(disk.values["lumen-v2"]);
-  console.log(`PASS: offline, fonts, Bible, restart persistence, projector, media ranges, preflight, Auto-Slide, remote control (LAN, entrada por nome, nome fixo na rede), update check, review before apply, 1366×768 at 100/125/150% and 800×600, no scroll at seven sizes from 800×600 to 2560×1440 and the chat stays on screen, church logo and name reachable from the menu bar, video as a theme background, find a song by a lyric excerpt, right-click on lyrics edits or removes, double-click to project, fixed text only in the footer, YouTube collapses the lyrics strip, phone has one play/pause button and the screen volume, sees the media folder, projects from it and searches lyrics through the cabine. Evidence: ${evidence}`);
+  console.log(`PASS: offline, fonts, Bible, restart persistence, projector, media ranges, preflight, Auto-Slide, remote control (LAN, entrada por nome, nome fixo na rede), update check, review before apply, 1366×768 at 100/125/150% and 800×600, no scroll at seven sizes from 800×600 to 2560×1440 and the chat stays on screen, church logo and name reachable from the menu bar, dirigente upload page, video as a theme background, find a song by a lyric excerpt, right-click on lyrics edits or removes, double-click to project, fixed text only in the footer, YouTube collapses the lyrics strip, phone has one play/pause button and the screen volume, sees the media folder, projects from it and searches lyrics through the cabine. Evidence: ${evidence}`);
 } finally {
   if (app) await app.close();
   console.log(`Isolated test profile: ${profile}`);

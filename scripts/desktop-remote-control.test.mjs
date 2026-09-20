@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, writeFile, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import remoteControlModule from "../desktop/remote-control.cjs";
@@ -735,5 +735,68 @@ test("recado falado chega ao chat, e formato estranho não", async () => {
     assert.equal(ultima.segundos, 120);
   } finally {
     await derrubar(ctx);
+  }
+});
+
+test("a página do dirigente não abre sem senha, e a senha não fica no disco em claro", async () => {
+  const dir = await comPagina();
+  const cofreModule = (await import("../desktop/remote-store.cjs")).default;
+  const rc = new RemoteControl(dir, new cofreModule.CofreRemoto(dir));
+  const recebidos = [];
+  rc.aoReceberArquivo = async (nome, dados) => {
+    recebidos.push({ nome, bytes: dados.length });
+    return { ok: true, nome, kind: null, id: null, projetavel: false };
+  };
+  const status = await rc.ligar();
+  const base = `http://127.0.0.1:${status.porta}`;
+  try {
+    // Sem senha definida, receber arquivo de qualquer um na Wi-Fi seria
+    // deixar a porta encostada.
+    assert.equal(rc.status().temSenhaDirigente, false);
+    const fechada = await fetch(`${base}/dirigente/entrar`, {
+      method: "POST",
+      body: JSON.stringify({ senha: "qualquer" }),
+    });
+    assert.equal(fechada.status, 403);
+
+    rc.definirSenhaDirigente("culto2026");
+    assert.equal(rc.status().temSenhaDirigente, true);
+
+    const errada = await fetch(`${base}/dirigente/entrar`, {
+      method: "POST",
+      body: JSON.stringify({ senha: "culto2025" }),
+    });
+    assert.equal(errada.status, 401);
+
+    const certa = await fetch(`${base}/dirigente/entrar`, {
+      method: "POST",
+      body: JSON.stringify({ senha: "culto2026" }),
+    });
+    const { token } = await certa.json();
+    assert.ok(token);
+
+    // Sem token, ninguém larga arquivo no computador da igreja.
+    const semToken = await fetch(`${base}/dirigente/enviar`, {
+      method: "POST",
+      headers: { "x-lumen-arquivo": "culto.pptx" },
+      body: Buffer.from("PK"),
+    });
+    assert.equal(semToken.status, 401);
+
+    const enviou = await fetch(`${base}/dirigente/enviar`, {
+      method: "POST",
+      headers: { "x-lumen-dirigente": token, "x-lumen-arquivo": encodeURIComponent("culto domingo.pptx") },
+      body: Buffer.from("PK conteúdo"),
+    });
+    assert.equal(enviou.status, 200);
+    assert.equal(recebidos[0].nome, "culto domingo.pptx");
+
+    // O que fica no disco é o resultado do scrypt, nunca a senha.
+    const guardado = await readFile(path.join(dir, "remote.json"), "utf8");
+    assert.ok(!guardado.includes("culto2026"), "a senha foi parar no disco em texto claro");
+    assert.match(guardado, /"sal":/);
+  } finally {
+    rc.desligar();
+    await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
   }
 });

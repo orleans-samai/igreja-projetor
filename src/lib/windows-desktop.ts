@@ -241,6 +241,10 @@ declare global {
         lista: { id: string; titulo: string; artista: string; letra: string }[],
       ) => void;
       remoteControlPushMedia: (lista: import("./remote-control").MidiaRemota[]) => void;
+      remoteControlPushChurch: (dados: { nome: string; logo: string }) => void;
+      remoteControlSetDirigentePassword: (
+        senha: string,
+      ) => Promise<import("./remote-control").RemoteStatus>;
       remoteControlAnswer: (pedido: number, resposta: unknown) => void;
       remoteControlDevices: () => Promise<import("./remote-control").DispositivoRemoto[]>;
       remoteControlSetPermission: (
