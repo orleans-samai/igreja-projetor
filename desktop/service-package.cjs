@@ -3,12 +3,119 @@
 const fs = require("node:fs/promises");
 const { createReadStream, createWriteStream } = require("node:fs");
 const { pipeline } = require("node:stream/promises");
-const { Readable, Transform } = require("node:stream");
+const { Transform } = require("node:stream");
+const https = require("node:https");
 const path = require("node:path");
 const os = require("node:os");
 const { createHash, randomUUID } = require("node:crypto");
+const { lookup } = require("node:dns/promises");
+const { BlockList, isIP } = require("node:net");
 const MAGIC = Buffer.from("LUMENPK1");
 const MAX_FILE = 2 * 1024 ** 3, MAX_TOTAL = 8 * 1024 ** 3, MAX_JSON = 32 * 1024 ** 2;
+const MAX_INLINE = 100 * 1024 ** 2;
+const MAX_REDIRECTS = 3;
+
+// Package export runs in the privileged main process. Resolve every remote
+// hop first so renderer-controlled media URLs cannot reach loopback or a LAN.
+const blockedAddresses = new BlockList();
+for (const [network, prefix] of [
+  ["0.0.0.0", 8], ["10.0.0.0", 8], ["100.64.0.0", 10], ["127.0.0.0", 8],
+  ["169.254.0.0", 16], ["172.16.0.0", 12], ["192.0.0.0", 24],
+  ["192.0.2.0", 24], ["192.168.0.0", 16], ["198.18.0.0", 15],
+  ["198.51.100.0", 24], ["203.0.113.0", 24], ["224.0.0.0", 4], ["240.0.0.0", 4],
+]) blockedAddresses.addSubnet(network, prefix, "ipv4");
+for (const [network, prefix] of [
+  ["::", 128], ["::1", 128], ["100::", 64],
+  ["2001:db8::", 32], ["fc00::", 7], ["fe80::", 10], ["ff00::", 8],
+]) blockedAddresses.addSubnet(network, prefix, "ipv6");
+
+function isBlockedAddress(address, family) {
+  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.exec(address)?.[1];
+  if (mapped) return blockedAddresses.check(mapped, "ipv4");
+  return blockedAddresses.check(address, family === 6 ? "ipv6" : "ipv4");
+}
+
+async function resolvePublicHttpsUrl(raw, lookupImpl = lookup) {
+  let url;
+  try { url = new URL(raw); } catch { throw new Error("URL de mídia inválida."); }
+  if (url.protocol !== "https:" || url.username || url.password || (url.port && url.port !== "443"))
+    throw new Error("Mídia remota deve usar HTTPS público na porta padrão.");
+  const hostname = url.hostname.replace(/^\[|\]$/g, "");
+  const literalFamily = isIP(hostname);
+  let addresses;
+  try {
+    addresses = literalFamily
+      ? [{ address: hostname, family: literalFamily }]
+      : await lookupImpl(hostname, { all: true, verbatim: true });
+  } catch {
+    throw new Error("Não foi possível localizar o servidor da mídia.");
+  }
+  if (!addresses.length || addresses.some(({ address, family }) => isBlockedAddress(address, family)))
+    throw new Error("Mídia remota aponta para uma rede local ou reservada.");
+  return { url, addresses };
+}
+
+async function assertPublicHttpsUrl(raw, lookupImpl = lookup) {
+  return (await resolvePublicHttpsUrl(raw, lookupImpl)).url;
+}
+
+function pinnedLookup(addresses) {
+  return (_hostname, options, callback) => {
+    if (options?.all) callback(null, addresses);
+    else callback(null, addresses[0].address, addresses[0].family);
+  };
+}
+
+function decodeInlineMedia(url, maxBytes = MAX_INLINE) {
+  const match = /^data:(image|audio|video)\/[^;,]+;base64,([a-z0-9+/]*={0,2})$/is.exec(url);
+  if (!match || match[2].length % 4 === 1)
+    throw new Error("Formato de mídia incorporada não suportado.");
+  const padding = match[2].endsWith("==") ? 2 : match[2].endsWith("=") ? 1 : 0;
+  const decodedSize = Math.floor(match[2].length * 3 / 4) - padding;
+  if (decodedSize > maxBytes) throw new Error("Mídia incorporada acima de 100 MB.");
+  const bytes = Buffer.from(match[2], "base64");
+  if (bytes.length !== decodedSize) throw new Error("Mídia incorporada inválida.");
+  return bytes;
+}
+
+async function downloadRemote(raw, file) {
+  let url = raw;
+  for (let redirects = 0; redirects <= MAX_REDIRECTS; redirects += 1) {
+    const safe = await resolvePublicHttpsUrl(url);
+    // Pin the connection to the addresses that were approved above. A second
+    // DNS lookup inside fetch would reopen the check/use gap to DNS rebinding.
+    const res = await new Promise((resolve, reject) => {
+      const req = https.get(safe.url, {
+        lookup: pinnedLookup(safe.addresses),
+      }, resolve);
+      req.setTimeout(120000, () => req.destroy(new Error("Tempo esgotado ao baixar a mídia.")));
+      req.on("error", reject);
+    });
+    if ([301, 302, 303, 307, 308].includes(res.statusCode)) {
+      const location = res.headers.location;
+      res.resume();
+      if (!location || redirects === MAX_REDIRECTS)
+        throw new Error("Redirecionamentos demais ao baixar a mídia.");
+      url = new URL(location, safe.url).href;
+      continue;
+    }
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      res.resume();
+      throw new Error(`Não foi possível baixar a mídia (${res.statusCode}).`);
+    }
+    const declared = Number(res.headers["content-length"]);
+    if (Number.isFinite(declared) && declared > MAX_FILE) {
+      res.destroy();
+      throw new Error("Mídia acima de 2 GB.");
+    }
+    let bytes = 0;
+    await pipeline(res, new Transform({ transform(chunk, _enc, cb) {
+      bytes += chunk.length;
+      cb(bytes > MAX_FILE ? new Error("Mídia acima de 2 GB.") : null, chunk);
+    } }), createWriteStream(file));
+    return;
+  }
+}
 function references(data) {
   const urls = new Set();
   for (const item of data.media ?? []) if (item.path && item.type !== "announcement") urls.add(item.path);
@@ -37,24 +144,36 @@ async function materialize(url, dir, resolveLocal) {
   }
   const file = path.join(dir, randomUUID());
   if (url.startsWith("data:")) {
-    const match = /^data:(image|audio|video)\/[^;,]+;base64,(.*)$/s.exec(url);
-    if (!match) throw new Error("Formato de mídia incorporada não suportado.");
-    await fs.writeFile(file, Buffer.from(match[2], "base64"));
+    await fs.writeFile(file, decodeInlineMedia(url));
     return file;
   }
   if (!/^https?:\/\//.test(url)) throw new Error("Mídia temporária: coloque o arquivo na pasta de mídia antes de exportar.");
-  const res = await fetch(url, { signal: AbortSignal.timeout(120000) });
-  if (!res.ok || !res.body) throw new Error(`Não foi possível baixar a mídia (${res.status}).`);
-  let bytes = 0;
-  await pipeline(Readable.fromWeb(res.body), new Transform({ transform(chunk, _enc, cb) {
-    bytes += chunk.length; cb(bytes > MAX_FILE ? new Error("Mídia acima de 2 GB.") : null, chunk);
-  } }), createWriteStream(file));
+  await downloadRemote(url, file);
   return file;
 }
 function extension(url) {
   if (url.startsWith("data:")) {
     const mime = url.slice(5, url.indexOf(";"));
-    return ({ "image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp", "image/svg+xml": ".svg", "audio/mpeg": ".mp3", "video/mp4": ".mp4" })[mime] ?? ".bin";
+    return ({
+      "image/png": ".png",
+      "image/jpeg": ".jpg",
+      "image/webp": ".webp",
+      "image/svg+xml": ".svg",
+      "image/gif": ".gif",
+      "image/avif": ".avif",
+      "image/bmp": ".bmp",
+      "audio/mpeg": ".mp3",
+      "audio/mp4": ".m4a",
+      "audio/aac": ".aac",
+      "audio/wav": ".wav",
+      "audio/x-wav": ".wav",
+      "audio/ogg": ".ogg",
+      "audio/opus": ".opus",
+      "audio/flac": ".flac",
+      "video/mp4": ".mp4",
+      "video/webm": ".webm",
+      "video/ogg": ".ogv",
+    })[mime] ?? ".bin";
   }
   const ext = path.extname(new URL(url, "lumen://app").pathname).toLowerCase();
   return /^\.[a-z0-9]{1,5}$/.test(ext) ? ext : ".bin";
@@ -143,4 +262,12 @@ async function resolvePackage(url, packageRoot) {
   const file = path.join(packageRoot, ...pathname.split("/").slice(2));
   return await fs.stat(file).then((s) => s.isFile() ? file : null).catch(() => null);
 }
-module.exports = { exportPackage, importPackage, references, resolvePackage };
+module.exports = {
+  exportPackage,
+  importPackage,
+  references,
+  resolvePackage,
+  assertPublicHttpsUrl,
+  decodeInlineMedia,
+  pinnedLookup,
+};

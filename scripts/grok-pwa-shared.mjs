@@ -339,6 +339,7 @@ export function grokOgHeadTags({
   site = {},
   documentTitle = "",
   cwd = process.cwd(),
+  inspectWorkspace = true,
 } = {}) {
   const title = resolveOgTitle(site, appName, host, documentTitle);
   const publicHost = resolvePublicHost(host);
@@ -354,7 +355,11 @@ export function grokOgHeadTags({
     tags.push(`<meta property="og:type" content="x:game">`);
   }
   if (publicHost) {
-    const asset = resolveOgCardAsset(site, cwd);
+    const asset = inspectWorkspace
+      ? resolveOgCardAsset(site, cwd)
+      : siteHasCustomCard(site) || String(site.image ?? "").trim()
+        ? String(site.image ?? "").trim() || "/og.jpg"
+        : "";
     const custom = Boolean(asset);
     let image = custom
       ? `https://${publicHost}${asset.startsWith("/") ? asset : `/${asset}`}`
@@ -405,11 +410,16 @@ export function normalizeHeadContext(ctx = {}) {
   // Middleware passes a baked `site`. Still consult the workspace so a
   // public/og.jpg generated after that snapshot (or missed by a wrong cwd)
   // wins over the og.grok.me placeholder. Vercel has no public/ to read, so
-  // a correct bake is unchanged.
-  const site = applyCustomCardFromFs(
-    ctx.site !== undefined ? ctx.site : snapshotOgIdentity(cwd).site,
-    cwd,
-  );
+  // a correct bake is unchanged. Filesystem inspection is explicit (`cwd`),
+  // so a reusable helper call cannot inherit an unrelated app's site by
+  // accident merely because the process happens to run in that workspace.
+  const inspectWorkspace = ctx.inspectWorkspace ?? ctx.cwd !== undefined;
+  const sourceSite = ctx.site !== undefined
+    ? ctx.site
+    : inspectWorkspace
+      ? snapshotOgIdentity(cwd).site
+      : {};
+  const site = inspectWorkspace ? applyCustomCardFromFs(sourceSite, cwd) : sourceSite;
   const appName = resolveOgTitle(site, ctx.appName ?? DEFAULT_APP_NAME, ctx.host ?? "");
   return {
     appName,
@@ -418,13 +428,15 @@ export function normalizeHeadContext(ctx = {}) {
     creatorId: ctx.creatorId ?? readXCreatorId(),
     host: ctx.host ?? "",
     cwd,
+    inspectWorkspace,
     site,
   };
 }
 
 export function injectGrokPwaHead(html, ctx = {}) {
   if (typeof html !== "string") return html;
-  const { site, projectId, creator, creatorId, host, cwd } = normalizeHeadContext(ctx);
+  const { site, projectId, creator, creatorId, host, cwd, inspectWorkspace } =
+    normalizeHeadContext(ctx);
   const documentTitle = titleFromDocument(html);
   const appName = resolveOgTitle(
     site,
@@ -444,7 +456,7 @@ export function injectGrokPwaHead(html, ctx = {}) {
 
   next = insertAfterHeadOpen(
     next,
-    grokOgHeadTags({ host, appName, site, documentTitle, cwd }).join(""),
+    grokOgHeadTags({ host, appName, site, documentTitle, cwd, inspectWorkspace }).join(""),
   );
 
   if (!next.includes("/grok-app-builder/extensions.js")) {
@@ -497,6 +509,7 @@ export function createHeadInjector(ctx = {}) {
       creatorId: normalized.creatorId,
       host: normalized.host,
       cwd: normalized.cwd,
+      inspectWorkspace: normalized.inspectWorkspace,
       site: normalized.site,
     });
 

@@ -16,15 +16,31 @@ const KEYS = new Set([
 const LIMIT = 100 * 1024 * 1024;
 
 function validate(data) {
-  if (!data || data.format !== "lumen-backup-v1" || !data.values || typeof data.values !== "object" || Array.isArray(data.values)) {
+  if (
+    !data ||
+    data.format !== "lumen-backup-v1" ||
+    !data.values ||
+    typeof data.values !== "object" ||
+    Array.isArray(data.values)
+  ) {
     throw new Error("Backup Lúmen inválido.");
   }
   for (const [key, value] of Object.entries(data.values)) {
-    if (!KEYS.has(key) || typeof value !== "string" || Buffer.byteLength(value) > LIMIT) throw new Error("Conteúdo de backup inválido.");
+    if (!KEYS.has(key) || typeof value !== "string" || Buffer.byteLength(value) > LIMIT)
+      throw new Error("Conteúdo de backup inválido.");
     const parsed = JSON.parse(value);
     if (key === "lumen-bibles-v1") {
-      if (!Array.isArray(parsed) || parsed.some((b) => !b || typeof b.id !== "string" || !Array.isArray(b.books))) throw new Error("Bíblias inválidas.");
-    } else if (!parsed || typeof parsed.state !== "object" || !parsed.state || Array.isArray(parsed.state)) {
+      if (
+        !Array.isArray(parsed) ||
+        parsed.some((b) => !b || typeof b.id !== "string" || !Array.isArray(b.books))
+      )
+        throw new Error("Bíblias inválidas.");
+    } else if (
+      !parsed ||
+      typeof parsed.state !== "object" ||
+      !parsed.state ||
+      Array.isArray(parsed.state)
+    ) {
       throw new Error("Estado de biblioteca inválido.");
     }
   }
@@ -38,10 +54,21 @@ class Storage {
     this.report = report;
     this.data = { format: "lumen-backup-v1", values: {} };
     this.queue = Promise.resolve();
+    this.closing = false;
   }
   async init() {
     await fs.mkdir(this.dir, { recursive: true });
-    const candidates = [this.file, this.file + ".bak"];
+    const archiveDir = path.join(this.dir, "backups");
+    const archived = await fs.readdir(archiveDir).catch(() => []);
+    const candidates = [
+      this.file,
+      this.file + ".bak",
+      ...archived
+        .filter((name) => /^backup-\d+\.json$/.test(name))
+        .sort()
+        .reverse()
+        .map((name) => path.join(archiveDir, name)),
+    ];
     let damaged = false;
     for (const file of candidates) {
       try {
@@ -51,7 +78,7 @@ class Storage {
         if (damaged) {
           await fs.copyFile(this.file, this.file + `.corrupt-${Date.now()}`).catch(() => {});
           await this.atomic(this.file, JSON.stringify(this.data));
-          this.report("Biblioteca recuperada da cópia de segurança.");
+          this.report("Biblioteca recuperada automaticamente da cópia de segurança.");
         }
         await this.archive();
         return;
@@ -59,25 +86,40 @@ class Storage {
         if (error.code !== "ENOENT") damaged = true;
       }
     }
-    if (damaged) throw new Error("Biblioteca e backup não puderam ser lidos. Os arquivos foram preservados; restaure um backup pela pasta de dados.");
+    if (damaged)
+      throw new Error(
+        "Biblioteca e backups não puderam ser lidos. Os arquivos foram preservados; restaure um backup pela pasta de dados.",
+      );
   }
   async atomic(file, text) {
     const handle = await fs.open(file + ".tmp", "w");
-    try { await handle.writeFile(text, "utf8"); await handle.sync(); }
-    finally { await handle.close(); }
+    try {
+      await handle.writeFile(text, "utf8");
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
     await fs.rename(file + ".tmp", file);
   }
   async archive() {
     const dir = path.join(this.dir, "backups");
     await fs.mkdir(dir, { recursive: true });
     await this.atomic(path.join(dir, `backup-${Date.now()}.json`), JSON.stringify(this.data));
-    const files = (await fs.readdir(dir)).filter((f) => /^backup-\d+\.json$/.test(f)).sort().reverse();
+    const files = (await fs.readdir(dir))
+      .filter((f) => /^backup-\d+\.json$/.test(f))
+      .sort()
+      .reverse();
     for (const file of files.slice(7)) await fs.unlink(path.join(dir, file));
   }
   enqueue(operation) {
+    if (this.closing) return this.queue;
     const task = this.queue.then(operation);
     this.queue = task.catch(() => {});
     return task;
+  }
+  close() {
+    this.closing = true;
+    return this.queue;
   }
   async get(key) {
     if (!KEYS.has(key)) throw new Error("Chave inválida.");
@@ -89,16 +131,36 @@ class Storage {
     return this.enqueue(async () => {
       if (this.data.values[key] === value) return;
       const values = { ...this.data.values };
-      if (value === null) delete values[key]; else values[key] = value;
+      if (value === null) delete values[key];
+      else values[key] = value;
       const next = validate({ format: "lumen-backup-v1", values });
       const raw = JSON.stringify(next);
-      if (Buffer.byteLength(raw) > LIMIT) throw new Error("Biblioteca acima de 100 MB. Remova imagens grandes após exportar um backup.");
+      if (Buffer.byteLength(raw) > LIMIT)
+        throw new Error(
+          "Biblioteca acima de 100 MB. Remova imagens grandes após exportar um backup.",
+        );
       await this.atomic(this.file + ".bak", JSON.stringify(this.data));
       await this.atomic(this.file, raw);
       this.data = next;
     });
   }
-  async export() { await this.queue; return JSON.stringify(this.data, null, 2); }
+  async export() {
+    await this.queue;
+    return JSON.stringify(this.data, null, 2);
+  }
+  async health() {
+    await this.queue;
+    const probe = path.join(this.dir, ".write-probe");
+    await this.atomic(probe, String(Date.now()));
+    await fs.unlink(probe);
+    const stats = await fs.statfs(this.dir);
+    const backups = await fs.readdir(path.join(this.dir, "backups")).catch(() => []);
+    return {
+      writable: true,
+      freeBytes: Number(stats.bavail) * Number(stats.bsize),
+      backupCount: backups.filter((name) => /^backup-\d+\.json$/.test(name)).length,
+    };
+  }
   restore(raw) {
     if (Buffer.byteLength(raw) > LIMIT) return Promise.reject(new Error("Backup acima de 100 MB."));
     const next = validate(JSON.parse(raw));

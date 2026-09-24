@@ -31,6 +31,7 @@ import { Segmented } from "@/components/ui/segmented";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { loadBuiltinBible } from "@/lib/bible";
 import { importWebSong } from "@/lib/import-web-song";
+import { resolveOperatorShortcut } from "@/lib/operator-shortcuts";
 import { TAMANHO_PAINEL, type PainelId } from "@/lib/paineis";
 import type { LiveFrame } from "@/lib/types";
 import { buildLiveFrame, useLumenStore } from "@/store/lumen-store";
@@ -172,145 +173,65 @@ export function OperatorApp() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const typing = isTypingTarget(e.target);
       const ops = useOpsStore.getState();
       const st = useLumenStore.getState();
+      const action = resolveOperatorShortcut({
+        key: e.key,
+        ctrl: e.ctrlKey,
+        meta: e.metaKey,
+        shift: e.shiftKey,
+        typing: isTypingTarget(e.target),
+        editingSlide: st.editingSlide,
+        bibleOpen,
+        commandOpen: ops.commandOpen,
+        dialogOpen: !!document.querySelector('[role="dialog"]'),
+        live: st.status !== "idle",
+      });
+      if (!action) return;
+      e.preventDefault();
 
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
-        e.preventDefault();
-        ops.setCommandOpen(!ops.commandOpen);
-        return;
-      }
-      if (e.key === "F8") {
-        e.preventDefault();
-        ops.setLiveMode(!ops.liveMode);
-        return;
-      }
-      if (e.key === "F9") {
-        e.preventDefault();
-        ops.setEmergencyOpen(true);
-        return;
-      }
-
-      if (ops.commandOpen) return;
-      // Dialogs own their keyboard: Enter in the microphone test must not advance the telão.
-      if (document.querySelector('[role="dialog"]')) return;
-
-      if (e.key === "F5") {
-        e.preventDefault();
-        st.presentPreview();
-        return;
-      }
-      if (e.key === "Escape") {
-        e.preventDefault();
+      if (typeof action === "object") {
+        st.presentPlaylistItem(action.index);
+      } else if (action === "command") ops.setCommandOpen(!ops.commandOpen);
+      else if (action === "live-mode") ops.setLiveMode(!ops.liveMode);
+      else if (action === "emergency") ops.setEmergencyOpen(true);
+      else if (action === "present") st.presentPreview();
+      else if (action === "escape") {
         if (ops.emergencyOpen) {
           ops.setEmergencyOpen(false);
-          return;
-        }
-        if (ops.liveMode) {
+        } else if (ops.liveMode) {
           ops.setLiveMode(false);
-          return;
-        }
-        if (bibleOpen) {
+        } else if (bibleOpen) {
           setBibleOpen(false);
-          return;
-        }
-        if (st.fillMode !== "console") {
+        } else if (st.fillMode !== "console") {
           st.setFillMode("console");
-          return;
+        } else {
+          st.stop();
         }
-        st.stop();
-        return;
-      }
-      if (e.key === "?" && !typing) {
-        e.preventDefault();
-        setHelp(true);
-        return;
-      }
-      if (e.ctrlKey || e.metaKey) {
-        if (e.key.toLowerCase() === "r") {
-          if (st.status !== "idle") {
-            e.preventDefault();
-            toast("O culto está no ar. Esc para parar, depois recarregue se precisar.");
-          }
-          return;
-        }
-        if (e.key.toLowerCase() === "z" && !e.shiftKey && !typing) {
-          e.preventDefault();
-          const ok = ops.undoCulto();
-          if (!ok) st.undoOptimize();
-          return;
-        }
-        if (e.key.toLowerCase() === "f" && e.shiftKey) {
-          e.preventDefault();
-          setWebOpen(true);
-          return;
-        }
-        if (e.key.toLowerCase() === "f") {
-          e.preventDefault();
-          searchRef.current?.focus();
-          st.setTab("songs");
-          return;
-        }
-        if (e.key.toLowerCase() === "o" && e.shiftKey) {
-          e.preventDefault();
-          void runOptimize();
-          return;
-        }
-        if (e.key.toLowerCase() === "h" && e.shiftKey) {
-          e.preventDefault();
-          ops.setCheckupOpen(true);
-          return;
-        }
-        if (e.key.toLowerCase() === "b") {
-          e.preventDefault();
-          setBibleOpen((v) => !v);
-          return;
-        }
-        if (e.key.toLowerCase() === "p") {
-          e.preventDefault();
-          playlistRef.current
-            ?.querySelector<HTMLButtonElement>("[data-playlist-trigger]")
-            ?.focus();
-          return;
-        }
-        if (e.key.toLowerCase() === "t") {
-          e.preventDefault();
-          const ids = st.themes.map((t) => t.id);
-          const cur = st.songThemeId;
-          const next = ids[(ids.indexOf(cur) + 1) % ids.length];
-          if (next) st.applyThemeLive(next);
-          return;
-        }
-        if (e.key.toLowerCase() === "n") {
-          e.preventDefault();
-          st.nextPlaylistItem();
-          return;
-        }
-        if (/^[1-9]$/.test(e.key)) {
-          e.preventDefault();
-          st.presentPlaylistItem(Number(e.key) - 1);
-          return;
-        }
-      }
-      if (typing || st.editingSlide) return;
-      if (bibleOpen) return;
-      if (["ArrowRight", "PageDown", " ", "Enter"].includes(e.key)) {
-        e.preventDefault();
-        st.next();
-      } else if (["ArrowLeft", "PageUp"].includes(e.key)) {
-        e.preventDefault();
-        st.prev();
-      } else if (e.key.toLowerCase() === "b") {
-        e.preventDefault();
-        st.goBlack();
-      } else if (e.key.toLowerCase() === "l") {
-        e.preventDefault();
-        st.goLogo();
-      } else if (e.key.toLowerCase() === "c") {
-        e.preventDefault();
-        st.goClear();
-      }
+      } else if (action === "help") setHelp(true);
+      else if (action === "reload-blocked")
+        toast("O culto está no ar. Esc para parar, depois recarregue se precisar.");
+      else if (action === "undo") {
+        if (!ops.undoCulto()) st.undoOptimize();
+      } else if (action === "web-lyrics") setWebOpen(true);
+      else if (action === "search") {
+        searchRef.current?.focus();
+        st.setTab("songs");
+      } else if (action === "optimize") void runOptimize();
+      else if (action === "checkup") ops.setCheckupOpen(true);
+      else if (action === "bible") setBibleOpen((value) => !value);
+      else if (action === "playlist-focus")
+        playlistRef.current?.querySelector<HTMLButtonElement>("[data-playlist-trigger]")?.focus();
+      else if (action === "theme-next") {
+        const ids = st.themes.map((theme) => theme.id);
+        const next = ids[(ids.indexOf(st.songThemeId) + 1) % ids.length];
+        if (next) st.applyThemeLive(next);
+      } else if (action === "playlist-next") st.nextPlaylistItem();
+      else if (action === "next") st.next();
+      else if (action === "previous") st.prev();
+      else if (action === "black") st.goBlack();
+      else if (action === "logo") st.goLogo();
+      else if (action === "clear") st.goClear();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -338,7 +259,11 @@ export function OperatorApp() {
   if (liveMode) {
     return (
       <TooltipProvider>
-        <LiveMode outputFrame={outputFrame} previewFrame={previewFrame} onAutoSlide={() => setAutoSlide(true)} />
+        <LiveMode
+          outputFrame={outputFrame}
+          previewFrame={previewFrame}
+          onAutoSlide={() => setAutoSlide(true)}
+        />
         <AutoSlideDialog open={autoSlide} onOpenChange={setAutoSlide} />
         <OpsLayer />
         <HelpDialog open={help} onOpenChange={setHelp} />
@@ -391,51 +316,54 @@ export function OperatorApp() {
             <BibleWorkspace previewFrame={previewFrame} onBack={() => setBibleOpen(false)} />
           ) : (
             <>
-          <div className="hidden h-full xl:block">
-            <Group orientation="horizontal" className="h-full">
-              {ordemPaineis.flatMap((id, i) => {
-                const coluna = (
-                  <Panel
-                    key={id}
-                    defaultSize={TAMANHO_PAINEL[id].padrao}
-                    minSize={TAMANHO_PAINEL[id].minimo}
-                    className="relative h-full overflow-hidden"
-                  >
-                    {paineis[id]}
-                    <PainelArrastavel id={id} />
-                  </Panel>
-                );
-                // Separadores entram entre as colunas, nunca antes da primeira,
-                // e a lista fica plana: o Group precisa deles como filhos diretos.
-                return i === 0
-                  ? [coluna]
-                  : [
-                      <Separator key={`sep-${id}`} className="w-1 bg-border hover:bg-primary" />,
-                      coluna,
-                    ];
-              })}
-            </Group>
-          </div>
-          <div className="h-full xl:hidden">
-            {mobileTab === "lib" && (
-              <LibraryPanel
-                onNewSong={() => setSongEd(true)}
-                onWebLyrics={() => setWebOpen(true)}
-                onOpenBible={() => setBibleOpen(true)}
-                searchRef={searchRef}
-                bibleRef={bibleRef}
-              />
-            )}
-            {mobileTab === "preview" && (
-              <PreviewPanel
-                previewFrame={previewFrame}
-                outputFrame={outputFrame}
-                onEditSong={() => setSongEd(true)}
-                onSettings={() => setDisplay(true)}
-              />
-            )}
-            {mobileTab === "culto" && <PlaylistPanel showThemes />}
-          </div>
+              <div className="hidden h-full xl:block">
+                <Group orientation="horizontal" className="h-full">
+                  {ordemPaineis.flatMap((id, i) => {
+                    const coluna = (
+                      <Panel
+                        key={id}
+                        defaultSize={TAMANHO_PAINEL[id].padrao}
+                        minSize={TAMANHO_PAINEL[id].minimo}
+                        className="relative h-full overflow-hidden"
+                      >
+                        {paineis[id]}
+                        <PainelArrastavel id={id} />
+                      </Panel>
+                    );
+                    // Separadores entram entre as colunas, nunca antes da primeira,
+                    // e a lista fica plana: o Group precisa deles como filhos diretos.
+                    return i === 0
+                      ? [coluna]
+                      : [
+                          <Separator
+                            key={`sep-${id}`}
+                            className="w-1 bg-border hover:bg-primary"
+                          />,
+                          coluna,
+                        ];
+                  })}
+                </Group>
+              </div>
+              <div className="h-full xl:hidden">
+                {mobileTab === "lib" && (
+                  <LibraryPanel
+                    onNewSong={() => setSongEd(true)}
+                    onWebLyrics={() => setWebOpen(true)}
+                    onOpenBible={() => setBibleOpen(true)}
+                    searchRef={searchRef}
+                    bibleRef={bibleRef}
+                  />
+                )}
+                {mobileTab === "preview" && (
+                  <PreviewPanel
+                    previewFrame={previewFrame}
+                    outputFrame={outputFrame}
+                    onEditSong={() => setSongEd(true)}
+                    onSettings={() => setDisplay(true)}
+                  />
+                )}
+                {mobileTab === "culto" && <PlaylistPanel showThemes />}
+              </div>
             </>
           )}
         </div>
@@ -445,11 +373,7 @@ export function OperatorApp() {
       </div>
 
       <OpsLayer />
-      <SongEditorDialog
-        open={songEd}
-        onOpenChange={setSongEd}
-        songId={store.selectedSongId}
-      />
+      <SongEditorDialog open={songEd} onOpenChange={setSongEd} songId={store.selectedSongId} />
       <HelpDialog open={help} onOpenChange={setHelp} />
       <SettingsDialog open={settings} onOpenChange={setSettings} />
       <AutoSlideDialog open={autoSlide} onOpenChange={setAutoSlide} />

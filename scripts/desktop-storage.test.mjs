@@ -41,42 +41,83 @@ test("toda chave persistida pelos stores é aceita pelo disco", async () => {
 test("serializes saves, survives restart, exports and restores", async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "lumen-storage-"));
   try {
-    const store = new Storage(dir); await store.init();
-    await Promise.all([store.set("lumen-v2", state("primeiro")), store.set("lumen-v2", state("último")), store.set("lumen-ops-v1", state("operador"))]);
-    const restarted = new Storage(dir); await restarted.init();
+    const store = new Storage(dir);
+    await store.init();
+    await Promise.all([
+      store.set("lumen-v2", state("primeiro")),
+      store.set("lumen-v2", state("último")),
+      store.set("lumen-ops-v1", state("operador")),
+    ]);
+    const restarted = new Storage(dir);
+    await restarted.init();
     assert.equal(await restarted.get("lumen-v2"), state("último"));
     const backup = await restarted.export();
     await restarted.set("lumen-v2", state("alterado"));
     await restarted.restore(backup);
     assert.equal(await restarted.get("lumen-v2"), state("último"));
     assert.equal(await restarted.get("lumen-ops-v1"), state("operador"));
-  } finally { await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 }); }
+    const health = await restarted.health();
+    assert.equal(health.writable, true);
+    assert.ok(health.freeBytes > 0);
+    assert.ok(health.backupCount >= 1);
+  } finally {
+    await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  }
 });
 test("recovers corruption and preserves damaged file", async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "lumen-storage-"));
   try {
-    const store = new Storage(dir); await store.init();
+    const store = new Storage(dir);
+    await store.init();
     await store.set("lumen-v2", state("seguro"));
     await store.set("lumen-v2", state("recente"));
     await writeFile(store.file, "broken");
     const messages = [];
-    const restarted = new Storage(dir, (m) => messages.push(m)); await restarted.init();
+    const restarted = new Storage(dir, (m) => messages.push(m));
+    await restarted.init();
     assert.equal(await restarted.get("lumen-v2"), state("seguro"));
     assert.equal(messages.length, 1);
     assert.ok((await readdir(dir)).some((f) => f.includes(".corrupt-")));
-    assert.equal(JSON.parse(await readFile(store.file, "utf8")).values["lumen-v2"], state("seguro"));
-  } finally { await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 }); }
+    assert.equal(
+      JSON.parse(await readFile(store.file, "utf8")).values["lumen-v2"],
+      state("seguro"),
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  }
+});
+test("recovers from the newest historical backup when both live files are corrupt", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "lumen-storage-history-"));
+  try {
+    const store = new Storage(dir);
+    await store.init();
+    await store.set("lumen-v2", state("histórico"));
+    const checkpoint = new Storage(dir);
+    await checkpoint.init();
+    await writeFile(checkpoint.file, "broken");
+    await writeFile(checkpoint.file + ".bak", "also broken");
+    const messages = [];
+    const recovered = new Storage(dir, (message) => messages.push(message));
+    await recovered.init();
+    assert.equal(await recovered.get("lumen-v2"), state("histórico"));
+    assert.match(messages[0], /recuperada automaticamente/i);
+  } finally {
+    await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  }
 });
 test("rejects unknown keys and malformed backups, preserves data", async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "lumen-storage-"));
   try {
-    const store = new Storage(dir); await store.init();
+    const store = new Storage(dir);
+    await store.init();
     await store.set("lumen-v2", state("safe"));
     await assert.rejects(store.set("../escape", state("bad")));
     await assert.rejects(store.set("lumen-v2", "invalid json"));
     assert.throws(() => store.restore('{"format":"wrong"}'));
     assert.equal(await store.get("lumen-v2"), state("safe"));
-  } finally { await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 }); }
+  } finally {
+    await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  }
 });
 test("fails closed if both files are corrupt", async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "lumen-storage-"));
@@ -85,5 +126,22 @@ test("fails closed if both files are corrupt", async () => {
     await writeFile(path.join(dir, "library.json.bak"), "bad");
     await assert.rejects(new Storage(dir).init());
     assert.equal(await readFile(path.join(dir, "library.json"), "utf8"), "bad");
-  } finally { await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 }); }
+  } finally {
+    await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  }
+});
+
+test("close drains the current queue and refuses late writes", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "lumen-storage-close-"));
+  try {
+    const store = new Storage(dir);
+    await store.init();
+    const pending = store.set("lumen-v2", state("before close"));
+    const closing = store.close();
+    const late = store.set("lumen-v2", state("too late"));
+    await Promise.all([pending, closing, late]);
+    assert.equal(await store.get("lumen-v2"), state("before close"));
+  } finally {
+    await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  }
 });

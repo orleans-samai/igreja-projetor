@@ -66,11 +66,18 @@ class YoutubeHost {
     }
   }
 
-  stop() {
-    if (!this.server) return;
-    this.server.close();
+  async stop() {
+    // start() may still be between createServer() and listen(). Waiting for the
+    // shared promise prevents a late listener from appearing after shutdown.
+    await this.subindo?.catch(() => undefined);
+    const server = this.server;
     this.server = null;
     this.base = null;
+    if (!server) return;
+    server.closeIdleConnections?.();
+    await new Promise((resolve, reject) => {
+      server.close((error) => (error ? reject(error) : resolve()));
+    });
   }
 }
 

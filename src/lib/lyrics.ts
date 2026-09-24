@@ -9,7 +9,7 @@
  * the operator enables chords on the audience screen.
  */
 
-import { nid } from "./fold";
+import { nid } from "./fold.ts";
 import type { Slide } from "./types";
 
 const LABEL_RE =

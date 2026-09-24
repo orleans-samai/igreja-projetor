@@ -17,8 +17,11 @@ async function hash(file) {
   for await (const chunk of createReadStream(file)) h.update(chunk);
   return h.digest("hex");
 }
-async function download(url, file, expected) {
-  const response = await fetch(url, { signal: AbortSignal.timeout(600000) });
+async function download(url, file, expected, signal) {
+  const timeout = AbortSignal.timeout(600000);
+  const response = await fetch(url, {
+    signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+  });
   if (!response.ok || !response.body) throw new Error(`Download falhou (${response.status}). Confira a internet e tente novamente.`);
   await pipeline(Readable.fromWeb(response.body), createWriteStream(file));
   if (await hash(file) !== expected) throw new Error("Download incompleto ou diferente do esperado. Tente novamente.");
@@ -40,7 +43,15 @@ function validWav(wav) {
     wav.toString("ascii", 36, 40) === "data" && wav.readUInt32LE(40) === wav.length - 44;
 }
 class Recognition {
-  constructor(dataDir) { this.dir = path.join(dataDir, "recognition"); this.installing = null; this.busy = false; this.child = null; this.generation = 0; }
+  constructor(dataDir) { this.dir = path.join(dataDir, "recognition"); this.installing = null; this.installController = null; this.transcribing = null; this.busy = false; this.child = null; this.children = new Set(); this.generation = 0; }
+  runTracked(file, args, options) {
+    const task = run(file, args, options);
+    const child = task.child;
+    if (child) this.children.add(child);
+    const release = () => { if (child) this.children.delete(child); };
+    task.then(release, release);
+    return task;
+  }
   async status() {
     const cli = await findCli(this.dir);
     const model = path.join(this.dir, "ggml-base.bin");
@@ -49,25 +60,28 @@ class Recognition {
   }
   install() {
     if (this.installing) return this.installing;
-    this.installing = this.doInstall().then(() => ({ ok: true })).catch((e) => ({ ok: false, erro: e.message })).finally(() => { this.installing = null; });
+    this.installController = new AbortController();
+    this.installing = this.doInstall(this.installController.signal).then(() => ({ ok: true })).catch((e) => ({ ok: false, erro: e.name === "AbortError" ? "Instalacao cancelada." : e.message })).finally(() => { this.installing = null; this.installController = null; });
     return this.installing;
   }
-  async doInstall() {
+  async doInstall(signal) {
     if (process.platform !== "win32" || !["x64", "arm64"].includes(process.arch)) throw new Error("Reconhecimento disponível no Windows x64; no ARM64, exige emulação x64 do Windows 11.");
     if ((await this.status()).pronto) return;
     await fs.mkdir(this.dir, { recursive: true });
     const staging = await fs.mkdtemp(path.join(this.dir, "install-"));
     try {
       const zip = path.join(staging, "engine.zip");
-      await download(ENGINE, zip, ENGINE_HASH);
+      await download(ENGINE, zip, ENGINE_HASH, signal);
+      if (signal.aborted) throw signal.reason;
       const output = path.join(staging, "engine");
-      await run("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", "$ErrorActionPreference = 'Stop'; Add-Type -AssemblyName System.IO.Compression.FileSystem; [System.IO.Compression.ZipFile]::ExtractToDirectory($env:LUMEN_ENGINE_ZIP, $env:LUMEN_ENGINE_OUT)"], {
+      await this.runTracked("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", "$ErrorActionPreference = 'Stop'; Add-Type -AssemblyName System.IO.Compression.FileSystem; [System.IO.Compression.ZipFile]::ExtractToDirectory($env:LUMEN_ENGINE_ZIP, $env:LUMEN_ENGINE_OUT)"], {
         windowsHide: true, timeout: 120000, env: { ...process.env, LUMEN_ENGINE_ZIP: zip, LUMEN_ENGINE_OUT: output },
       });
+      if (signal.aborted) throw signal.reason;
       const cli = await findCli(output);
       if (!cli) throw new Error("Motor não encontrado no pacote.");
-      await run(cli, ["--help"], { windowsHide: true, timeout: 30000 });
-      await download(MODEL, path.join(staging, "model.bin"), MODEL_HASH);
+      await this.runTracked(cli, ["--help"], { windowsHide: true, timeout: 30000 });
+      await download(MODEL, path.join(staging, "model.bin"), MODEL_HASH, signal);
       // Unique directories let failed installations retry without overwriting a running engine.
       await fs.rename(output, path.join(this.dir, `engine-${Date.now()}`));
       await fs.rename(path.join(staging, "model.bin"), path.join(this.dir, "ggml-base.bin"));
@@ -90,15 +104,22 @@ class Recognition {
       await fs.writeFile(audio, wav);
       const cli = await findCli(this.dir);
       checkCanceled();
-      const task = run(cli, ["-m", path.join(this.dir, "ggml-base.bin"), "-f", audio, "-l", "pt", "-t", String(Math.max(1, Math.min(4, os.availableParallelism() - 1))), "-nt", "-otxt", "-of", output, "-ng"], { windowsHide: true, timeout: 45000, maxBuffer: 1024 * 1024 });
+      const task = this.runTracked(cli, ["-m", path.join(this.dir, "ggml-base.bin"), "-f", audio, "-l", "pt", "-t", String(Math.max(1, Math.min(4, os.availableParallelism() - 1))), "-nt", "-otxt", "-of", output, "-ng"], { windowsHide: true, timeout: 45000, maxBuffer: 1024 * 1024 });
       this.child = task.child;
-      await task;
+      this.transcribing = task;
+      await this.transcribing;
       const texto = (await fs.readFile(output + ".txt", "utf8")).replace(/\[[^\]]*\]|\([^)]*\)/g, " ").replace(/\s+/g, " ").trim();
       checkCanceled();
       return { ok: true, texto };
     } catch (e) { return { ok: false, erro: e.killed ? "Reconhecimento demorou demais. Use sugestões ou uma entrada de áudio mais limpa." : e.message }; }
-    finally { this.child = null; this.busy = false; if (temp) await fs.rm(temp, { recursive: true, force: true }); }
+    finally { this.child = null; this.transcribing = null; this.busy = false; if (temp) await fs.rm(temp, { recursive: true, force: true }); }
   }
   cancel() { this.generation += 1; this.child?.kill(); }
+  async shutdown() {
+    this.cancel();
+    this.installController?.abort();
+    for (const child of this.children) child.kill();
+    await Promise.allSettled([this.installing, this.transcribing].filter(Boolean));
+  }
 }
 module.exports = { Recognition, validWav };

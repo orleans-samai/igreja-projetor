@@ -50,6 +50,9 @@ jobs:
           # Sem certificado de assinatura: não procure identidade nem tente assinar.
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
 
+      - name: Testar fluxo real da cabine
+        run: npm run test:desktop:smoke
+
       # Guarda o resultado mesmo quando não há tag, para dar para baixar e testar.
       - name: Guardar como artefato
         uses: actions/upload-artifact@v4
@@ -58,6 +61,7 @@ jobs:
           path: |
             dist-win/release/*.exe
             dist-win/release/*.zip
+            artifacts/desktop-smoke/*.png
           if-no-files-found: error
           retention-days: 14
 

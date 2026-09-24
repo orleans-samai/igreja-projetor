@@ -27,7 +27,9 @@ let deferredInstall: BeforeInstallPromptEvent | null = null;
 let wakeSentinel: { release: () => Promise<void> } | null = null;
 let listeningInstall = false;
 
-export function isWindows(ua = typeof navigator === "undefined" ? "" : navigator.userAgent): boolean {
+export function isWindows(
+  ua = typeof navigator === "undefined" ? "" : navigator.userAgent,
+): boolean {
   return /windows nt|win32|win64|wow64/i.test(ua);
 }
 
@@ -43,7 +45,9 @@ export function isStandalone(): boolean {
   );
 }
 
-export function recommendedBrowser(ua = typeof navigator === "undefined" ? "" : navigator.userAgent): "edge" | "chrome" | "other" {
+export function recommendedBrowser(
+  ua = typeof navigator === "undefined" ? "" : navigator.userAgent,
+): "edge" | "chrome" | "other" {
   if (/edg\//i.test(ua)) return "edge";
   if (/chrome|chromium/i.test(ua) && !/edg\//i.test(ua)) return "chrome";
   return "other";
@@ -181,14 +185,21 @@ declare global {
       isDesktop: boolean;
       autoSlideStatus: () => Promise<{ pronto: boolean; nome?: string; motivo?: string }>;
       autoSlideInstall: () => Promise<{ ok: boolean; erro?: string }>;
-      autoSlideTranscrever: (wav: Uint8Array) => Promise<{ ok: boolean; texto?: string; erro?: string }>;
+      autoSlideTranscrever: (
+        wav: Uint8Array,
+      ) => Promise<{ ok: boolean; texto?: string; erro?: string }>;
       autoSlideCancel: () => Promise<void>;
       preflight: (urls: string[]) => Promise<PreflightReport>;
       selectDisplay: (id: number) => Promise<void>;
       testDisplay: (on: boolean) => Promise<void>;
-      exportService: (data: unknown) => Promise<{ canceled?: boolean; files?: number; path?: string }>;
+      exportService: (
+        data: unknown,
+      ) => Promise<{ canceled?: boolean; files?: number; path?: string }>;
       importService: () => Promise<unknown>;
-      suggestLyrics: (input: { query: string; artist?: string }) => Promise<import("./lyrics-web").LyricsSearchResult>;
+      suggestLyrics: (input: {
+        query: string;
+        artist?: string;
+      }) => Promise<import("./lyrics-web").LyricsSearchResult>;
       loadLyrics: (url: string) => Promise<{ ok: boolean; lyrics?: string; error?: string }>;
       storageGet: (key: string) => Promise<string | null>;
       storageSet: (key: string, value: string | null) => Promise<void>;
@@ -207,11 +218,19 @@ declare global {
 }
 
 export interface PreflightReport {
-  displays: { id: number; label: string; width: number; height: number; scaleFactor: number; primary: boolean }[];
+  displays: {
+    id: number;
+    label: string;
+    width: number;
+    height: number;
+    scaleFactor: number;
+    primary: boolean;
+  }[];
   selectedId: number | null;
   projectorReady: boolean;
   missing: string[];
   external: string[];
+  storage: { writable: boolean; freeBytes: number; backupCount: number };
 }
 
 export async function applyWakeLock(on: boolean): Promise<boolean> {
@@ -234,7 +253,9 @@ export async function applyWakeLock(on: boolean): Promise<boolean> {
   }
 }
 
-export function windowsInstallSteps(browser: "edge" | "chrome" | "other"): { title: string; detail: string }[] {
+export function windowsInstallSteps(
+  browser: "edge" | "chrome" | "other",
+): { title: string; detail: string }[] {
   const appMenu =
     browser === "edge"
       ? "Sem o instalador: Menu ⋯ → Aplicativos → Instalar este site como um aplicativo"
@@ -248,7 +269,10 @@ export function windowsInstallSteps(browser: "edge" | "chrome" | "other"): { tit
     },
     {
       title: "Execute e avance",
-      detail: "Aceite a pasta sugerida. O atalho aparece na área de trabalho e no Menu Iniciar. " + appMenu + ".",
+      detail:
+        "Aceite a pasta sugerida. O atalho aparece na área de trabalho e no Menu Iniciar. " +
+        appMenu +
+        ".",
     },
     {
       title: "Abra pelo Menu Iniciar",
@@ -256,7 +280,8 @@ export function windowsInstallSteps(browser: "edge" | "chrome" | "other"): { tit
     },
     {
       title: "Estenda o projetor",
-      detail: "Windows + P → Estender. Não use Duplicar: a cabine e o telão precisam ser monitores diferentes.",
+      detail:
+        "Windows + P → Estender. Não use Duplicar: a cabine e o telão precisam ser monitores diferentes.",
     },
     {
       title: "Mande o telão para o 2º monitor",

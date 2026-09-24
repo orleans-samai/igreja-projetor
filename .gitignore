@@ -22,9 +22,14 @@ artifacts/
 Thumbs.db
 
 # plataforma / rascunho
-.grok/
+.grok/*
+!.grok/app-env.json
 AGENTS.md
 AGENTS.project.md
 startup.sh
 screenshots/
 attachments/
+graphify-out/
+
+# Checkout-local tool state
+/.grok/

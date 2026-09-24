@@ -3,7 +3,14 @@ import { test } from "node:test";
 import { mkdtemp, writeFile, readFile, readdir, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { exportPackage, importPackage, resolvePackage } from "../desktop/service-package.cjs";
+import {
+  assertPublicHttpsUrl,
+  decodeInlineMedia,
+  exportPackage,
+  importPackage,
+  pinnedLookup,
+  resolvePackage,
+} from "../desktop/service-package.cjs";
 
 async function fixture(t) {
   const root = await mkdtemp(path.join(os.tmpdir(), "lumen-package-test-"));
@@ -78,4 +85,49 @@ test("rejects unsafe archive names and unresolved references", async (t) => {
   await pack({ data: f.data, entries: [] });
   await assert.rejects(importPackage(f.target, f.packages), /todas as mídias/);
   assert.deepEqual(await readdir(f.packages), []);
+});
+
+test("remote package media cannot reach local networks or unsafe transports", async () => {
+  for (const url of [
+    "http://example.com/media.mp4",
+    "https://localhost/media.mp4",
+    "https://127.0.0.1/media.mp4",
+    "https://[::1]/media.mp4",
+    "https://example.com:8443/media.mp4",
+    "https://user:pass@example.com/media.mp4",
+  ]) {
+    await assert.rejects(assertPublicHttpsUrl(url), /HTTPS|local|reservada/i, url);
+  }
+
+  const publicUrl = await assertPublicHttpsUrl(
+    "https://media.example/media.mp4",
+    async () => [{ address: "93.184.216.34", family: 4 }],
+  );
+  assert.equal(publicUrl.href, "https://media.example/media.mp4");
+
+  await assert.rejects(
+    assertPublicHttpsUrl("https://rebound.example/media.mp4", async () => [
+      { address: "93.184.216.34", family: 4 },
+      { address: "192.168.1.20", family: 4 },
+    ]),
+    /local|reservada/i,
+  );
+
+  const approved = [{ address: "93.184.216.34", family: 4 }];
+  await new Promise((resolve, reject) => {
+    pinnedLookup(approved)("rebound.example", { all: true }, (error, addresses) => {
+      if (error) reject(error);
+      else {
+        assert.deepEqual(addresses, approved);
+        resolve();
+      }
+    });
+  });
+});
+
+test("inline package media is validated before allocation", () => {
+  assert.equal(decodeInlineMedia("data:image/png;base64,QUJD", 3).toString(), "ABC");
+  assert.throws(() => decodeInlineMedia("data:image/png;base64,QUJD", 2), /100 MB/);
+  assert.throws(() => decodeInlineMedia("data:text/plain;base64,QUJD", 3), /não suportado/);
+  assert.throws(() => decodeInlineMedia("data:image/png;base64,@@@", 3), /não suportado/);
 });

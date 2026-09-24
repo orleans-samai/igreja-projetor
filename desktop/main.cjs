@@ -1,4 +1,14 @@
-const { app, BrowserWindow, Menu, screen, ipcMain, shell, powerSaveBlocker, protocol, dialog } = require("electron");
+const {
+  app,
+  BrowserWindow,
+  Menu,
+  screen,
+  ipcMain,
+  shell,
+  powerSaveBlocker,
+  protocol,
+  dialog,
+} = require("electron");
 const { Storage } = require("./storage.cjs");
 const { resolveAsset } = require("./assets.cjs");
 const media = require("./media.cjs");
@@ -9,13 +19,22 @@ const { Recognition } = require("./recognition.cjs");
 const packages = require("./service-package.cjs");
 const { YoutubeHost } = require("./youtube-host.cjs");
 
-
 const ORIGIN = "lumen://app";
-protocol.registerSchemesAsPrivileged([{ scheme: "lumen", privileges: {
-  standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true,
-} }]);
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: "lumen",
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      corsEnabled: true,
+      stream: true,
+    },
+  },
+]);
 // Keep the historical profile name so upgrades do not discard existing profiles.
-if (process.env.LUMEN_TEST_DATA && !app.isPackaged) app.setPath("userData", process.env.LUMEN_TEST_DATA);
+if (process.env.LUMEN_TEST_DATA && !app.isPackaged)
+  app.setPath("userData", process.env.LUMEN_TEST_DATA);
 const dataDir = app.getPath("userData");
 const recognition = new Recognition(dataDir);
 const youtubeHost = new YoutubeHost(path.join(__dirname, "www"));
@@ -25,13 +44,19 @@ async function localMedia(url) {
   const parsed = new URL(url, ORIGIN);
   if (parsed.protocol !== "lumen:" || parsed.hostname !== "app") return null;
   if (parsed.pathname.startsWith("/__pacotes/")) return packages.resolvePackage(url, packageRoot);
-  if (parsed.pathname.startsWith("/__midia/")) return media.resolveMedia(decodeURIComponent(parsed.pathname));
+  if (parsed.pathname.startsWith("/__midia/"))
+    return media.resolveMedia(decodeURIComponent(parsed.pathname));
   return resolveAsset(wwwRoot(), parsed.href);
 }
 const settingsFile = path.join(dataDir, "desktop-settings.json");
 let desktopSettings = {};
-try { desktopSettings = JSON.parse(fs.readFileSync(settingsFile, "utf8")); } catch { /* first run */ }
-if (desktopSettings.softwareGraphics || process.argv.includes("--compatibility")) app.disableHardwareAcceleration();
+try {
+  desktopSettings = JSON.parse(fs.readFileSync(settingsFile, "utf8"));
+} catch {
+  /* first run */
+}
+if (desktopSettings.softwareGraphics || process.argv.includes("--compatibility"))
+  app.disableHardwareAcceleration();
 let cabine = null;
 let projetor = null;
 let palco = null;
@@ -39,26 +64,37 @@ let pedido = null;
 let origin = ORIGIN;
 let blockerId = null;
 let quitting = false;
+let shutdownComplete = false;
+let shutdownPromise = null;
 let storage;
 let noticeShown = false;
 function log(message) {
   try {
     fs.mkdirSync(path.join(dataDir, "logs"), { recursive: true });
     const file = path.join(dataDir, "logs", "desktop.log");
-    if (fs.existsSync(file) && fs.statSync(file).size > 2 * 1024 * 1024) fs.renameSync(file, file + ".old");
+    if (fs.existsSync(file) && fs.statSync(file).size > 2 * 1024 * 1024)
+      fs.renameSync(file, file + ".old");
     fs.appendFileSync(file, new Date().toISOString() + " " + message + "\n");
-  } catch { /* logging cannot block recovery */ }
+  } catch {
+    /* logging cannot block recovery */
+  }
 }
 function reportError(error) {
   log(error?.stack || String(error));
   if (!noticeShown) {
     noticeShown = true;
-    dialog.showErrorBox("Lúmen — atenção", String(error?.message || error) + "\nConsulte Lúmen → Abrir pasta de dados e logs.");
+    dialog.showErrorBox(
+      "Lúmen — atenção",
+      String(error?.message || error) + "\nConsulte Lúmen → Abrir pasta de dados e logs.",
+    );
   }
 }
-function wwwRoot() { return path.join(__dirname, "www"); }
+function wwwRoot() {
+  return path.join(__dirname, "www");
+}
 async function startServer() {
-  if (!fs.existsSync(path.join(wwwRoot(), "index.html"))) throw new Error("Interface ausente. Reinstale o Lúmen.");
+  if (!fs.existsSync(path.join(wwwRoot(), "index.html")))
+    throw new Error("Interface ausente. Reinstale o Lúmen.");
   protocol.handle("lumen", async (request) => {
     // Mídia da igreja mora fora do www; resolveMedia prende o caminho dentro
     // da pasta configurada para o tipo e recusa qualquer outra coisa.
@@ -66,42 +102,107 @@ async function startServer() {
     try {
       const pathname = decodeURIComponent(new URL(request.url).pathname);
       if (pathname.startsWith("/__midia/")) file = await media.resolveMedia(pathname);
-      if (pathname.startsWith("/__pacotes/")) file = await packages.resolvePackage(request.url, packageRoot);
-    } catch { /* url malformada cai no 404 */ }
+      if (pathname.startsWith("/__pacotes/"))
+        file = await packages.resolvePackage(request.url, packageRoot);
+    } catch {
+      /* url malformada cai no 404 */
+    }
     if (!file) file = await resolveAsset(wwwRoot(), request.url);
     if (!file) return new Response("Arquivo não encontrado", { status: 404 });
     // Stream media without buffering whole videos in the main process.
     if (/\.(mp4|webm|m4v|ogv|mp3|m4a|aac|wav|ogg|opus|flac)$/i.test(file)) {
-      const types = { ".mp4": "video/mp4", ".webm": "video/webm", ".m4v": "video/mp4", ".ogv": "video/ogg", ".mp3": "audio/mpeg", ".m4a": "audio/mp4", ".aac": "audio/aac", ".wav": "audio/wav", ".ogg": "audio/ogg", ".opus": "audio/ogg", ".flac": "audio/flac" };
+      const types = {
+        ".mp4": "video/mp4",
+        ".webm": "video/webm",
+        ".m4v": "video/mp4",
+        ".ogv": "video/ogg",
+        ".mp3": "audio/mpeg",
+        ".m4a": "audio/mp4",
+        ".aac": "audio/aac",
+        ".wav": "audio/wav",
+        ".ogg": "audio/ogg",
+        ".opus": "audio/ogg",
+        ".flac": "audio/flac",
+      };
       return mediaResponse(file, request, types[path.extname(file).toLowerCase()]);
     }
-    const mime = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".json": "application/json", ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".woff2": "font/woff2", ".woff": "font/woff", ".ico": "image/x-icon", ".mp4": "video/mp4", ".webm": "video/webm", ".m4v": "video/mp4", ".ogv": "video/ogg", ".mp3": "audio/mpeg", ".m4a": "audio/mp4", ".aac": "audio/aac", ".wav": "audio/wav", ".ogg": "audio/ogg", ".opus": "audio/ogg", ".flac": "audio/flac", ".gif": "image/gif", ".avif": "image/avif", ".bmp": "image/bmp" };
-    return new Response(await fs.promises.readFile(file), { headers: { "content-type": mime[path.extname(file)] || "application/octet-stream", "x-content-type-options": "nosniff" } });
+    const mime = {
+      ".html": "text/html; charset=utf-8",
+      ".js": "text/javascript; charset=utf-8",
+      ".css": "text/css; charset=utf-8",
+      ".json": "application/json",
+      ".svg": "image/svg+xml",
+      ".png": "image/png",
+      ".jpg": "image/jpeg",
+      ".jpeg": "image/jpeg",
+      ".webp": "image/webp",
+      ".woff2": "font/woff2",
+      ".woff": "font/woff",
+      ".ico": "image/x-icon",
+      ".mp4": "video/mp4",
+      ".webm": "video/webm",
+      ".m4v": "video/mp4",
+      ".ogv": "video/ogg",
+      ".mp3": "audio/mpeg",
+      ".m4a": "audio/mp4",
+      ".aac": "audio/aac",
+      ".wav": "audio/wav",
+      ".ogg": "audio/ogg",
+      ".opus": "audio/ogg",
+      ".flac": "audio/flac",
+      ".gif": "image/gif",
+      ".avif": "image/avif",
+      ".bmp": "image/bmp",
+    };
+    return new Response(await fs.promises.readFile(file), {
+      headers: {
+        "content-type": mime[path.extname(file)] || "application/octet-stream",
+        "x-content-type-options": "nosniff",
+      },
+    });
   });
   return ORIGIN;
 }
 function authorized(event) {
   const url = event.senderFrame?.url || "";
-  if (!url.startsWith(ORIGIN + "/") || event.senderFrame !== event.sender.mainFrame) throw new Error("Origem não autorizada.");
+  if (!url.startsWith(ORIGIN + "/") || event.senderFrame !== event.sender.mainFrame)
+    throw new Error("Origem não autorizada.");
 }
 function handle(channel, fn) {
   ipcMain.handle(channel, async (event, ...args) => {
     authorized(event);
-    try { return await fn(...args); } catch (error) { reportError(error); throw error; }
+    if (quitting) throw new Error("O Lumen esta encerrando.");
+    try {
+      return await fn(...args);
+    } catch (error) {
+      reportError(error);
+      throw error;
+    }
   });
 }
 function fitCabine() {
   if (!cabine || cabine.isDestroyed()) return;
   const area = screen.getDisplayMatching(cabine.getBounds()).workArea;
   const bounds = cabine.getBounds();
-  const width = Math.min(bounds.width, area.width), height = Math.min(bounds.height, area.height);
-  cabine.setBounds({ width, height, x: Math.max(area.x, Math.min(bounds.x, area.x + area.width - width)), y: Math.max(area.y, Math.min(bounds.y, area.y + area.height - height)) });
+  const width = Math.min(bounds.width, area.width),
+    height = Math.min(bounds.height, area.height);
+  cabine.setBounds({
+    width,
+    height,
+    x: Math.max(area.x, Math.min(bounds.x, area.x + area.width - width)),
+    y: Math.max(area.y, Math.min(bounds.y, area.y + area.height - height)),
+  });
 }
 function displaysChanged() {
   if (testWindow && !testWindow.isDestroyed()) testWindow.close();
   if (projetor && !projetor.isDestroyed()) {
-    if (externalDisplay()) { projetor.showInactive(); placeOnExternal(projetor); }
-    else { projetor.hide(); openCabine(); }
+    if (externalDisplay()) {
+      projetor.showInactive();
+      placeOnExternal(projetor);
+    } else {
+      projetor.hide();
+      openCabine();
+    }
   }
   fitCabine();
   buildMenu();
@@ -109,7 +210,13 @@ function displaysChanged() {
 
 function externalDisplay() {
   const primary = screen.getPrimaryDisplay();
-  return screen.getAllDisplays().find((d) => d.id === desktopSettings.displayId && d.id !== primary.id) || screen.getAllDisplays().find((d) => d.id !== primary.id) || null;
+  return (
+    screen
+      .getAllDisplays()
+      .find((d) => d.id === desktopSettings.displayId && d.id !== primary.id) ||
+    screen.getAllDisplays().find((d) => d.id !== primary.id) ||
+    null
+  );
 }
 
 function placeOnExternal(win) {
@@ -149,16 +256,32 @@ function createWindow(route, opts = {}) {
       autoplayPolicy: "no-user-gesture-required",
     },
   });
-  win.loadURL(origin + route).catch(reportError);
+  win.loadURL(origin + route).catch((error) => {
+    if (!quitting) reportError(error);
+  });
   win.webContents.on("did-fail-load", (_event, code, description, _url, isMainFrame) => {
-    if (isMainFrame && code !== -3) reportError(new Error("Não foi possível abrir a interface: " + description));
+    if (!quitting && isMainFrame && code !== -3)
+      reportError(new Error("Não foi possível abrir a interface: " + description));
   });
   win.webContents.on("render-process-gone", (_event, details) => {
     if (quitting || details.reason === "clean-exit") return;
     log("render-process-gone: " + details.reason);
-    dialog.showMessageBox({ type: "error", title: "Lúmen", message: "Uma janela parou de responder.", detail: "Reabra a janela. Se o problema persistir, ative Compatibilidade gráfica no menu Lúmen.", buttons: ["Reabrir janela", "Fechar"] }).then(({ response }) => {
-      if (!win.isDestroyed()) { if (response === 0) win.reload(); else win.close(); }
-    }).catch(reportError);
+    dialog
+      .showMessageBox({
+        type: "error",
+        title: "Lúmen",
+        message: "Uma janela parou de responder.",
+        detail:
+          "Reabra a janela. Se o problema persistir, ative Compatibilidade gráfica no menu Lúmen.",
+        buttons: ["Reabrir janela", "Fechar"],
+      })
+      .then(({ response }) => {
+        if (!win.isDestroyed()) {
+          if (response === 0) win.reload();
+          else win.close();
+        }
+      })
+      .catch(reportError);
   });
   win.webContents.on("will-navigate", (event, url) => {
     if (!url.startsWith(ORIGIN + "/")) event.preventDefault();
@@ -200,6 +323,15 @@ function openCabine() {
     return cabine;
   }
   cabine = createWindow("/", { title: "Lúmen — cabine" });
+  cabine.on("close", (event) => {
+    // The projector/stage windows are auxiliaries. Without this, clicking the
+    // cabin X only removed the main UI while another BrowserWindow kept
+    // Electron alive in the background.
+    if (!quitting) {
+      event.preventDefault();
+      app.quit();
+    }
+  });
   cabine.on("closed", () => {
     cabine = null;
   });
@@ -260,8 +392,35 @@ function buildMenu() {
         { label: "Abrir palco", click: () => openStage() },
         { label: "Pedido do pastor", click: () => openPedido() },
         { type: "separator" },
-        { label: "Monitor do projetor", submenu: screen.getAllDisplays().filter((d) => d.id !== screen.getPrimaryDisplay().id).map((d, index) => ({ label: (d.label || "Monitor " + (index + 1)) + " · " + d.size.width + "×" + d.size.height, type: "radio", checked: externalDisplay()?.id === d.id, click: () => { desktopSettings.displayId = d.id; saveDesktopSettings(); displaysChanged(); } })) },
-        { label: "Compatibilidade gráfica (reiniciar)", type: "checkbox", checked: !!desktopSettings.softwareGraphics, click: (item) => { desktopSettings.softwareGraphics = item.checked; saveDesktopSettings(); dialog.showMessageBox({ message: "A configuração gráfica será aplicada na próxima abertura do Lúmen." }); } },
+        {
+          label: "Monitor do projetor",
+          submenu: screen
+            .getAllDisplays()
+            .filter((d) => d.id !== screen.getPrimaryDisplay().id)
+            .map((d, index) => ({
+              label:
+                (d.label || "Monitor " + (index + 1)) + " · " + d.size.width + "×" + d.size.height,
+              type: "radio",
+              checked: externalDisplay()?.id === d.id,
+              click: () => {
+                desktopSettings.displayId = d.id;
+                saveDesktopSettings();
+                displaysChanged();
+              },
+            })),
+        },
+        {
+          label: "Compatibilidade gráfica (reiniciar)",
+          type: "checkbox",
+          checked: !!desktopSettings.softwareGraphics,
+          click: (item) => {
+            desktopSettings.softwareGraphics = item.checked;
+            saveDesktopSettings();
+            dialog.showMessageBox({
+              message: "A configuração gráfica será aplicada na próxima abertura do Lúmen.",
+            });
+          },
+        },
         { label: "Exportar backup completo…", click: () => exportBackup().catch(reportError) },
         { label: "Restaurar backup completo…", click: () => restoreBackup().catch(reportError) },
         { label: "Abrir pasta de dados e logs", click: () => shell.openPath(dataDir) },
@@ -304,25 +463,40 @@ if (!gotLock) {
     if (app.isReady() && storage) openCabine();
   });
 
-  app.whenReady().then(async () => {
-    // HTTP header values must be ASCII: the accented app name otherwise breaks
-    // Electron protocol.handle when Chromium sends its User-Agent.
-    app.userAgentFallback = app.userAgentFallback.normalize("NFKD").replace(/[^\x20-\x7E]/g, "");
-    storage = new Storage(path.join(dataDir, "data"), (message) => dialog.showMessageBox({ message }));
-    await storage.init();
-    media.init(dataDir);
-    await media.ensure();
-    origin = await startServer();
-    screen.on("display-added", displaysChanged);
-    screen.on("display-removed", displaysChanged);
-    screen.on("display-metrics-changed", displaysChanged);
-    blockerId = powerSaveBlocker.start("prevent-display-sleep");
-    buildMenu();
-    openCabine();
-    const ext = externalDisplay();
-    if (ext && !process.env.LUMEN_TEST_DATA) openProjector();
-    log("Started " + app.getVersion() + " Electron " + process.versions.electron + " " + process.arch);
-  }).catch((error) => { reportError(error); app.quit(); });
+  app
+    .whenReady()
+    .then(async () => {
+      // HTTP header values must be ASCII: the accented app name otherwise breaks
+      // Electron protocol.handle when Chromium sends its User-Agent.
+      app.userAgentFallback = app.userAgentFallback.normalize("NFKD").replace(/[^\x20-\x7E]/g, "");
+      storage = new Storage(path.join(dataDir, "data"), (message) =>
+        dialog.showMessageBox({ message }),
+      );
+      await storage.init();
+      media.init(dataDir);
+      await media.ensure();
+      origin = await startServer();
+      screen.on("display-added", displaysChanged);
+      screen.on("display-removed", displaysChanged);
+      screen.on("display-metrics-changed", displaysChanged);
+      blockerId = powerSaveBlocker.start("prevent-display-sleep");
+      buildMenu();
+      openCabine();
+      const ext = externalDisplay();
+      if (ext && !process.env.LUMEN_TEST_DATA) openProjector();
+      log(
+        "Started " +
+          app.getVersion() +
+          " Electron " +
+          process.versions.electron +
+          " " +
+          process.arch,
+      );
+    })
+    .catch((error) => {
+      reportError(error);
+      app.quit();
+    });
 }
 
 handle("lumen:open-projector", () => {
@@ -353,27 +527,82 @@ app.on("window-all-closed", () => {
   app.quit();
 });
 
+async function shutdownStep(label, action) {
+  log(`[shutdown] ${label}: iniciando`);
+  try {
+    await action();
+    log(`[shutdown] ${label}: concluido`);
+  } catch (error) {
+    log(`[shutdown] ${label}: falhou: ${error?.stack || error}`);
+  }
+}
+
+function beginShutdown() {
+  if (shutdownPromise) return shutdownPromise;
+  quitting = true;
+  shutdownPromise = (async () => {
+    log("[shutdown] solicitacao recebida; bloqueando novas tarefas");
+    screen.removeListener("display-added", displaysChanged);
+    screen.removeListener("display-removed", displaysChanged);
+    screen.removeListener("display-metrics-changed", displaysChanged);
+    if (blockerId != null && powerSaveBlocker.isStarted(blockerId)) {
+      powerSaveBlocker.stop(blockerId);
+      blockerId = null;
+    }
+    await Promise.all([
+      shutdownStep("reconhecimento e subprocessos", () => recognition.shutdown()),
+      shutdownStep("servidor do YouTube", () => youtubeHost.stop()),
+      shutdownStep("gravacoes pendentes", () => storage?.close()),
+    ]);
+    await shutdownStep("protocolo local", () => protocol.unhandle("lumen"));
+    log("[shutdown] encerramento concluido");
+  })();
+  return shutdownPromise;
+}
+
 function saveDesktopSettings() {
-  try { fs.mkdirSync(dataDir, { recursive: true }); fs.writeFileSync(settingsFile, JSON.stringify(desktopSettings)); } catch (error) { reportError(error); }
+  try {
+    fs.mkdirSync(dataDir, { recursive: true });
+    fs.writeFileSync(settingsFile, JSON.stringify(desktopSettings));
+  } catch (error) {
+    reportError(error);
+  }
 }
 handle("lumen:storage-get", (key) => storage.get(key));
 handle("lumen:storage-set", (key, value) => storage.set(key, value));
 async function exportBackup() {
-  const { filePath } = await dialog.showSaveDialog({ title: "Exportar backup completo", defaultPath: "Lumen-backup.json", filters: [{ name: "Backup Lúmen", extensions: ["json"] }] });
+  const { filePath } = await dialog.showSaveDialog({
+    title: "Exportar backup completo",
+    defaultPath: "Lumen-backup.json",
+    filters: [{ name: "Backup Lúmen", extensions: ["json"] }],
+  });
   if (filePath) await fs.promises.writeFile(filePath, await storage.export());
 }
 async function restoreBackup() {
-  const { canceled, filePaths } = await dialog.showOpenDialog({ title: "Restaurar backup completo", filters: [{ name: "Backup Lúmen", extensions: ["json"] }], properties: ["openFile"] });
+  const { canceled, filePaths } = await dialog.showOpenDialog({
+    title: "Restaurar backup completo",
+    filters: [{ name: "Backup Lúmen", extensions: ["json"] }],
+    properties: ["openFile"],
+  });
   if (canceled) return;
-  const { response } = await dialog.showMessageBox({ type: "warning", message: "Substituir o repertório, configurações e Bíblias pelo backup?", detail: "O estado atual será arquivado antes da restauração. As janelas serão reabertas.", buttons: ["Cancelar", "Restaurar"], defaultId: 0, cancelId: 0 });
+  const { response } = await dialog.showMessageBox({
+    type: "warning",
+    message: "Substituir o repertório, configurações e Bíblias pelo backup?",
+    detail: "O estado atual será arquivado antes da restauração. As janelas serão reabertas.",
+    buttons: ["Cancelar", "Restaurar"],
+    defaultId: 0,
+    cancelId: 0,
+  });
   if (response !== 1) return;
-  if ((await fs.promises.stat(filePaths[0])).size > 100 * 1024 * 1024) throw new Error("Backup acima de 100 MB.");
+  if ((await fs.promises.stat(filePaths[0])).size > 100 * 1024 * 1024)
+    throw new Error("Backup acima de 100 MB.");
   const raw = await fs.promises.readFile(filePaths[0], "utf8");
   // Freeze renderers before replacing state, preventing stale writes during reload.
   for (const win of BrowserWindow.getAllWindows()) win.webContents.setIgnoreMenuShortcuts(true);
   for (const win of BrowserWindow.getAllWindows()) await win.loadURL("about:blank");
-  try { await storage.restore(raw); }
-  finally {
+  try {
+    await storage.restore(raw);
+  } finally {
     if (cabine && !cabine.isDestroyed()) await cabine.loadURL(ORIGIN + "/");
     if (projetor && !projetor.isDestroyed()) await projetor.loadURL(ORIGIN + "/projetor?tela=1");
     if (palco && !palco.isDestroyed()) await palco.loadURL(ORIGIN + "/palco");
@@ -382,11 +611,12 @@ async function restoreBackup() {
   }
 }
 app.on("before-quit", (event) => {
-  recognition.cancel();
-  if (quitting || !storage) return;
+  if (shutdownComplete) return;
   event.preventDefault();
-  quitting = true;
-  storage.queue.finally(() => app.quit());
+  void beginShutdown().finally(() => {
+    shutdownComplete = true;
+    app.quit();
+  });
 });
 process.on("uncaughtException", reportError);
 process.on("unhandledRejection", reportError);
@@ -404,40 +634,75 @@ handle("lumen:auto-slide-install", () => recognition.install());
 handle("lumen:auto-slide-transcribe", (wav) => recognition.transcribe(wav));
 handle("lumen:auto-slide-cancel", () => recognition.cancel());
 handle("lumen:preflight", async (urls = []) => {
-  if (!Array.isArray(urls) || urls.length > 2048 || urls.some((u) => typeof u !== "string" || u.length > 4096)) throw new Error("Lista de mídias inválida.");
+  if (
+    !Array.isArray(urls) ||
+    urls.length > 2048 ||
+    urls.some((u) => typeof u !== "string" || u.length > 4096)
+  )
+    throw new Error("Lista de mídias inválida.");
   const displays = screen.getAllDisplays();
   const selected = externalDisplay();
-  const projector = projetor && !projetor.isDestroyed() ? screen.getDisplayMatching(projetor.getBounds()) : null;
+  const projector =
+    projetor && !projetor.isDestroyed() ? screen.getDisplayMatching(projetor.getBounds()) : null;
   const missing = [];
-  for (const url of urls) if ((url.startsWith("lumen:") || url.startsWith("/")) && !await localMedia(url)) missing.push(url);
+  for (const url of urls)
+    if ((url.startsWith("lumen:") || url.startsWith("/")) && !(await localMedia(url)))
+      missing.push(url);
+  const storageHealth = await storage.health();
   return {
-    displays: displays.map((d) => ({ id: d.id, label: d.label || `Monitor ${d.id}`, width: d.bounds.width, height: d.bounds.height, scaleFactor: d.scaleFactor, primary: d.id === screen.getPrimaryDisplay().id })),
+    displays: displays.map((d) => ({
+      id: d.id,
+      label: d.label || `Monitor ${d.id}`,
+      width: d.bounds.width,
+      height: d.bounds.height,
+      scaleFactor: d.scaleFactor,
+      primary: d.id === screen.getPrimaryDisplay().id,
+    })),
     selectedId: selected?.id ?? null,
     projectorReady: !!selected && projector?.id === selected.id && projetor.isVisible(),
     missing,
     external: urls.filter((u) => /^https?:|^blob:/.test(u)),
+    storage: storageHealth,
   };
 });
 handle("lumen:select-display", (id) => {
-  if (!screen.getAllDisplays().some((d) => d.id === id && d.id !== screen.getPrimaryDisplay().id)) throw new Error("Escolha um monitor externo conectado.");
-  desktopSettings.displayId = id; saveDesktopSettings(); displaysChanged();
+  if (!screen.getAllDisplays().some((d) => d.id === id && d.id !== screen.getPrimaryDisplay().id))
+    throw new Error("Escolha um monitor externo conectado.");
+  desktopSettings.displayId = id;
+  saveDesktopSettings();
+  displaysChanged();
 });
 handle("lumen:test-display", (on) => {
   if (testWindow && !testWindow.isDestroyed()) testWindow.close();
   if (!on) return;
-  if (!externalDisplay()) throw new Error("Conecte um segundo monitor e escolha Estender no Windows.");
-  testWindow = createWindow("/projector-test.html", { title: "Lúmen — teste do telão", kiosk: true, frame: false });
+  if (!externalDisplay())
+    throw new Error("Conecte um segundo monitor e escolha Estender no Windows.");
+  testWindow = createWindow("/projector-test.html", {
+    title: "Lúmen — teste do telão",
+    kiosk: true,
+    frame: false,
+  });
   placeOnExternal(testWindow);
   const current = testWindow;
-  setTimeout(() => { if (!current.isDestroyed()) current.close(); }, 15000);
+  setTimeout(() => {
+    if (!current.isDestroyed()) current.close();
+  }, 15000);
 });
 handle("lumen:export-service", async (data) => {
-  const { filePath } = await dialog.showSaveDialog({ title: "Exportar culto com mídias", defaultPath: "Culto.lumen", filters: [{ name: "Culto Lúmen", extensions: ["lumen"] }] });
+  const { filePath } = await dialog.showSaveDialog({
+    title: "Exportar culto com mídias",
+    defaultPath: "Culto.lumen",
+    filters: [{ name: "Culto Lúmen", extensions: ["lumen"] }],
+  });
   if (!filePath) return { canceled: true };
-  return { ...await packages.exportPackage(filePath, data, localMedia), path: filePath };
+  return { ...(await packages.exportPackage(filePath, data, localMedia)), path: filePath };
 });
 handle("lumen:import-service", async () => {
-  const { canceled, filePaths } = await dialog.showOpenDialog({ title: "Importar culto com mídias", filters: [{ name: "Culto Lúmen", extensions: ["lumen"] }], properties: ["openFile"] });
+  const { canceled, filePaths } = await dialog.showOpenDialog({
+    title: "Importar culto com mídias",
+    filters: [{ name: "Culto Lúmen", extensions: ["lumen"] }],
+    properties: ["openFile"],
+  });
   if (canceled) return null;
   return packages.importPackage(filePaths[0], packageRoot);
 });

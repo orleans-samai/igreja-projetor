@@ -5,14 +5,23 @@ import path from "node:path";
 import assert from "node:assert/strict";
 import { exportPackage, importPackage } from "../desktop/service-package.cjs";
 const root = path.resolve(import.meta.dirname, "..");
+const packagedExecutable = process.env.LUMEN_SMOKE_EXECUTABLE?.trim() || null;
 const profile = await mkdtemp(path.join(os.tmpdir(), "lumen-smoke-"));
 const evidence = path.join(root, "artifacts", "desktop-smoke");
 await mkdir(evidence, { recursive: true });
 let app;
 const errors = [];
+const launchOptions = () => ({
+  ...(packagedExecutable ? { executablePath: packagedExecutable } : {}),
+  args: packagedExecutable
+    ? ["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream"]
+    : [root, "--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream"],
+  env: { ...process.env, LUMEN_TEST_DATA: profile },
+  timeout: 60000,
+});
 try {
   const launch = async () => {
-    app = await electron.launch({ args: [root, "--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream"], env: { ...process.env, LUMEN_TEST_DATA: profile }, timeout: 60000 });
+    app = await electron.launch(launchOptions());
     const page = await app.firstWindow();
     page.on("pageerror", (error) => errors.push(error.message));
     await page.waitForFunction(() => document.querySelectorAll("button").length > 10);
@@ -34,7 +43,9 @@ try {
   });
   assert.ok(fonts);
   assert.equal(await page.evaluate(async () => (await fetch("/missing.js")).status), 404);
-  // Exercise packaged media through the actual Electron protocol, including seeking.
+  // Exercise packaged media through the actual Electron protocol. Byte-range
+  // behavior is covered directly by desktop-media-response.test.mjs because
+  // Chromium strips Range headers from fetch() requests to custom schemes.
   const bytes = Buffer.alloc(32044);
   bytes.write("RIFF"); bytes.writeUInt32LE(bytes.length - 8, 4); bytes.write("WAVEfmt ", 8);
   bytes.writeUInt32LE(16, 16); bytes.writeUInt16LE(1, 20); bytes.writeUInt16LE(1, 22);
@@ -44,13 +55,25 @@ try {
   await exportPackage(packageFile, { format: "lumen-service-v1", media: [{ type: "audio", path: "data:audio/wav;base64," + bytes.toString("base64") }] }, async () => null);
   const imported = await importPackage(packageFile, path.join(profile, "packages"));
   const mediaUrl = imported.media[0].path;
-  const range = await page.evaluate(async (url) => {
-    const response = await fetch(url, { headers: { Range: "bytes=0-43" } });
-    return { status: response.status, length: (await response.arrayBuffer()).byteLength };
+  const mediaFetch = await page.evaluate(async (url) => {
+    const response = await fetch(url);
+    return {
+      status: response.status,
+      length: (await response.arrayBuffer()).byteLength,
+      contentType: response.headers.get("content-type"),
+    };
   }, mediaUrl);
-  assert.deepEqual(range, { status: 206, length: 44 });
+  assert.deepEqual(mediaFetch, {
+    status: 200,
+    length: bytes.length,
+    contentType: "audio/wav",
+  });
   const preflight = await page.evaluate((url) => window.lumenDesktop.preflight([url, "/missing.mp4"]), mediaUrl);
   assert.deepEqual(preflight.missing, ["/missing.mp4"]);
+  assert.equal(preflight.storage.writable, true);
+  assert.ok(preflight.storage.freeBytes > 0);
+  assert.ok(Number.isInteger(preflight.storage.backupCount));
+  assert.ok(preflight.storage.backupCount >= 0);
   assert.equal((await page.evaluate(() => window.lumenDesktop.autoSlideStatus())).pronto, false);
   await page.getByRole("button", { name: "Auto-Slide", exact: true }).click();
   const autoDialog = page.getByRole("dialog", { name: "Reconhecimento de canto" });
@@ -58,6 +81,7 @@ try {
   await autoDialog.getByRole("button", { name: "Instalar reconhecimento local", exact: true }).waitFor();
   await page.screenshot({ path: path.join(evidence, "auto-slide.png") });
   await autoDialog.getByRole("button", { name: "Fechar", exact: true }).click();
+  await autoDialog.waitFor({ state: "hidden" });
   await page.keyboard.press("Control+Shift+H");
   const checkup = page.getByRole("dialog", { name: "Check-up pré-culto" });
   await checkup.waitFor();
@@ -72,7 +96,14 @@ try {
     await api.storageSet("lumen-v2", JSON.stringify(data));
     return data.state.songs.length;
   });
-  await app.close(); app = null;
+  const youtubeHost = await page.evaluate(() => window.lumenDesktop.youtubeHost());
+  assert.match(youtubeHost, /^http:\/\/127\.0\.0\.1:\d+\//);
+  const closeStarted = performance.now();
+  const closedByMenu = app.waitForEvent("close");
+  await app.evaluate(({ app }) => app.quit());
+  await closedByMenu;
+  app = null;
+  assert.ok(performance.now() - closeStarted < 5000, "desktop shutdown exceeded five seconds");
   page = await launch();
   await page.waitForFunction(() => document.documentElement.dataset.lowPerformance === "true");
   const restored = await page.evaluate(async () => JSON.parse(await window.lumenDesktop.storageGet("lumen-v2")));
@@ -98,7 +129,30 @@ try {
   assert.deepEqual(errors, []);
   const disk = JSON.parse(await readFile(path.join(profile, "data", "library.json"), "utf8"));
   assert.ok(disk.values["lumen-v2"]);
-  console.log(`PASS: offline, fonts, Bible, restart persistence, projector, 800×600, packaged audio ranges, preflight and Auto-Slide dialogs. Evidence: ${evidence}`);
+  console.log(`PASS: offline, fonts, Bible, restart persistence, projector, 800×600, packaged audio, preflight and Auto-Slide dialogs. Evidence: ${evidence}`);
+  const xCloseStarted = performance.now();
+  const closedByX = app.waitForEvent("close");
+  const cabinClosed = await app.evaluate(({ BrowserWindow }) => {
+    const win = BrowserWindow.getAllWindows().find(
+      (candidate) => new URL(candidate.webContents.getURL()).pathname === "/",
+    );
+    if (!win) return false;
+    win.close();
+    return true;
+  });
+  assert.equal(cabinClosed, true);
+  await closedByX;
+  app = null;
+  assert.ok(performance.now() - xCloseStarted < 5000, "cabin X shutdown exceeded five seconds");
+
+  app = await electron.launch(launchOptions());
+  await app.firstWindow();
+  const immediateStarted = performance.now();
+  const closedImmediately = app.waitForEvent("close");
+  await app.evaluate(({ app }) => app.quit());
+  await closedImmediately;
+  app = null;
+  assert.ok(performance.now() - immediateStarted < 5000, "immediate shutdown exceeded five seconds");
 } finally {
   if (app) await app.close();
   console.log(`Isolated test profile: ${profile}`);

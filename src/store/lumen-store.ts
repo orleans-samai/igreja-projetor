@@ -1,12 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { durableStorage } from "@/lib/durable-storage";
-import {
-  chapterCount,
-  chapterSlides,
-  chapterVerseCount,
-  parseBibleRef,
-} from "@/lib/bible";
+import { chapterCount, chapterSlides, chapterVerseCount, parseBibleRef } from "@/lib/bible";
 import { bookById } from "@/lib/bible-books";
 import { fold, nid } from "@/lib/fold";
 import { parseLyrics } from "@/lib/lyrics";
@@ -23,6 +18,13 @@ import {
 } from "@/lib/seed";
 import { captureSession, type SessionSlice } from "@/lib/session-snap";
 import { formatRef } from "@/lib/bible-ref";
+import {
+  buildLiveFrame,
+  DEFAULT_SETTINGS,
+  migrateLumenState,
+  songToDeck,
+  textToDeck,
+} from "@/store/lumen-domain";
 import type {
   AlertState,
   CountdownState,
@@ -30,7 +32,6 @@ import type {
   Deck,
   FreeText,
   LibraryTab,
-  LiveFrame,
   MediaItem,
   OutputStatus,
   Playlist,
@@ -44,61 +45,6 @@ import type {
   Theme,
   YoutubeFrame,
 } from "@/lib/types";
-
-const DEFAULT_SETTINGS: Settings = {
-  churchName: "Igreja Local",
-  logoUrl: "",
-  maxLines: 5,
-  transition: "fade",
-  fadeMs: 220,
-  chordsOnStage: true,
-  chordsOnAudience: false,
-  fitMode: "contain",
-  margins: { t: 8, r: 8, b: 8, l: 8 },
-  openStageWindow: false,
-  showWallpaper: true,
-  showClock: false,
-  baseFill: "dark",
-  clockPosition: "top-right",
-  emergencyVerse: "João 14:6",
-  emergencySongId: "song-castelo",
-  operatorName: "Operador",
-  secondMonitor: true,
-  wakeLock: true,
-  startFullscreen: true,
-};
-
-function themeById(themes: Theme[], id: string): Theme {
-  return themes.find((t) => t.id === id) ?? themes[0];
-}
-
-function songToDeck(song: Song): Deck {
-  return {
-    kind: "song",
-    refId: song.id,
-    title: song.title,
-    subtitle: song.artist,
-    key: song.key,
-    copyright: song.copyright,
-    slides: song.slides,
-  };
-}
-
-function textToDeck(text: FreeText): Deck {
-  const slides = parseLyrics(text.body, 5).map((sl) => ({
-    ...sl,
-    label: sl.label === "Verso 1" || sl.label === "Verso" ? "Aviso" : sl.label,
-  }));
-  return {
-    kind: "text",
-    refId: text.id,
-    title: text.title,
-    subtitle: "",
-    slides: slides.length
-      ? slides
-      : [{ id: nid(), label: "Aviso", text: text.body, sortOrder: 0 }],
-  };
-}
 
 export interface LumenState {
   songs: Song[];
@@ -212,55 +158,12 @@ export interface LumenState {
 }
 
 /** O que o telão precisa saber — o resto do estado da cabine não vai ao ar. */
-export type LiveFrameInput = Pick<
-  LumenState,
-  | "status"
-  | "live"
-  | "preview"
-  | "liveIndex"
-  | "alert"
-  | "countdown"
-  | "songThemeId"
-  | "bibleThemeId"
-  | "stageThemeId"
-  | "themes"
-  | "settings"
-  | "youtube"
->;
+export { buildLiveFrame } from "@/store/lumen-domain";
 
-export function buildLiveFrame(s: LiveFrameInput): LiveFrame {
-  const kind = s.live?.kind ?? s.preview?.kind ?? "song";
-  const themeId = kind === "bible" ? s.bibleThemeId : s.songThemeId;
-  return {
-    v: 1,
-    status: s.status,
-    theme: themeById(s.themes, themeId),
-    stageTheme: themeById(s.themes, s.stageThemeId),
-    youtube: s.youtube,
-    deck: s.live,
-    index: s.liveIndex,
-    alert: s.alert,
-    countdown: s.countdown,
-    churchName: s.settings.churchName,
-    logoUrl: s.settings.logoUrl,
-    settings: {
-      transition: s.settings.transition,
-      fadeMs: s.settings.fadeMs,
-      lowPerformance: s.settings.lowPerformance,
-      chordsOnStage: s.settings.chordsOnStage,
-      chordsOnAudience: s.settings.chordsOnAudience,
-      fitMode: s.settings.fitMode,
-      margins: s.settings.margins,
-      showWallpaper: s.settings.showWallpaper,
-      showClock: s.settings.showClock,
-      baseFill: s.settings.baseFill,
-      clockPosition: s.settings.clockPosition,
-    },
-    updatedAt: Date.now(),
-  };
-}
-
-function broadcast(partial: Partial<LumenState> | ((s: LumenState) => LumenState), set: (fn: (s: LumenState) => LumenState) => void) {
+function broadcast(
+  partial: Partial<LumenState> | ((s: LumenState) => LumenState),
+  set: (fn: (s: LumenState) => LumenState) => void,
+) {
   set((s) => {
     const next = typeof partial === "function" ? partial(s) : { ...s, ...partial };
     queueMicrotask(() => publishLiveFrame(buildLiveFrame(next)));
@@ -505,8 +408,7 @@ export const useLumenStore = create<LumenState>()(
         if (!s.preview) return;
         const max = s.preview.slides.length - 1;
         const previewIndex = Math.max(0, Math.min(max, i));
-        const linked =
-          s.status !== "idle" && s.live && s.preview.refId === s.live.refId;
+        const linked = s.status !== "idle" && s.live && s.preview.refId === s.live.refId;
         if (linked) {
           broadcast({ previewIndex, liveIndex: previewIndex }, set);
         } else {
@@ -609,20 +511,29 @@ export const useLumenStore = create<LumenState>()(
 
       stop: () => broadcast({ status: "idle", fillMode: "console" }, set),
       goBlack: () =>
-        broadcast((s) => ({
-          ...s,
-          status: s.status === "black" ? "presenting" : "black",
-        }), set),
+        broadcast(
+          (s) => ({
+            ...s,
+            status: s.status === "black" ? "presenting" : "black",
+          }),
+          set,
+        ),
       goLogo: () =>
-        broadcast((s) => ({
-          ...s,
-          status: s.status === "logo" ? "presenting" : "logo",
-        }), set),
+        broadcast(
+          (s) => ({
+            ...s,
+            status: s.status === "logo" ? "presenting" : "logo",
+          }),
+          set,
+        ),
       goClear: () =>
-        broadcast((s) => ({
-          ...s,
-          status: s.status === "clear" ? "presenting" : "clear",
-        }), set),
+        broadcast(
+          (s) => ({
+            ...s,
+            status: s.status === "clear" ? "presenting" : "clear",
+          }),
+          set,
+        ),
 
       next: () => {
         const s = get();
@@ -630,10 +541,7 @@ export const useLumenStore = create<LumenState>()(
           if (s.liveIndex < s.live.slides.length - 1) {
             const i = s.liveIndex + 1;
             const linked = s.preview?.refId === s.live.refId;
-            broadcast(
-              { liveIndex: i, previewIndex: linked ? i : s.previewIndex },
-              set,
-            );
+            broadcast({ liveIndex: i, previewIndex: linked ? i : s.previewIndex }, set);
             return;
           }
           if (s.live.kind === "bible") {
@@ -657,10 +565,7 @@ export const useLumenStore = create<LumenState>()(
           if (s.liveIndex > 0) {
             const i = s.liveIndex - 1;
             const linked = s.preview?.refId === s.live.refId;
-            broadcast(
-              { liveIndex: i, previewIndex: linked ? i : s.previewIndex },
-              set,
-            );
+            broadcast({ liveIndex: i, previewIndex: linked ? i : s.previewIndex }, set);
             return;
           }
           if (s.live.kind === "bible") {
@@ -684,10 +589,7 @@ export const useLumenStore = create<LumenState>()(
           const linked = s.preview?.refId === s.live.refId;
           const max = s.live.slides.length - 1;
           const liveIndex = Math.max(0, Math.min(max, i));
-          broadcast(
-            { liveIndex, previewIndex: linked ? liveIndex : s.previewIndex },
-            set,
-          );
+          broadcast({ liveIndex, previewIndex: linked ? liveIndex : s.previewIndex }, set);
           return;
         }
         get().setPreviewIndex(i);
@@ -713,12 +615,15 @@ export const useLumenStore = create<LumenState>()(
       },
 
       setThemeForKind: (kind, themeId) => {
-        broadcast((s) => ({
-          ...s,
-          songThemeId: kind === "songs" ? themeId : s.songThemeId,
-          bibleThemeId: kind === "bible" ? themeId : s.bibleThemeId,
-          stageThemeId: kind === "stage" ? themeId : s.stageThemeId,
-        }), set);
+        broadcast(
+          (s) => ({
+            ...s,
+            songThemeId: kind === "songs" ? themeId : s.songThemeId,
+            bibleThemeId: kind === "bible" ? themeId : s.bibleThemeId,
+            stageThemeId: kind === "stage" ? themeId : s.stageThemeId,
+          }),
+          set,
+        );
       },
 
       applyThemeLive: (themeId) => {
@@ -729,10 +634,13 @@ export const useLumenStore = create<LumenState>()(
       },
 
       updateTheme: (theme) =>
-        broadcast((s) => ({
-          ...s,
-          themes: s.themes.map((t) => (t.id === theme.id ? theme : t)),
-        }), set),
+        broadcast(
+          (s) => ({
+            ...s,
+            themes: s.themes.map((t) => (t.id === theme.id ? theme : t)),
+          }),
+          set,
+        ),
 
       addTheme: (theme) => set((s) => ({ themes: [...s.themes, theme] })),
 
@@ -741,9 +649,10 @@ export const useLumenStore = create<LumenState>()(
         const next = { ...song, slides, updatedAt: Date.now() };
         set((s) => {
           const exists = s.songs.some((x) => x.id === next.id);
-          const songs = exists ? s.songs.map((x) => (x.id === next.id ? next : x)) : [next, ...s.songs];
-          const preview =
-            s.preview?.refId === next.id || !exists ? songToDeck(next) : s.preview;
+          const songs = exists
+            ? s.songs.map((x) => (x.id === next.id ? next : x))
+            : [next, ...s.songs];
+          const preview = s.preview?.refId === next.id || !exists ? songToDeck(next) : s.preview;
           return { songs, preview, selectedSongId: next.id, libraryTab: "songs" };
         });
       },
@@ -751,7 +660,10 @@ export const useLumenStore = create<LumenState>()(
       deleteSong: (id) =>
         set((s) => ({
           songs: s.songs.filter((x) => x.id !== id),
-          selectedSongId: s.selectedSongId === id ? s.songs.find((x) => x.id !== id)?.id ?? null : s.selectedSongId,
+          selectedSongId:
+            s.selectedSongId === id
+              ? (s.songs.find((x) => x.id !== id)?.id ?? null)
+              : s.selectedSongId,
         })),
 
       updatePreviewSlide: (slideId, patch) => {
@@ -769,7 +681,9 @@ export const useLumenStore = create<LumenState>()(
           let songs = s.songs;
           if (preview?.kind === "song") {
             songs = songs.map((song) =>
-              song.id === preview.refId ? { ...song, slides: preview.slides, updatedAt: Date.now() } : song,
+              song.id === preview.refId
+                ? { ...song, slides: preview.slides, updatedAt: Date.now() }
+                : song,
             );
           }
           return { ...s, preview, live, songs };
@@ -865,10 +779,7 @@ export const useLumenStore = create<LumenState>()(
           return;
         }
         set({
-          playlists: [
-            ...s.playlists,
-            { id, name, items: [], updatedAt: Date.now() },
-          ],
+          playlists: [...s.playlists, { id, name, items: [], updatedAt: Date.now() }],
           activePlaylistId: id,
         });
       },
@@ -936,7 +847,12 @@ export const useLumenStore = create<LumenState>()(
         set({ bibleVersionId });
         const { bookId, chapter, verse } = s.bibleCursor;
         queueMicrotask(() =>
-          get().loadBibleChapter(bookId, chapter, verse, s.status !== "idle" && s.live?.kind === "bible"),
+          get().loadBibleChapter(
+            bookId,
+            chapter,
+            verse,
+            s.status !== "idle" && s.live?.kind === "bible",
+          ),
         );
       },
 
@@ -1047,7 +963,9 @@ export const useLumenStore = create<LumenState>()(
         broadcast((s) => ({ ...s, settings: { ...s.settings, ...patch } }), set),
 
       addExtraVersion: (id, name) =>
-        set((s) => ({ extraVersionIds: [...s.extraVersionIds.filter((v) => v.id !== id), { id, name }] })),
+        set((s) => ({
+          extraVersionIds: [...s.extraVersionIds.filter((v) => v.id !== id), { id, name }],
+        })),
 
       exportLibrary: () => {
         const s = get();
@@ -1092,7 +1010,9 @@ export const useLumenStore = create<LumenState>()(
           if (!keepBackup) optimizeBackup = snapshotOptimize(s);
           const preview = { ...s.preview, slides: result.slides };
           const live =
-            s.live && s.live.refId === s.preview.refId ? { ...s.live, slides: result.slides } : s.live;
+            s.live && s.live.refId === s.preview.refId
+              ? { ...s.live, slides: result.slides }
+              : s.live;
           let songs = s.songs;
           let texts = s.texts;
           if (preview.kind === "song") {
@@ -1161,9 +1081,7 @@ export const useLumenStore = create<LumenState>()(
         if (!deck) return false;
         const f = fold(label);
         const from = s.status !== "idle" && s.live ? s.liveIndex : s.previewIndex;
-        let idx = deck.slides.findIndex(
-          (sl, i) => i >= from && fold(sl.label).includes(f),
-        );
+        let idx = deck.slides.findIndex((sl, i) => i >= from && fold(sl.label).includes(f));
         if (idx < 0) idx = deck.slides.findIndex((sl) => fold(sl.label).includes(f));
         if (idx < 0) return false;
         get().goLiveIndex(idx);
@@ -1220,6 +1138,8 @@ export const useLumenStore = create<LumenState>()(
     }),
     {
       name: "lumen-v2",
+      version: 1,
+      migrate: migrateLumenState,
       skipHydration: true,
       storage: durableStorage,
       partialize: (s) => ({
@@ -1242,7 +1162,10 @@ export const useLumenStore = create<LumenState>()(
         selectedSongId: s.selectedSongId,
       }),
       onRehydrateStorage: () => (state, error) => {
-        if (error) return;
+        if (error) {
+          state?.setHydrated();
+          return;
+        }
         state?.ensureSeed();
         state?.setHydrated();
         if (state?.selectedSongId) {
