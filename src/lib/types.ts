@@ -1,4 +1,4 @@
-export type SlideKind = "song" | "bible" | "media" | "text" | "countdown";
+export type SlideKind = "song" | "bible" | "media" | "text" | "countdown" | "apresentacao";
 
 export type OutputStatus = "idle" | "presenting" | "black" | "logo" | "clear";
 
@@ -25,6 +25,31 @@ export interface Slide {
   sortOrder: number;
   themeOverrideId?: string;
   reference?: string;
+  /**
+   * A imagem do slide, quando ele vem de uma apresentação importada.
+   *
+   * É endereço, nunca os bytes: o estado do app é reescrito inteiro a cada
+   * mudança, e quarenta slides de 800 KB dentro dele seriam 32 MB copiados
+   * a cada avanço de verso.
+   */
+  imagem?: string;
+}
+
+/**
+ * Uma apresentação importada — PowerPoint ou PDF.
+ *
+ * PowerPoint vira texto e imagem por slide, lidos sem Office. PDF vira uma
+ * imagem por página, desenhada pelo pdf.js: é o caminho de fidelidade
+ * total, e o que se recomenda a quem precisa do slide idêntico.
+ */
+export interface Apresentacao {
+  id: string;
+  titulo: string;
+  origem: "pptx" | "pdf";
+  slides: { texto: string; imagem: string }[];
+  /** Quem mandou, quando veio pela página do dirigente. */
+  de?: string;
+  criadoEm: number;
 }
 
 export interface Song {
@@ -142,6 +167,10 @@ export interface Settings {
   /** Logo por cima do telão antes de apresentar algo. Ausente = ligado —
    *  quem já usa o app hoje não vê nada mudar. */
   showIdleLogo?: boolean;
+  /** Tamanho da logo no telão. Ausente = pequena. */
+  logoTamanho?: import("./logo-no-telao").TamanhoDaLogo;
+  /** Nome da igreja debaixo da logo, no telão. Ausente = desligado. */
+  logoComNome?: boolean;
   showClock: boolean;
   baseFill: "dark" | "light";
   clockPosition: ClockPosition;
@@ -257,6 +286,8 @@ export interface LiveFrame {
     | "margins"
     | "showWallpaper"
     | "showIdleLogo"
+    | "logoTamanho"
+    | "logoComNome"
     | "fontScale"
     | "showClock"
     | "baseFill"

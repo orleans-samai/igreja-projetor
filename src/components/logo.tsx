@@ -1,4 +1,5 @@
 import { cn } from "@/lib/cn";
+import { alturaDaLogo, corpoDoNome, type TamanhoDaLogo, type UnidadeDaLogo } from "@/lib/logo-no-telao";
 
 export function LumenMark({ className }: { className?: string }) {
   return (
@@ -11,18 +12,53 @@ export function LumenMark({ className }: { className?: string }) {
   );
 }
 
+/**
+ * A logo da igreja, do jeito que vai para o telão.
+ *
+ * Sem `tamanho`, se comporta como antes e ocupa o espaço que recebe — é
+ * assim que a prévia do diálogo de logo a usa, dentro de uma caixinha. Com
+ * `tamanho`, ela se prende a uma fração da tela: era `max-h-full` puro, e
+ * uma logo de 900px de altura virava um brasão de parede a parede no
+ * minuto em que o app abria.
+ */
 export function ChurchLogo({
   url,
   name,
   className,
+  tamanho,
+  comNome = false,
+  unidade = "vmin",
 }: {
   url?: string;
   name: string;
   className?: string;
+  /** No telão: pequena, média ou grande. Ausente = ocupa o que receber. */
+  tamanho?: TamanhoDaLogo;
+  /** Nome da igreja debaixo da imagem. Só vale quando há imagem. */
+  comNome?: boolean;
+  /** `cqmin` na prévia, que mede pela caixinha; `vmin` no telão. */
+  unidade?: UnidadeDaLogo;
 }) {
   if (url) {
+    const noTelao = tamanho !== undefined;
+    const nome = comNome && name.trim();
     return (
-      <img src={url} alt={name} className={cn("max-h-full max-w-full object-contain", className)} />
+      <div className={cn("flex flex-col items-center text-center", className)}>
+        <img
+          src={url}
+          alt={name}
+          className="max-w-full object-contain"
+          style={noTelao ? { maxHeight: alturaDaLogo(tamanho, unidade), maxWidth: "70%" } : { maxHeight: "100%" }}
+        />
+        {nome && (
+          <p
+            className="mt-[0.6em] font-display font-semibold tracking-tight text-stage-fg"
+            style={noTelao ? { fontSize: corpoDoNome(tamanho, unidade) } : undefined}
+          >
+            {nome}
+          </p>
+        )}
+      </div>
     );
   }
   return (

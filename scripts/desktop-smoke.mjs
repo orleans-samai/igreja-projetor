@@ -4,12 +4,32 @@ import os from "node:os";
 import path from "node:path";
 import assert from "node:assert/strict";
 import { exportPackage, importPackage } from "../desktop/service-package.cjs";
+import { zip } from "./zip-de-teste.mjs";
 const root = path.resolve(import.meta.dirname, "..");
 const profile = await mkdtemp(path.join(os.tmpdir(), "lumen-smoke-"));
 const evidence = path.join(root, "artifacts", "desktop-smoke");
 await mkdir(evidence, { recursive: true });
 let app;
 const errors = [];
+
+/**
+ * Espera uma condição que depende de promessa.
+ *
+ * `page.waitForFunction` NÃO aguarda função async: a promessa é um objeto,
+ * objeto é verdadeiro, e a espera passa na hora. Foi provado com uma
+ * função que devolve `false` e mesmo assim passou em 335 ms. Três
+ * verificações deste arquivo passavam assim, sem conferir nada — uma delas
+ * a do aviso do dirigente. `page.evaluate` aguarda a promessa; é por ele
+ * que esta espera pergunta.
+ */
+async function esperarAsync(pagina, fn, arg, { timeout = 15000, intervalo = 300, oQue = "a condição" } = {}) {
+  const fim = Date.now() + timeout;
+  while (Date.now() < fim) {
+    if (await pagina.evaluate(fn, arg)) return;
+    await pagina.waitForTimeout(intervalo);
+  }
+  throw new Error(`${oQue} não aconteceu em ${timeout} ms`);
+}
 /** Campo controlado por store: limpar antes de escrever evita concatenar. */
 const campoLimpar = async (campo) => {
   await campo.click();
@@ -29,7 +49,10 @@ try {
       void (d.type() === "beforeunload" ? d.accept() : d.dismiss()).catch(() => {});
     });
     await page.waitForFunction(() => document.querySelectorAll("button").length > 10);
-    await page.waitForFunction(async () => !!(await window.lumenDesktop.storageGet("lumen-v2")));
+    await esperarAsync(page, async () => !!(await window.lumenDesktop.storageGet("lumen-v2")), undefined, {
+      timeout: 30000,
+      oQue: "o armazenamento da biblioteca",
+    });
     return page;
   };
   let page = await launch();
@@ -590,6 +613,23 @@ try {
   );
   assert.equal(aceso, 2, "a grade acendeu o slide errado");
 
+  // Recado novo chega em dourado no celular, esteja ele em qualquer aba:
+  // quem está passando slides não olha o contador do Chat.
+  await celular.click("#abaControle");
+  await page.evaluate(() => window.lumenDesktop.remoteControlChat("Repete o refrão", "Cabine"));
+  await celular.waitForFunction(
+    () => {
+      const a = document.querySelector("#avisoOuro");
+      return a && !a.hidden && a.textContent.includes("Repete o refrão") && a.textContent.includes("Cabine");
+    },
+    null,
+    { timeout: 10000 },
+  );
+  // Tocar no aviso leva ao chat.
+  await celular.click("#avisoOuro");
+  await celular.waitForSelector("#painelChat:not([hidden])", { timeout: 10000 });
+  await celular.click("#abaLetras");
+
   // Voltar tem que devolver a lista de músicas, não deixar as duas telas.
   await celular.click("#slidesVoltar");
   await celular.waitForSelector("#letrasLista:not([hidden])", { timeout: 10000 });
@@ -703,22 +743,144 @@ try {
     { timeout: 10000 },
   );
 
+  // Recado novo aparece em dourado na cabine, com o nome de quem mandou —
+  // o operador pode estar olhando qualquer coisa menos a coluna do chat.
+  // Procura dentro do aviso, não na página: o texto também está no mural,
+  // e achar lá não provaria o aviso.
+  await page.waitForFunction(
+    () =>
+      [...document.querySelectorAll("[data-sonner-toast]")].some(
+        (t) => t.textContent.includes("Chegamos com o pen drive") && t.textContent.includes("Pastor Elias"),
+      ),
+    null,
+    { timeout: 10000 },
+  );
+  // Quem escreveu não recebe aviso da própria mensagem: seria ruído.
+  assert.equal(
+    await dirigente.locator("#avisoOuro").isHidden(),
+    true,
+    "o dirigente recebeu aviso dourado da própria mensagem",
+  );
+  // E o recado da cabine chega ao dirigente em dourado.
+  await page.evaluate(() => window.lumenDesktop.remoteControlChat("Podem subir, estamos prontos", "Cabine"));
+  await dirigente.waitForFunction(
+    () => {
+      const a = document.querySelector("#avisoOuro");
+      return a && !a.hidden && a.textContent.includes("Podem subir");
+    },
+    null,
+    { timeout: 10000 },
+  );
+
   // O aviso escrito vira texto na biblioteca da cabine, não item do culto.
   await dirigente.click('[data-aba="texto"]');
   await dirigente.waitForSelector("#painelTexto:not([hidden])", { timeout: 10000 });
   await dirigente.fill("#avisoTitulo", "Santa Ceia no domingo");
   await dirigente.fill("#avisoTexto", "Traga a família às dezenove horas");
   await dirigente.click("#enviarAviso");
-  await page.waitForFunction(
+  await esperarAsync(
+    page,
     async () => {
       const cru = await window.lumenDesktop.storageGet("lumen-v2");
       return JSON.stringify(cru ?? "").includes("Santa Ceia no domingo");
     },
-    null,
-    { timeout: 15000 },
+    undefined,
+    { oQue: "o aviso do dirigente virar texto na biblioteca" },
   );
 
   await dirigente.close();
+
+  // ---- PowerPoint e PDF do dirigente entram na programação como slides ----
+  // A queixa era exatamente esta: o arquivo mandado pela página do
+  // dirigente não chegava à programação do culto. PowerPoint é lido sem
+  // Office (o PC que reportou não tem nenhum); PDF é desenhado pelo pdf.js,
+  // e é ele que prova que o worker sobe dentro do app.
+  const { token: tokenDirigente } = await (
+    await fetch(`${remoteBase}/dirigente/entrar`, {
+      method: "POST",
+      body: JSON.stringify({ senha: "cordeiro-de-deus" }),
+    })
+  ).json();
+  const REL = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+  const PNG_MINIMO = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFklEQVR4nGP8z8DwnwEIGBmgAMYAAIxhBgFbqBx1AAAAAElFTkSuQmCC",
+    "base64",
+  );
+  const pptxDoCulto = zip({
+    "ppt/presentation.xml": `<p:presentation><p:sldIdLst><p:sldId r:id="rId1"/><p:sldId r:id="rId2"/></p:sldIdLst></p:presentation>`,
+    "ppt/_rels/presentation.xml.rels":
+      `<Relationships><Relationship Id="rId1" Type="${REL}/slide" Target="slides/slide1.xml"/>` +
+      `<Relationship Id="rId2" Type="${REL}/slide" Target="slides/slide2.xml"/></Relationships>`,
+    "ppt/slides/slide1.xml":
+      `<p:sld><p:cSld><p:bg><p:bgPr><a:blipFill><a:blip r:embed="rId9"/></a:blipFill></p:bgPr></p:bg>` +
+      `<p:spTree><p:sp><p:txBody><a:p><a:r><a:t>Bem-vindos à Santa Ceia</a:t></a:r></a:p></p:txBody></p:sp></p:spTree></p:cSld></p:sld>`,
+    "ppt/slides/_rels/slide1.xml.rels": `<Relationships><Relationship Id="rId9" Type="${REL}/image" Target="../media/fundo.png"/></Relationships>`,
+    "ppt/slides/slide2.xml": `<p:sld><p:cSld><p:spTree><p:sp><p:txBody><a:p><a:r><a:t>Oferta</a:t></a:r></a:p></p:txBody></p:sp></p:spTree></p:cSld></p:sld>`,
+    "ppt/media/fundo.png": PNG_MINIMO,
+  });
+  const pdfDoEstudo = (() => {
+    const objs = ["<< /Type /Catalog /Pages 2 0 R >>", "<< /Type /Pages /Kids [3 0 R 4 0 R] /Count 2 >>"];
+    for (let i = 0; i < 2; i += 1) objs.push("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 960 540] >>");
+    let out = "%PDF-1.4\n";
+    const offs = [];
+    objs.forEach((o, i) => {
+      offs.push(out.length);
+      out += `${i + 1} 0 obj\n${o}\nendobj\n`;
+    });
+    const xref = out.length;
+    out += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n` + offs.map((o) => `${String(o).padStart(10, "0")} 00000 n \n`).join("");
+    out += `trailer\n<< /Size ${objs.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+    return Buffer.from(out, "latin1");
+  })();
+
+  const apresentacoesAntes = await page.evaluate(async () => {
+    const st = JSON.parse(await window.lumenDesktop.storageGet("lumen-v2")).state;
+    return (st.apresentacoes ?? []).length;
+  });
+  for (const [nome, corpo] of [
+    ["Santa Ceia.pptx", pptxDoCulto],
+    ["Estudo.pdf", pdfDoEstudo],
+  ]) {
+    const r = await fetch(`${remoteBase}/dirigente/enviar`, {
+      method: "POST",
+      headers: {
+        "x-lumen-dirigente": tokenDirigente,
+        "x-lumen-arquivo": encodeURIComponent(nome),
+        "x-lumen-de": encodeURIComponent("Pastor Elias"),
+      },
+      body: corpo,
+    });
+    assert.equal(r.status, 200, `o envio de ${nome} falhou`);
+  }
+  await esperarAsync(
+    page,
+    async (antes) => {
+      const st = JSON.parse(await window.lumenDesktop.storageGet("lumen-v2")).state;
+      const itens = st.playlists.find((p) => p.id === st.activePlaylistId).items;
+      return (st.apresentacoes ?? []).length === antes + 2 && itens.filter((i) => i.type === "apresentacao").length >= 2;
+    },
+    apresentacoesAntes,
+    { timeout: 40000, oQue: "PowerPoint e PDF do dirigente entrarem na programação" },
+  );
+  const apresentacoes = await page.evaluate(async () => {
+    const st = JSON.parse(await window.lumenDesktop.storageGet("lumen-v2")).state;
+    return st.apresentacoes.map((a) => ({ origem: a.origem, slides: a.slides }));
+  });
+  const doPptx = apresentacoes.find((a) => a.origem === "pptx");
+  const doPdf = apresentacoes.find((a) => a.origem === "pdf");
+  assert.ok(doPptx && doPdf, "faltou o PowerPoint ou o PDF na biblioteca");
+  assert.equal(doPptx.slides.length, 2);
+  assert.equal(doPptx.slides[0].texto, "Bem-vindos à Santa Ceia");
+  assert.equal(doPdf.slides.length, 2, "o pdf.js não desenhou as duas páginas");
+  // Toda imagem de slide chega pelo protocolo — a rota escrita e a rota
+  // atendida já discordaram uma vez, e toda imagem dava 404.
+  const respostas = await page.evaluate(async (urls) => {
+    const r = [];
+    for (const u of urls) r.push((await fetch(u)).status);
+    return r;
+  }, [...doPptx.slides, ...doPdf.slides].map((s) => s.imagem).filter(Boolean));
+  assert.ok(respostas.length >= 3, `só ${respostas.length} imagens de slide`);
+  assert.ok(respostas.every((c) => c === 200), `imagem de slide não abriu: ${respostas.join(",")}`);
 
   // ---- A cabine não rola, nem para o lado nem para baixo ----
   // Controle que saiu da tela é controle que não existe: no meio do culto
@@ -876,6 +1038,11 @@ try {
     const slides = [{ id: "review-slide", label: "Verso", text, sortOrder: 0 }];
     data.state.songs.push({ id: "review-song", title: "Teste de leitura", artist: "", groupId: data.state.groups[0]?.id ?? "", key: "", copyright: "", lyricsRaw: text, slides, createdAt: 0, updatedAt: 0 });
     data.state.preview = { kind: "song", refId: "review-song", title: "Teste de leitura", subtitle: "", slides };
+    // É por aqui que o app restaura o que estava selecionado depois do
+    // reload: `preview` não vai para o disco. Sem isto o diálogo revisava a
+    // música que estava selecionada antes — e a verificação lá embaixo só
+    // passava porque a espera dela era async e nunca esperava de verdade.
+    data.state.selectedSongId = "review-song";
     data.state.previewIndex = 0;
     data.state.status = "idle";
     await api.storageSet("lumen-v2", JSON.stringify(data));
@@ -893,7 +1060,13 @@ try {
   await review.getByLabel("Enquadramento da sugestão").selectOption("contain");
   await review.getByRole("button", { name: "Aplicar correções", exact: true }).click();
   await review.waitFor({ state: "hidden" });
-  await page.waitForFunction(async () => JSON.parse(await window.lumenDesktop.storageGet("lumen-v2")).state.songs.find((s) => s.id === "review-song").slides.length > 1);
+  await esperarAsync(
+    page,
+    async () =>
+      JSON.parse(await window.lumenDesktop.storageGet("lumen-v2")).state.songs.find((s) => s.id === "review-song").slides.length > 1,
+    undefined,
+    { oQue: "as correções de leitura partirem o slide" },
+  );
   // Effective CSS viewport at 125%/150% matches Windows display scaling pressure.
   for (const [width, height, zoom] of [[1366, 768, 1], [1366, 768, 1.25], [1366, 768, 1.5], [800, 600, 1]]) {
     await app.evaluate(({ BrowserWindow }, args) => {
@@ -1059,7 +1232,7 @@ try {
   assert.deepEqual(errors, []);
   const disk = JSON.parse(await readFile(path.join(profile, "data", "library.json"), "utf8"));
   assert.ok(disk.values["lumen-v2"]);
-  console.log(`PASS: offline, fonts, Bible, restart persistence, projector, media ranges, preflight, Auto-Slide, remote control (LAN, entrada por nome, nome fixo na rede), update check, review before apply, 1366×768 at 100/125/150% and 800×600, no scroll and exactly one layout at ten sizes from 800×600 to 2560×1440, including every pixel around the 1280 cutover and the chat stays on screen, church logo and name reachable from the menu bar, art studio makes a design from a form, VFX has three modes and a dynamic video becomes a real file in the Vídeos tab, local AI off by default and the cabine independent of it, dirigente page signs in, sends a file, chats and files a notice, video as a theme background, find a song by a lyric excerpt, right-click on lyrics edits or removes, double-click to project, fixed text only in the footer, YouTube collapses the lyrics strip, phone has one play/pause button and the screen volume, sees the media folder, projects from it, opens a song as a grid of slides and puts one on the screen, and searches lyrics through the cabine. Evidence: ${evidence}`);
+  console.log(`PASS: offline, fonts, Bible, restart persistence, projector, media ranges, preflight, Auto-Slide, remote control (LAN, entrada por nome, nome fixo na rede), update check, review before apply, 1366×768 at 100/125/150% and 800×600, no scroll and exactly one layout at ten sizes from 800×600 to 2560×1440, including every pixel around the 1280 cutover and the chat stays on screen, church logo and name reachable from the menu bar, art studio makes a design from a form, VFX has three modes and a dynamic video becomes a real file in the Vídeos tab, local AI off by default and the cabine independent of it, dirigente page signs in, sends a file, chats and files a notice, and its PowerPoint and PDF become slides in the service programme, video as a theme background, find a song by a lyric excerpt, right-click on lyrics edits or removes, double-click to project, fixed text only in the footer, YouTube collapses the lyrics strip, phone has one play/pause button and the screen volume, every new chat message pops up in gold on the phone, the cabine and the dirigente page (never for its own author), sees the media folder, projects from it, opens a song as a grid of slides and puts one on the screen, and searches lyrics through the cabine. Evidence: ${evidence}`);
 } finally {
   if (app) await app.close();
   console.log(`Isolated test profile: ${profile}`);

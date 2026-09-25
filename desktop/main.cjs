@@ -15,6 +15,7 @@ const { AssistenteLocal } = require("./ia.cjs");
 const updater = require("./updater.cjs");
 const { abortou } = require("./navegacao.cjs");
 const { alturaDaCabine, larguraDaCabine } = require("./janela.cjs");
+const apresentacoes = require("./apresentacoes.cjs");
 
 
 const ORIGIN = "lumen://app";
@@ -98,6 +99,9 @@ async function startServer() {
     try {
       const pathname = decodeURIComponent(new URL(request.url).pathname);
       if (pathname.startsWith("/__midia/")) file = await media.resolveMedia(pathname);
+      // As imagens de cada slide de apresentação importada. Mesmo desenho
+      // da mídia: o caminho no disco é montado só lá dentro.
+      if (pathname.startsWith("/__apresentacao/")) file = await apresentacoes.resolver(pathname);
       if (pathname.startsWith("/__pacotes/")) file = await packages.resolvePackage(request.url, packageRoot);
     } catch { /* url malformada cai no 404 */ }
     if (!file) file = await resolveAsset(wwwRoot(), request.url);
@@ -107,7 +111,7 @@ async function startServer() {
       const types = { ".mp4": "video/mp4", ".webm": "video/webm", ".m4v": "video/mp4", ".ogv": "video/ogg", ".mp3": "audio/mpeg", ".m4a": "audio/mp4", ".aac": "audio/aac", ".wav": "audio/wav", ".ogg": "audio/ogg", ".opus": "audio/ogg", ".flac": "audio/flac" };
       return mediaResponse(file, request, types[path.extname(file).toLowerCase()]);
     }
-    const mime = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".json": "application/json", ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".woff2": "font/woff2", ".woff": "font/woff", ".ico": "image/x-icon", ".mp4": "video/mp4", ".webm": "video/webm", ".m4v": "video/mp4", ".ogv": "video/ogg", ".mp3": "audio/mpeg", ".m4a": "audio/mp4", ".aac": "audio/aac", ".wav": "audio/wav", ".ogg": "audio/ogg", ".opus": "audio/ogg", ".flac": "audio/flac", ".gif": "image/gif", ".avif": "image/avif", ".bmp": "image/bmp" };
+    const mime = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".mjs": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".json": "application/json", ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".woff2": "font/woff2", ".woff": "font/woff", ".ico": "image/x-icon", ".mp4": "video/mp4", ".webm": "video/webm", ".m4v": "video/mp4", ".ogv": "video/ogg", ".mp3": "audio/mpeg", ".m4a": "audio/mp4", ".aac": "audio/aac", ".wav": "audio/wav", ".ogg": "audio/ogg", ".opus": "audio/ogg", ".flac": "audio/flac", ".gif": "image/gif", ".avif": "image/avif", ".bmp": "image/bmp" };
     return new Response(await fs.promises.readFile(file), { headers: { "content-type": mime[path.extname(file)] || "application/octet-stream", "x-content-type-options": "nosniff" } });
   });
   return ORIGIN;
@@ -373,6 +377,7 @@ if (!gotLock) {
     storage = new Storage(path.join(dataDir, "data"), (message) => dialog.showMessageBox({ message }));
     await storage.init();
     media.init(dataDir);
+    apresentacoes.init(dataDir);
     await media.ensure();
     origin = await startServer();
     screen.on("display-added", displaysChanged);
@@ -484,6 +489,29 @@ handle("lumen:media-save", (nome, dados) => media.receber(nome, Buffer.from(dado
 handle("lumen:media-rename", (kind, nome, novo) => media.renomear(kind, nome, novo));
 handle("lumen:media-duplicate", (kind, nome) => media.duplicar(kind, nome));
 handle("lumen:media-delete", (kind, nome) => media.excluir(kind, nome));
+// Apresentações: PowerPoint é lido aqui, sem Office; PDF é desenhado na
+// janela pelo pdf.js e só as páginas prontas voltam para cá.
+handle("lumen:apresentacao-pptx", (nome) => apresentacoes.importarPptx(nome));
+handle("lumen:apresentacao-pdf", (nome) => apresentacoes.lerPdf(nome));
+handle("lumen:apresentacao-paginas", (paginas) => apresentacoes.salvarPaginas(paginas));
+handle("lumen:apresentacao-remover", (id) => apresentacoes.remover(id));
+/**
+ * Importar da cabine, sem dirigente: o operador escolhe o arquivo e ele
+ * entra pela mesma porta do que chega pela rede. Um caminho só decide
+ * extensão aceita, pasta e nome repetido.
+ */
+handle("lumen:apresentacao-escolher", async () => {
+  const { canceled, filePaths } = await dialog.showOpenDialog(cabine, {
+    title: "Importar apresentação",
+    properties: ["openFile"],
+    filters: [{ name: "PowerPoint ou PDF", extensions: ["pptx", "pdf"] }],
+  });
+  if (canceled || !filePaths[0]) return { ok: false, cancelado: true };
+  const st = await fs.promises.stat(filePaths[0]);
+  if (st.size > media.MAX_ARQUIVO) return { ok: false, error: "Arquivo grande demais (máximo 64 MB)." };
+  const r = await media.receber(path.basename(filePaths[0]), await fs.promises.readFile(filePaths[0]));
+  return r.ok ? { ok: true, nome: r.nome } : { ok: false, error: r.error };
+});
 handle("lumen:lyrics-suggest", (input) => require("./lyrics.cjs").suggest(input));
 handle("lumen:lyrics-load", (url) => require("./lyrics.cjs").load(url));
 handle("lumen:youtube-host", () => youtubeHost.start());

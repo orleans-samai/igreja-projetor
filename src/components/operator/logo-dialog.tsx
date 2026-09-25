@@ -14,6 +14,8 @@ import {
   pesoDoDataUrl,
   pesoLegivel,
 } from "@/lib/logo-imagem";
+import { Segmented } from "@/components/ui/segmented";
+import { NOME_DO_TAMANHO, TAMANHOS_DA_LOGO, tamanhoValido } from "@/lib/logo-no-telao";
 import { useLumenStore } from "@/store/lumen-store";
 
 function lerComo(file: File, modo: "dataUrl"): Promise<string> {
@@ -109,11 +111,40 @@ export function IdentidadeDaIgreja() {
       {/* O quadro mostra a logo como o telão vai mostrar: sobre fundo escuro,
           do tamanho que ela terá lá. Escolher às cegas e só descobrir no
           culto é o que este quadro evita. */}
-      <div className="flex min-h-36 items-center justify-center rounded-lg bg-stage p-6 shadow-[var(--shadow-border)]">
-        <div className="flex h-24 items-center justify-center">
-          <ChurchLogo url={settings.logoUrl || undefined} name={settings.churchName || "Sua igreja"} />
-        </div>
+      {/* Um telão em miniatura, 16:9, medindo a logo pela própria caixa: o
+          que se vê aqui é a proporção que a igreja vai ver na parede. */}
+      <div
+        className="flex aspect-video w-full items-center justify-center rounded-lg bg-stage shadow-[var(--shadow-border)]"
+        style={{ containerType: "size" }}
+      >
+        <ChurchLogo
+          url={settings.logoUrl || undefined}
+          name={settings.churchName || "Sua igreja"}
+          tamanho={tamanhoValido(settings.logoTamanho)}
+          comNome={!!settings.logoComNome}
+          unidade="cqmin"
+        />
       </div>
+
+      {settings.logoUrl && (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <Segmented
+            label="Tamanho da logo no telão"
+            value={tamanhoValido(settings.logoTamanho)}
+            onChange={(v) => update({ logoTamanho: v })}
+            items={TAMANHOS_DA_LOGO.map((t) => ({ value: t, label: NOME_DO_TAMANHO[t] }))}
+          />
+          <label className="flex cursor-pointer items-center gap-2 text-secondary text-fg">
+            <input
+              type="checkbox"
+              checked={!!settings.logoComNome}
+              onChange={(e) => update({ logoComNome: e.target.checked })}
+              className="size-4 accent-[var(--color-accent)]"
+            />
+            Nome da igreja embaixo
+          </label>
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-2">
         <Button variant="secondary" loading={ocupado} onClick={() => entrada.current?.click()}>

@@ -10,6 +10,7 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { ChurchLogo } from "@/components/logo";
+import { tamanhoValido } from "@/lib/logo-no-telao";
 import { stripChords } from "@/lib/lyrics";
 import { fontScaleDe } from "@/lib/font-scale";
 import { relatarLocal } from "@/lib/media-local";
@@ -700,8 +701,35 @@ export function SlideCanvas({
         <div className="relative z-10 flex h-full items-center justify-center">
           <div className="absolute inset-0 bg-stage/55" />
           <div className="relative">
-            <ChurchLogo url={frame.logoUrl} name={frame.churchName} />
+            <ChurchLogo
+              url={frame.logoUrl}
+              name={frame.churchName}
+              // Resolvido aqui, e não passado cru: quem nunca escolheu tem
+              // `undefined`, e undefined no componente significa "ocupe o
+              // espaço todo" — exatamente o brasão de parede a parede.
+              tamanho={tamanhoValido(frame.settings.logoTamanho)}
+              comNome={frame.settings.logoComNome}
+            />
           </div>
+        </div>
+      )}
+
+      {/* O slide de uma apresentação importada traz a própria imagem — a
+          página do PDF, a foto do slide do PowerPoint. Ela entra por cima
+          do fundo do tema e do véu: é o conteúdo do slide, não papel de
+          parede, e escurecê-la estragaria a página que o dirigente montou.
+          Fundo preto por baixo para a sobra do "caber" não mostrar o tema. */}
+      {!hideText && slide?.imagem && (
+        <div className="absolute inset-0 bg-stage">
+          <img
+            key={slide.imagem}
+            src={slide.imagem}
+            alt=""
+            className={cn(
+              "absolute inset-0 size-full",
+              fitMode === "cover" ? "object-cover" : "object-contain",
+            )}
+          />
         </div>
       )}
 

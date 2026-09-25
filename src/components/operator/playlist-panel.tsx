@@ -307,6 +307,7 @@ function labelType(t: string) {
   if (t === "bible") return "Bíblia";
   if (t === "media") return "Mídia";
   if (t === "text") return "Aviso";
+  if (t === "apresentacao") return "Apresentação";
   return t;
 }
 

@@ -3,6 +3,8 @@ import { toast } from "sonner";
 import { nid } from "@/lib/fold";
 import { parseLyrics } from "@/lib/lyrics";
 import { loadSong, suggestSongs } from "@/lib/lyrics-suggestions";
+import { avisarMensagem } from "@/components/operator/aviso-de-mensagem";
+import { importarRecebido } from "@/lib/apresentacao";
 import { MEDIA_KINDS, listMedia, mediaKindLabel } from "@/lib/media-library";
 import { TETO_DE_CAPAS, capaDe } from "@/lib/midia-capa";
 import {
@@ -198,7 +200,13 @@ export function useRemoteControl() {
     if (!d?.isDesktop) return;
     return d.onRemoteEvent((evento) => {
       if (evento.tipo === "chat") {
-        useChatStore.getState().receber(evento.mensagem);
+        const m = evento.mensagem;
+        // Nova de verdade: o celular que reconecta reenvia o histórico, e o
+        // aviso dourado não pode repetir recado de meia hora atrás.
+        const nova = !useChatStore.getState().mensagens.some((x) => x.id === m.id);
+        useChatStore.getState().receber(m);
+        // O que a própria cabine escreveu não vira aviso para ela mesma.
+        if (nova && !m.daCabine) avisarMensagem(m);
         return;
       }
       if (evento.tipo === "dispositivos") {
@@ -224,14 +232,39 @@ export function useRemoteControl() {
               : `“${evento.nome}” entrou na programação do culto.`,
           );
         } else {
-          // Apresentação e PDF ficam guardados: o Lúmen ainda não os desenha
-          // no telão, e pôr na programação um item que não projeta seria
-          // descobrir isso no meio do culto.
-          toast(
-            evento.de
-              ? `“${evento.nome}”, de ${evento.de}, chegou e está guardado na cabine.`
-              : `“${evento.nome}” chegou e está guardado na cabine.`,
-          );
+          // PowerPoint e PDF viram slides e entram na programação, como o
+          // dirigente pediu ao apertar "enviar para o culto".
+          //
+          // Antes ficavam só guardados, com o argumento de que o Lúmen não
+          // os desenhava. O argumento era verdade; a conclusão, errada: o
+          // que o dirigente espera é ver a apresentação no culto, e agora o
+          // Lúmen sabe mostrá-la.
+          const quem = evento.de ? `, de ${evento.de},` : "";
+          toast(`Abrindo “${evento.nome}”${quem}…`, { id: `apres-${evento.nome}` });
+          void importarRecebido(evento.nome, evento.de || undefined).then((r) => {
+            if (!r.ok) {
+              // O arquivo continua guardado; o que falhou foi transformá-lo
+              // em slides — e isso se diz com o motivo, não com silêncio.
+              toast.error(`“${evento.nome}” chegou, mas não virou slides: ${r.erro}`, {
+                id: `apres-${evento.nome}`,
+                duration: 12000,
+              });
+              return;
+            }
+            const st2 = useLumenStore.getState();
+            st2.adicionarApresentacao(r.apresentacao);
+            st2.addToPlaylist({
+              type: "apresentacao",
+              refId: r.apresentacao.id,
+              notes: "",
+              title: r.apresentacao.titulo,
+              subtitle: `${r.apresentacao.slides.length} slides · Recebido`,
+            });
+            toast.success(
+              `“${r.apresentacao.titulo}”${quem} entrou na programação do culto — ${r.apresentacao.slides.length} slides.`,
+              { id: `apres-${evento.nome}` },
+            );
+          });
         }
         return;
       }

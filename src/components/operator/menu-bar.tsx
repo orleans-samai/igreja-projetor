@@ -1,3 +1,4 @@
+import { importarRecebido } from "@/lib/apresentacao";
 import {
   Check,
   GraduationCap,
@@ -233,6 +234,47 @@ export function MenuBar({
     input.click();
   };
 
+  /**
+   * PowerPoint ou PDF escolhido na cabine vira slides na programação.
+   *
+   * Entra pela mesma porta do arquivo do dirigente — o processo principal
+   * guarda em "recebidos" e daí para a frente é um caminho só. Duas portas
+   * seriam dois lugares para decidir o que é aceito, e um dia eles
+   * discordariam.
+   */
+  const importarApresentacao = async () => {
+    const d = window.lumenDesktop;
+    if (!d?.isDesktop) {
+      toast("Importar apresentação é do app do Windows.");
+      return;
+    }
+    const escolha = await d.apresentacaoEscolher();
+    if (!escolha.ok) {
+      if (!escolha.cancelado) toast.error(escolha.error ?? "Não consegui abrir o arquivo.");
+      return;
+    }
+    toast(`Abrindo “${escolha.nome}”…`, { id: "apres-cabine" });
+    const r = await importarRecebido(escolha.nome);
+    if (!r.ok) {
+      toast.error(r.erro, { id: "apres-cabine", duration: 12000 });
+      return;
+    }
+    const st = useLumenStore.getState();
+    const n = r.apresentacao.slides.length;
+    st.adicionarApresentacao(r.apresentacao);
+    st.addToPlaylist({
+      type: "apresentacao",
+      refId: r.apresentacao.id,
+      notes: "",
+      title: r.apresentacao.titulo,
+      subtitle: `${n} slides`,
+    });
+    st.selectApresentacao(r.apresentacao.id);
+    toast.success(`“${r.apresentacao.titulo}” entrou na programação — ${n} slides.`, {
+      id: "apres-cabine",
+    });
+  };
+
   const exportRepertoire = () => {
     const blob = new Blob([exportLibrary()], { type: "application/json" });
     const a = document.createElement("a");
@@ -271,6 +313,10 @@ export function MenuBar({
         { label: "Exportar repertório em lote (.muf)", onSelect: () => void exportarMuf() },
         { label: "Importar repertório em lote (.muf)", onSelect: importarMuf },
         { label: "Importar músicas (.json)", onSelect: importarMusicasJsonDoDisco },
+        {
+          label: "Importar apresentação (PowerPoint ou PDF)…",
+          onSelect: () => void importarApresentacao(),
+        },
         { label: "Instalar no Windows", onSelect: () => setWindowsSetupOpen(true) },
         { label: "Verificar atualizações", onSelect: () => void verificarAtualizacoes() },
         { label: "Configurações", onSelect: onSettings },

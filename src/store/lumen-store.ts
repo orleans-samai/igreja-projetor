@@ -29,6 +29,7 @@ import {
 import { captureSession, type SessionSlice } from "@/lib/session-snap";
 import { formatRef } from "@/lib/bible-ref";
 import type {
+  Apresentacao,
   AlertState,
   CountdownState,
   CultoSnapshot,
@@ -90,6 +91,22 @@ function songToDeck(song: Song): Deck {
   };
 }
 
+function apresentacaoToDeck(a: Apresentacao): Deck {
+  return {
+    kind: "apresentacao",
+    refId: a.id,
+    title: a.titulo,
+    subtitle: a.origem === "pdf" ? "PDF" : "PowerPoint",
+    slides: a.slides.map((s, i) => ({
+      id: `${a.id}-${i}`,
+      label: `Slide ${i + 1}`,
+      text: s.texto,
+      imagem: s.imagem || undefined,
+      sortOrder: i,
+    })),
+  };
+}
+
 function textToDeck(text: FreeText): Deck {
   const slides = parseLyrics(text.body, 5).map((sl) => ({
     ...sl,
@@ -108,6 +125,8 @@ function textToDeck(text: FreeText): Deck {
 
 export interface LumenState {
   songs: Song[];
+  /** PowerPoint e PDF importados. As imagens moram em disco, não aqui. */
+  apresentacoes: Apresentacao[];
   groups: SongGroup[];
   themes: Theme[];
   playlists: Playlist[];
@@ -202,6 +221,9 @@ export interface LumenState {
   saveText: (text: FreeText) => void;
   deleteText: (id: string) => void;
   selectText: (id: string) => void;
+  adicionarApresentacao: (a: Apresentacao) => void;
+  selectApresentacao: (id: string) => void;
+  removerApresentacao: (id: string) => void;
   selectMedia: (id: string) => void;
   addMedia: (item: MediaItem) => void;
   comandarMedia: (
@@ -274,6 +296,8 @@ export function buildLiveFrame(s: LiveFrameInput): LiveFrame {
       margins: s.settings.margins,
       showWallpaper: s.settings.showWallpaper,
       showIdleLogo: s.settings.showIdleLogo,
+      logoTamanho: s.settings.logoTamanho,
+      logoComNome: s.settings.logoComNome,
       fontScale: s.settings.fontScale,
       showClock: s.settings.showClock,
       baseFill: s.settings.baseFill,
@@ -362,6 +386,7 @@ function loadPlaylistItem(get: () => LumenState, index: number): boolean {
   if (item.type === "song") get().selectSong(item.refId);
   else if (item.type === "text") get().selectText(item.refId);
   else if (item.type === "media") get().selectMedia(item.refId);
+  else if (item.type === "apresentacao") get().selectApresentacao(item.refId);
   else if (item.type === "bible") {
     const [b, c, v] = item.refId.split(":").map(Number);
     get().loadBibleChapter(b, c, v || 1, false);
@@ -425,6 +450,9 @@ const empty = (): Omit<
   | "saveText"
   | "deleteText"
   | "selectText"
+  | "adicionarApresentacao"
+  | "selectApresentacao"
+  | "removerApresentacao"
   | "selectMedia"
   | "addMedia"
   | "comandarMedia"
@@ -455,6 +483,7 @@ const empty = (): Omit<
   services: SEED_SERVICES,
   media: SEED_MEDIA,
   texts: SEED_TEXTS,
+  apresentacoes: [],
   logs: [],
   favorites: ["João 3:16", "Salmos 23:1"],
   favoriteMedia: [],
@@ -801,6 +830,7 @@ export const useLumenStore = create<LumenState>()(
         if (type === "song") get().selectSong(refId);
         else if (type === "text") get().selectText(refId);
         else if (type === "media") get().selectMedia(refId);
+        else if (type === "apresentacao") get().selectApresentacao(refId);
         else return;
         queueMicrotask(() => get().presentPreview());
       },
@@ -1168,6 +1198,36 @@ export const useLumenStore = create<LumenState>()(
 
       deleteText: (id) => set((s) => ({ texts: s.texts.filter((t) => t.id !== id) })),
 
+      adicionarApresentacao: (a) =>
+        set((s) => ({ apresentacoes: [a, ...s.apresentacoes.filter((x) => x.id !== a.id)] })),
+
+      /**
+       * A apresentação vira baralho: um slide por slide, com a imagem e o
+       * texto. Próximo, Anterior, a grade de slides e o celular funcionam
+       * sem saber que isto veio de um PowerPoint.
+       */
+      selectApresentacao: (id) => {
+        const a = get().apresentacoes.find((x) => x.id === id);
+        if (!a) return;
+        set({
+          preview: apresentacaoToDeck(a),
+          previewIndex: 0,
+        });
+      },
+
+      removerApresentacao: (id) => {
+        set((s) => ({
+          apresentacoes: s.apresentacoes.filter((x) => x.id !== id),
+          // Tira da programação também: item que aponta para o nada é o
+          // tipo de coisa que só se descobre no meio do culto.
+          playlists: s.playlists.map((p) => ({
+            ...p,
+            items: p.items.filter((i) => !(i.type === "apresentacao" && i.refId === id)),
+          })),
+        }));
+        void window.lumenDesktop?.apresentacaoRemover?.(id);
+      },
+
       selectText: (id) => {
         const text = get().texts.find((t) => t.id === id);
         if (!text) return;
@@ -1509,6 +1569,7 @@ export const useLumenStore = create<LumenState>()(
         services: s.services,
         media: s.media.filter((m) => !m.sessionOnly),
         texts: s.texts,
+        apresentacoes: s.apresentacoes,
         logs: s.logs,
         favorites: s.favorites,
         favoriteMedia: s.favoriteMedia,

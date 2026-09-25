@@ -253,6 +253,25 @@ declare global {
         nome: string,
       ) => Promise<{ ok: boolean; nome?: string; id?: string; error?: string }>;
       mediaDelete: (kind: MediaKind, nome: string) => Promise<{ ok: boolean; error?: string }>;
+      apresentacaoPptx: (nome: string) => Promise<
+        | {
+            ok: true;
+            id: string;
+            titulo: string;
+            slides: { texto: string; imagem: string }[];
+          }
+        | { ok: false; error: string }
+      >;
+      apresentacaoPdf: (
+        nome: string,
+      ) => Promise<{ ok: true; bytes: Uint8Array } | { ok: false; error: string }>;
+      apresentacaoPaginas: (
+        paginas: Uint8Array[],
+      ) => Promise<{ ok: true; id: string; urls: string[] } | { ok: false; error: string }>;
+      apresentacaoRemover: (id: string) => Promise<{ ok: boolean }>;
+      apresentacaoEscolher: () => Promise<
+        { ok: true; nome: string } | { ok: false; error?: string; cancelado?: boolean }
+      >;
       youtubeHost: () => Promise<string>;
       remoteControlStart: () => Promise<import("./remote-control").RemoteStatus>;
       remoteControlStop: () => Promise<import("./remote-control").RemoteStatus>;
