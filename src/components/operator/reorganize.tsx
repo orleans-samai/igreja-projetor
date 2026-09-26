@@ -1,8 +1,18 @@
-import { Check, GripHorizontal, LayoutGrid, RotateCcw } from "lucide-react";
+import { ArrowLeftRight, Check, GripHorizontal, LayoutGrid, RotateCcw } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
 import { NOME_PAINEL, ORDEM_PADRAO, trocar, type PainelId } from "@/lib/paineis";
+import {
+  ARRANJO_PADRAO,
+  NOME_DA_PARTE,
+  arranjoValido,
+  descreverArranjo,
+  ehPadrao,
+  trocarLados,
+  trocarPartes,
+  type ParteDaBiblia,
+} from "@/lib/paineis-da-biblia";
 import { useOpsStore } from "@/store/ops-store";
 
 /**
@@ -68,17 +78,73 @@ export function PainelArrastavel({ id }: { id: PainelId }) {
 }
 
 /**
+ * A mesma capa, para as três partes da tela da Bíblia.
+ *
+ * Soltar uma parte sobre outra troca as duas de lugar; o tipo do arraste é
+ * outro, para uma coluna da cabine nunca cair no meio da Bíblia.
+ */
+export function ParteDaBibliaArrastavel({ parte }: { parte: ParteDaBiblia }) {
+  const reorganizando = useOpsStore((s) => s.reorganizando);
+  const arranjo = arranjoValido(useOpsStore((s) => s.arranjoBiblia));
+  const setArranjo = useOpsStore((s) => s.setArranjoBiblia);
+  const [alvo, setAlvo] = useState(false);
+
+  if (!reorganizando) return null;
+
+  return (
+    <div
+      draggable
+      data-parte-da-biblia={parte}
+      onDragStart={(e) => {
+        e.dataTransfer.setData("text/lumen-parte-biblia", parte);
+        e.dataTransfer.effectAllowed = "move";
+      }}
+      onDragOver={(e) => {
+        if (!Array.from(e.dataTransfer.types).includes("text/lumen-parte-biblia")) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+        setAlvo(true);
+      }}
+      onDragLeave={() => setAlvo(false)}
+      onDrop={(e) => {
+        e.preventDefault();
+        setAlvo(false);
+        const vinda = e.dataTransfer.getData("text/lumen-parte-biblia") as ParteDaBiblia;
+        if (vinda && vinda !== parte) setArranjo(trocarPartes(arranjo, vinda, parte));
+      }}
+      onDragEnd={() => setAlvo(false)}
+      className={cn(
+        "animate-pop-in absolute inset-0 z-30 flex cursor-grab flex-col items-center justify-center gap-2",
+        "bg-stage/78 backdrop-blur-[1px] active:cursor-grabbing",
+        "transition-[box-shadow,background-color] duration-[var(--motion-fast)] ease-[var(--ease-out)]",
+        alvo
+          ? "bg-stage/60 shadow-[inset_0_0_0_2px_var(--color-accent)]"
+          : "shadow-[inset_0_0_0_1px_var(--color-border-strong)]",
+      )}
+    >
+      <GripHorizontal className="size-5 text-muted" aria-hidden />
+      <p className="px-2 text-center text-title font-semibold text-fg">{NOME_DA_PARTE[parte]}</p>
+      <p className="px-3 text-center text-caption text-subtle">
+        {alvo ? "Solte para trocar" : "Arraste sobre outra parte"}
+      </p>
+    </div>
+  );
+}
+
+/**
  * Faixa do modo, com a saída sempre à vista.
  *
  * Um modo em que se entra sem ver como sair é uma armadilha; e mexer na
  * cabine sem poder desfazer, também. Daí "Voltar ao padrão" morar aqui, ao
  * lado de "Concluir".
  */
-export function ReorganizeBar() {
+export function ReorganizeBar({ biblia = false }: { biblia?: boolean }) {
   const reorganizando = useOpsStore((s) => s.reorganizando);
   const setReorganizando = useOpsStore((s) => s.setReorganizando);
   const ordem = useOpsStore((s) => s.ordemPaineis);
   const setOrdem = useOpsStore((s) => s.setOrdemPaineis);
+  const arranjo = arranjoValido(useOpsStore((s) => s.arranjoBiblia));
+  const setArranjo = useOpsStore((s) => s.setArranjoBiblia);
 
   // Esc sai do modo, como sai de qualquer outra camada do app.
   useEffect(() => {
@@ -94,6 +160,34 @@ export function ReorganizeBar() {
   }, [reorganizando, setReorganizando]);
 
   if (!reorganizando) return null;
+
+  // Com a Bíblia aberta, o que está à vista são as partes dela — é isso que
+  // se reorganiza, e é disso que a faixa fala.
+  if (biblia) {
+    return (
+      <div className="animate-swap-in flex items-center gap-2 border-b border-accent/40 bg-accent/10 px-3 py-1">
+        <LayoutGrid className="size-3.5 shrink-0 text-accent" aria-hidden />
+        <p className="min-w-0 flex-1 truncate text-secondary text-fg">
+          Arraste uma parte da Bíblia sobre outra para trocá-las de lugar.{" "}
+          <span className="text-muted">{descreverArranjo(arranjo)}</span>
+        </p>
+        <Button size="sm" variant="ghost" onClick={() => setArranjo(trocarLados(arranjo))}>
+          <ArrowLeftRight /> Trocar lados
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          disabled={ehPadrao(arranjo)}
+          onClick={() => setArranjo(ARRANJO_PADRAO)}
+        >
+          <RotateCcw /> Voltar ao padrão
+        </Button>
+        <Button size="sm" onClick={() => setReorganizando(false)}>
+          <Check /> Concluir
+        </Button>
+      </div>
+    );
+  }
 
   const noPadrao = ordem.every((id, i) => id === ORDEM_PADRAO[i]);
 

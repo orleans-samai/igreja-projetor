@@ -1,9 +1,10 @@
 import { MessageSquare, Send } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { chatVisivel } from "@/lib/chat-visivel";
 import { cn } from "@/lib/cn";
+import { chaveDaPessoa, corDaPessoa } from "@/lib/cor-do-chat";
 import type { MensagemChat } from "@/lib/remote-control";
 import { useChatStore } from "@/store/chat-store";
 import { useLumenStore } from "@/store/lumen-store";
@@ -54,16 +55,30 @@ export function ChatAviso() {
   );
 }
 
-function Mensagem({ m }: { m: MensagemChat }) {
+/**
+ * Um recado. O que a cabine escreveu aparece como "Você", sem cor; cada
+ * pessoa do outro lado tem a sua — no nome e num filete à esquerda.
+ */
+function Mensagem({ m, cor }: { m: MensagemChat; cor: string | null }) {
   return (
     <li
       className={cn(
         "rounded-md px-2 py-1.5",
-        m.daCabine ? "bg-raised" : "bg-elevated shadow-[inset_0_0_0_1px_var(--color-border)]",
+        m.daCabine ? "bg-raised" : "bg-elevated",
       )}
+      style={
+        cor
+          ? { boxShadow: `inset 3px 0 0 0 ${cor}, inset 0 0 0 1px var(--color-border)` }
+          : undefined
+      }
     >
       <p className="flex items-baseline gap-1.5">
-        <span className="truncate text-caption font-semibold text-fg">{m.de}</span>
+        <span
+          className={cn("truncate text-caption font-semibold", !cor && "text-fg")}
+          style={cor ? { color: cor } : undefined}
+        >
+          {m.daCabine ? "Você" : m.de}
+        </span>
         <span className="tnum shrink-0 text-caption text-subtle">{hora(m.em)}</span>
       </p>
       {/* Recado falado: o player nativo basta, e é o que todo mundo já sabe
@@ -93,6 +108,12 @@ export function ChatPanel() {
   const [texto, setTexto] = useState("");
   const [enviando, setEnviando] = useState(false);
   const fim = useRef<HTMLDivElement>(null);
+
+  // Cor de cada pessoa, na ordem em que apareceram na conversa.
+  const cores = useMemo(() => {
+    const usadas = new Map<string, number>();
+    return mensagens.map((m) => (m.daCabine ? null : corDaPessoa(chaveDaPessoa(m), usadas)));
+  }, [mensagens]);
 
   useEffect(() => {
     fim.current?.scrollIntoView({ block: "end" });
@@ -143,8 +164,8 @@ export function ChatPanel() {
             Nada ainda. Quem estiver com o celular conectado pode escrever aqui.
           </li>
         )}
-        {mensagens.map((m) => (
-          <Mensagem key={m.id} m={m} />
+        {mensagens.map((m, i) => (
+          <Mensagem key={m.id} m={m} cor={cores[i]} />
         ))}
         <div ref={fim} />
       </ul>

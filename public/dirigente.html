@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="pt-BR">
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="color-scheme" content="dark">
 <title>Lúmen — enviar para o culto</title>
 <!--
@@ -27,7 +27,7 @@
   /* A cor de base vive no html, não no body: o feixe é um elemento com
      z-index negativo, e fundo pintado no body o esconderia por completo. */
   html { background: var(--bg); }
-  html, body { margin: 0; min-height: 100%; color: var(--fg); }
+  html, body { margin: 0; min-height: 100%; color: var(--fg); touch-action: manipulation; }
   body { background: transparent; }
   body {
     font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -541,6 +541,25 @@
 <script>
 (function () {
   "use strict";
+
+  /*
+   * Zoom travado. A página é um controle, não um texto para ler de perto:
+   * dar zoom sem querer (pinça ao segurar o celular, dois toques rápidos no
+   * Próximo) deixava metade dos botões fora da tela no meio do culto.
+   *
+   * O iPhone ignora o "user-scalable=no" da viewport desde o iOS 10, então
+   * a pinça é cancelada aqui — pelos eventos de gesto do Safari e pelo
+   * arrasto com dois dedos, que é como o Android a entrega. O toque duplo
+   * sai no CSS (touch-action: manipulation), e os campos têm 16 px, abaixo
+   * do que o iPhone dá zoom sozinho ao focar.
+   */
+  ["gesturestart", "gesturechange", "gestureend"].forEach(function (tipo) {
+    document.addEventListener(tipo, function (e) { e.preventDefault(); }, { passive: false });
+  });
+  document.addEventListener("touchmove", function (e) {
+    if (e.touches && e.touches.length > 1) e.preventDefault();
+  }, { passive: false });
+
   var $ = function (id) { return document.getElementById(id); };
   var CHAVE = "lumen-dirigente-token";
   /**
@@ -1010,12 +1029,50 @@
     l.scrollTop = l.scrollHeight;
   }
 
+  /**
+   * Uma cor para cada pessoa no chat — a mesma paleta e a mesma conta de
+   * src/lib/cor-do-chat.ts (o teste de lá confere as três telas). A cor
+   * preferida sai do nome; se outra pessoa da conversa já estiver com ela,
+   * vai para a próxima livre. A própria mensagem aparece como "Você", sem cor.
+   */
+  var CORES_DO_CHAT = ["#5cc8f5", "#b39bfa", "#4fd1a1", "#f58bc4", "#fb9d5c", "#3fd6e8", "#b5e35a", "#f78b8b"];
+  var coresUsadas = {};
+
+  function chaveDaPessoa(m) {
+    return m.daCabine ? "cabine" : "p:" + String(m.de || "").trim().toLowerCase();
+  }
+
+  function corDaPessoa(chave) {
+    if (Object.prototype.hasOwnProperty.call(coresUsadas, chave)) return CORES_DO_CHAT[coresUsadas[chave]];
+    var ocupadas = {};
+    Object.keys(coresUsadas).forEach(function (k) { ocupadas[coresUsadas[k]] = true; });
+    var h = 0;
+    for (var i = 0; i < chave.length; i += 1) h = (h * 31 + chave.charCodeAt(i)) >>> 0;
+    var inicio = h % CORES_DO_CHAT.length;
+    var escolhida = inicio;
+    for (var k = 0; k < CORES_DO_CHAT.length; k += 1) {
+      var idx = (inicio + k) % CORES_DO_CHAT.length;
+      if (!ocupadas[idx]) { escolhida = idx; break; }
+    }
+    coresUsadas[chave] = escolhida;
+    return CORES_DO_CHAT[escolhida];
+  }
+
+  /** Nome e filete na cor de quem escreveu. */
+  function pintarPessoa(div, de, m) {
+    var cor = corDaPessoa(chaveDaPessoa(m));
+    de.style.color = cor;
+    div.style.borderLeft = "3px solid " + cor;
+  }
+
   function desenharMensagem(m) {
+    var minha = !m.daCabine && m.de === usuario();
     var div = document.createElement("div");
-    div.className = "msg" + (m.daCabine ? " cabine" : m.de === usuario() ? " minha" : "");
+    div.className = "msg" + (m.daCabine ? " cabine" : minha ? " minha" : "");
     var de = document.createElement("p");
     de.className = "de";
-    de.textContent = (m.daCabine ? "Cabine" : m.de) + " · " + hora(m.em);
+    de.textContent = (minha ? "Você" : m.daCabine ? "Cabine" : m.de) + " · " + hora(m.em);
+    if (!minha) pintarPessoa(div, de, m);
     var texto = document.createElement("p");
     texto.className = "texto";
     texto.textContent = m.texto;
@@ -1038,6 +1095,7 @@
       try { d = JSON.parse(ev.data); } catch (e) { return; }
       if (d.tipo === "inicio") {
         $("listaChat").innerHTML = "";
+        coresUsadas = {};
         (d.chat || []).forEach(desenharMensagem);
         rolarChat();
         return;

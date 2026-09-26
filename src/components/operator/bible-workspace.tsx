@@ -21,6 +21,7 @@ import {
   chapterVerseCount,
   chapterVerses,
   hydrateExtraVersions,
+  importarArquivoDeBiblia,
   listVersions,
   loadBuiltinBible,
   searchVerses,
@@ -36,8 +37,14 @@ import {
 import { cn } from "@/lib/cn";
 import { fold } from "@/lib/fold";
 import { BibleReferencePopup } from "@/components/operator/bible-reference-popup";
+import { ParteDaBibliaArrastavel } from "@/components/operator/reorganize";
+import { arranjoValido, type ParteDaBiblia } from "@/lib/paineis-da-biblia";
 import type { LiveFrame } from "@/lib/types";
 import { useLumenStore } from "@/store/lumen-store";
+import { useOpsStore } from "@/store/ops-store";
+
+/** A opção do seletor que abre o arquivo, em vez de trocar de versão. */
+const IMPORTAR_VERSAO = "__importar";
 
 /** Rótulo de seção: o que faltava para os três níveis se distinguirem. */
 function Rotulo({ children }: { children: React.ReactNode }) {
@@ -119,7 +126,23 @@ export function BibleWorkspace({
 }) {
   const cursor = useLumenStore((s) => s.bibleCursor);
   const versionId = useLumenStore((s) => s.bibleVersionId);
+  const arranjo = arranjoValido(useOpsStore((s) => s.arranjoBiblia));
   const extra = useLumenStore((s) => s.extraVersionIds);
+  const addExtraVersion = useLumenStore((s) => s.addExtraVersion);
+  const arquivoDeVersao = useRef<HTMLInputElement>(null);
+
+  // Versão que a igreja tem licença para usar (NVI, NAA…): importa daqui
+  // mesmo, onde se escolhe a versão, e já entra na tela.
+  const importarVersao = async (file: File) => {
+    try {
+      const bible = await importarArquivoDeBiblia(file);
+      addExtraVersion(bible.id, bible.name);
+      changeVersion(bible.id);
+      toast(`${bible.name} importada — já está na tela.`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Não consegui importar essa versão.");
+    }
+  };
   const query = useLumenStore((s) => s.bibleQuery);
   const setQuery = useLumenStore((s) => s.setBibleQuery);
   const load = useLumenStore((s) => s.loadBibleChapter);
@@ -212,14 +235,33 @@ export function BibleWorkspace({
     el?.scrollIntoView({ block: "nearest" });
   }, [cursor.verse, cursor.chapter, cursor.bookId]);
 
-  const latest = useRef({ cursor, chapters, verseTotal, go, fireCurrent });
-  latest.current = { cursor, chapters, verseTotal, go, fireCurrent };
+  const latest = useRef({ cursor, chapters, verseTotal, go, fireCurrent, refAberta });
+  latest.current = { cursor, chapters, verseTotal, go, fireCurrent, refAberta };
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (isTypingTarget(e.target)) return;
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       const state = latest.current;
+      // Com a busca de referência aberta, a tela de trás não responde: um
+      // Enter que escapasse do campo projetaria o versículo errado no telão.
+      // Letra que chega antes de o campo pegar o foco soma ao que já foi
+      // digitado ("jo" rápido não vira "o").
+      if (state.refAberta) {
+        if (e.key === "Escape") {
+          // Consumido aqui: sem isso o atalho global, que roda depois e já
+          // não vê o pop-up, fecharia a Bíblia inteira no mesmo Esc.
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          typeBuf.current = "";
+          setRefAberta(false);
+        } else if (e.key.length === 1 && /^[0-9a-zA-ZáéíóúãõâêôçÁÉÍÓÚ ]$/.test(e.key)) {
+          e.preventDefault();
+          typeBuf.current += e.key;
+          setRefTexto(typeBuf.current);
+        }
+        return;
+      }
       if (e.key === "Enter") {
         e.preventDefault();
         state.fireCurrent();
@@ -272,9 +314,11 @@ export function BibleWorkspace({
       // Antes o app adivinhava o livro e pulava sozinho: quando errava, o
       // operador não via o que o programa tinha entendido.
       if (buf.length >= 1) {
+        // O buffer continua vivo até o pop-up fechar: é ele que junta as
+        // letras que chegam antes do foco.
+        window.clearTimeout(typeTimer.current);
         setRefTexto(buf);
         setRefAberta(true);
-        typeBuf.current = "";
         setHint("");
       }
     };
@@ -285,19 +329,243 @@ export function BibleWorkspace({
     };
   }, []);
 
+  /*
+   * As três partes da tela, cada uma inteira, para caberem no lugar que o
+   * operador escolheu (Reorganizar, com a Bíblia aberta). O conteúdo não
+   * muda de lugar para lugar; só a caixa em volta.
+   */
+  const parteVersiculos = (
+    <>
+      {/* A fita de referência: o que vai ao telão, sempre à vista e sem
+          precisar procurar. É a resposta ao "onde eu estou" no meio de um
+          culto, e por isso é a única coisa desta tela em tipo grande. */}
+      <div className="flex items-baseline gap-2 border-b border-border px-4 py-2.5">
+        <h2 className="text-display-sm font-semibold tracking-tight text-fg">
+          {meta?.name} {cursor.chapter}:{cursor.verse}
+        </h2>
+        <span className="tnum ml-auto shrink-0 text-caption text-subtle">
+          {verses.length} versículos
+        </span>
+      </div>
+      <ul ref={verseListRef} className="min-h-0 flex-1 overflow-y-auto lumen-scroll">
+        {verses.map((v) => {
+          const key = `${cursor.bookId}:${cursor.chapter}:${v.n}`;
+          const done = projected.has(key);
+          return (
+            <li key={v.n}>
+              <button
+                type="button"
+                data-verse={v.n}
+                onClick={() => go(cursor.bookId, cursor.chapter, v.n, false)}
+                onDoubleClick={() => go(cursor.bookId, cursor.chapter, v.n, true)}
+                className={cn(
+                  "relative flex w-full items-baseline gap-3 px-4 py-2 text-left",
+                  "transition-colors duration-[var(--motion-fast)] ease-[var(--ease-out)]",
+                  "hover:bg-elevated/60",
+                  "focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring",
+                  v.n === cursor.verse && "bg-elevated",
+                )}
+              >
+                {/* Filete no versículo escolhido: a marca não depende só
+                    do fundo, que some em monitor mal calibrado. */}
+                {v.n === cursor.verse && (
+                  <span aria-hidden className="absolute inset-y-0 left-0 w-0.5 bg-fg" />
+                )}
+                <span className="w-6 shrink-0 text-caption tnum text-subtle">{v.n}</span>
+                {v.text ? (
+                  <span className="min-w-0 flex-1 text-body leading-relaxed text-fg">
+                    {v.text}
+                  </span>
+                ) : (
+                  // Vazio de propósito: a tradução segue os manuscritos
+                  // mais antigos, que não trazem este versículo.
+                  <span className="min-w-0 flex-1 text-body italic text-subtle">
+                    não consta nesta tradução
+                  </span>
+                )}
+                {done && <Check className="size-3.5 shrink-0 text-ok" />}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </>
+  );
+  // Na coluna larga, a prévia em 16:9 passaria da altura da tela: largura
+  // limitada e centralizada. Na coluna estreita o limite nem chega a valer.
+  const partePrevia = (
+    <div className="mx-auto w-full max-w-[56rem] p-2">
+      <button
+        type="button"
+        className="relative block w-full overflow-hidden rounded-md bg-stage shadow-[var(--shadow-border)]"
+        onClick={fireCurrent}
+        aria-label="Projetar versículo"
+      >
+        <div className="aspect-video">
+          <SlideStage
+            frame={previewFrame}
+            variant="preview"
+            statusOverride="presenting"
+            className="size-full"
+          />
+        </div>
+        <span className="absolute bottom-1.5 right-1.5 inline-flex items-center gap-1 rounded-md bg-live px-2 py-0.5 text-caption font-semibold text-live-fg">
+          <Play className="size-3" /> Projetar
+        </span>
+      </button>
+    </div>
+  );
+  const parteNavegacao = (
+    <div className="lumen-scroll flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto bg-bg p-3">
+      <div className="relative">
+        <Search
+          aria-hidden
+          className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-subtle"
+        />
+        <Input
+          value={filtro}
+          onChange={(e) => setFiltro(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key !== "Enter") return;
+            const primeiro = livros[0];
+            if (primeiro) {
+              go(primeiro.id, 1, 1);
+              setFiltro("");
+            }
+          }}
+          placeholder="Buscar livro"
+          aria-label="Buscar livro"
+          className="pl-8"
+        />
+      </div>
+
+      <Testamento
+        titulo="Antigo Testamento"
+        livros={livros.filter((b) => b.id <= 39)}
+        atual={cursor.bookId}
+        aoEscolher={(id) => go(id, 1, 1)}
+        temLivro={(id) => versaoTemLivro(versionId, id)}
+      />
+      <Testamento
+        titulo="Novo Testamento"
+        livros={livros.filter((b) => b.id > 39)}
+        atual={cursor.bookId}
+        aoEscolher={(id) => go(id, 1, 1)}
+        temLivro={(id) => versaoTemLivro(versionId, id)}
+      />
+
+      {livros.length === 0 && (
+        <p className="text-secondary text-subtle">
+          Nenhum livro com “{filtro}”. Apague para ver todos.
+        </p>
+      )}
+
+      <div>
+        <Rotulo>
+          Capítulos <span className="tnum text-subtle">{chapters}</span>
+        </Rotulo>
+        <div className="bible-nums bible-nums-ch mt-1.5">
+          {Array.from({ length: chapters }, (_, i) => i + 1).map((n) => (
+            <button
+              key={n}
+              type="button"
+              data-on={n === cursor.chapter}
+              aria-label={`Capítulo ${n}`}
+              aria-pressed={n === cursor.chapter}
+              onClick={() => go(cursor.bookId, n, 1)}
+              className="bible-num bible-num-ch focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
+            >
+              {n}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <Rotulo>
+          Versículos{" "}
+          <span className="font-normal text-subtle">
+            {meta?.name} {cursor.chapter} · {verseTotal}
+          </span>
+        </Rotulo>
+        <div className="bible-nums bible-nums-vs mt-1.5">
+          {Array.from({ length: verseTotal }, (_, i) => i + 1).map((n) => (
+            <button
+              key={n}
+              type="button"
+              data-on={n === cursor.verse}
+              aria-label={`Versículo ${n}`}
+              aria-pressed={n === cursor.verse}
+              onClick={() => go(cursor.bookId, cursor.chapter, n, false)}
+              onDoubleClick={() => go(cursor.bookId, cursor.chapter, n, true)}
+              className={cn(
+                "bible-num bible-num-vs",
+                "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring",
+                projected.has(`${cursor.bookId}:${cursor.chapter}:${n}`) && "bible-num-feito",
+              )}
+            >
+              {n}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+  const conteudoDa: Record<ParteDaBiblia, React.ReactNode> = {
+    versiculos: parteVersiculos,
+    previa: partePrevia,
+    navegacao: parteNavegacao,
+  };
+  const [emCima, embaixo, aoLado] = arranjo.lugares;
+  /**
+   * A caixa de cada lugar. A prévia fica com a altura dela (16:9); as outras
+   * partes ocupam o que sobra e rolam por dentro.
+   */
+  const lugar = (parte: ParteDaBiblia, borda?: string) => (
+    <div
+      key={parte}
+      data-lugar-da-biblia={parte}
+      className={cn(
+        "relative flex min-h-0 flex-col",
+        parte === "previa" ? "shrink-0" : "flex-1",
+        borda,
+      )}
+    >
+      {conteudoDa[parte]}
+      <ParteDaBibliaArrastavel parte={parte} />
+    </div>
+  );
+
   return (
     <div className="relative flex h-full min-h-0 flex-col bg-bg">
       <div className="flex flex-wrap items-center gap-2 border-b border-border bg-surface px-3 py-2">
-        <Button size="sm" variant="secondary" onClick={onBack}>
-          <ArrowLeft className="size-3.5" /> Voltar
-        </Button>
+        {/* Dourado como o botão "Bíblia" do Repertório: quem entrou pelo
+            dourado acha a saída pela mesma cor. Botão simples, não o
+            <Button>: a variante pintaria o fundo por cima do `.ouro`. */}
+        <button
+          type="button"
+          onClick={onBack}
+          className={cn(
+            "ouro inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2.5",
+            "text-secondary font-semibold whitespace-nowrap",
+            "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring",
+          )}
+        >
+          <ArrowLeft className="size-3.5" aria-hidden /> Voltar
+        </button>
         <p className="text-title font-semibold tracking-tight">
           {meta?.name}: {cursor.chapter}
         </p>
         <select
           className="field w-52 max-w-full"
           value={versionId}
-          onChange={(e) => changeVersion(e.target.value)}
+          onChange={(e) => {
+            if (e.target.value === IMPORTAR_VERSAO) {
+              arquivoDeVersao.current?.click();
+              return;
+            }
+            changeVersion(e.target.value);
+          }}
           aria-label="Versão da Bíblia"
           title={nomeDaVersao ? `${nomeDaVersao.name} · ${nomeDaVersao.license}` : undefined}
         >
@@ -311,7 +579,20 @@ export function BibleWorkspace({
               {v.name}
             </option>
           ))}
+          <option value={IMPORTAR_VERSAO}>Importar outra versão…</option>
         </select>
+        <input
+          ref={arquivoDeVersao}
+          type="file"
+          accept="application/json,.json"
+          hidden
+          aria-label="Arquivo da versão da Bíblia"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            e.target.value = "";
+            if (file) void importarVersao(file);
+          }}
+        />
         <div className="relative min-w-0 flex-1">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-subtle" />
           <Input
@@ -435,177 +716,24 @@ export function BibleWorkspace({
       )}
 
       {ready && (
-        <div className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[minmax(24rem,34%)_1fr]">
-          <section className="flex min-h-0 flex-col border-b border-border md:border-b-0 md:border-r">
-            {/* A fita de referência: o que vai ao telão, sempre à vista e sem
-                precisar procurar. É a resposta ao "onde eu estou" no meio de um
-                culto, e por isso é a única coisa desta tela em tipo grande. */}
-            <div className="flex items-baseline gap-2 border-b border-border px-4 py-2.5">
-              <h2 className="text-display-sm font-semibold tracking-tight text-fg">
-                {meta?.name} {cursor.chapter}:{cursor.verse}
-              </h2>
-              <span className="tnum ml-auto shrink-0 text-caption text-subtle">
-                {verses.length} versículos
-              </span>
-            </div>
-            <ul ref={verseListRef} className="min-h-0 flex-1 overflow-y-auto lumen-scroll">
-              {verses.map((v) => {
-                const key = `${cursor.bookId}:${cursor.chapter}:${v.n}`;
-                const done = projected.has(key);
-                return (
-                  <li key={v.n}>
-                    <button
-                      type="button"
-                      data-verse={v.n}
-                      onClick={() => go(cursor.bookId, cursor.chapter, v.n, false)}
-                      onDoubleClick={() => go(cursor.bookId, cursor.chapter, v.n, true)}
-                      className={cn(
-                        "relative flex w-full items-baseline gap-3 px-4 py-2 text-left",
-                        "transition-colors duration-[var(--motion-fast)] ease-[var(--ease-out)]",
-                        "hover:bg-elevated/60",
-                        "focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring",
-                        v.n === cursor.verse && "bg-elevated",
-                      )}
-                    >
-                      {/* Filete no versículo escolhido: a marca não depende só
-                          do fundo, que some em monitor mal calibrado. */}
-                      {v.n === cursor.verse && (
-                        <span aria-hidden className="absolute inset-y-0 left-0 w-0.5 bg-fg" />
-                      )}
-                      <span className="w-6 shrink-0 text-caption tnum text-subtle">{v.n}</span>
-                      {v.text ? (
-                        <span className="min-w-0 flex-1 text-body leading-relaxed text-fg">
-                          {v.text}
-                        </span>
-                      ) : (
-                        // Vazio de propósito: a tradução segue os manuscritos
-                        // mais antigos, que não trazem este versículo.
-                        <span className="min-w-0 flex-1 text-body italic text-subtle">
-                          não consta nesta tradução
-                        </span>
-                      )}
-                      {done && <Check className="size-3.5 shrink-0 text-ok" />}
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-            <div className="border-t border-border p-2">
-              <button
-                type="button"
-                className="relative block w-full overflow-hidden rounded-md bg-stage shadow-[var(--shadow-border)]"
-                onClick={fireCurrent}
-                aria-label="Projetar versículo"
-              >
-                <div className="aspect-video">
-                  <SlideStage
-                    frame={previewFrame}
-                    variant="preview"
-                    statusOverride="presenting"
-                    className="size-full"
-                  />
-                </div>
-                <span className="absolute bottom-1.5 right-1.5 inline-flex items-center gap-1 rounded-md bg-live px-2 py-0.5 text-caption font-semibold text-live-fg">
-                  <Play className="size-3" /> Projetar
-                </span>
-              </button>
-            </div>
-          </section>
-
-          <section className="lumen-scroll flex min-h-0 flex-col gap-3 overflow-y-auto bg-bg p-3">
-            <div className="relative">
-              <Search
-                aria-hidden
-                className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-subtle"
-              />
-              <Input
-                value={filtro}
-                onChange={(e) => setFiltro(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key !== "Enter") return;
-                  const primeiro = livros[0];
-                  if (primeiro) {
-                    go(primeiro.id, 1, 1);
-                    setFiltro("");
-                  }
-                }}
-                placeholder="Buscar livro"
-                aria-label="Buscar livro"
-                className="pl-8"
-              />
-            </div>
-
-            <Testamento
-              titulo="Antigo Testamento"
-              livros={livros.filter((b) => b.id <= 39)}
-              atual={cursor.bookId}
-              aoEscolher={(id) => go(id, 1, 1)}
-              temLivro={(id) => versaoTemLivro(versionId, id)}
-            />
-            <Testamento
-              titulo="Novo Testamento"
-              livros={livros.filter((b) => b.id > 39)}
-              atual={cursor.bookId}
-              aoEscolher={(id) => go(id, 1, 1)}
-              temLivro={(id) => versaoTemLivro(versionId, id)}
-            />
-
-            {livros.length === 0 && (
-              <p className="text-secondary text-subtle">
-                Nenhum livro com “{filtro}”. Apague para ver todos.
-              </p>
+        <div
+          className={cn(
+            "grid min-h-0 flex-1 grid-cols-1",
+            arranjo.duplaNa === "esquerda"
+              ? "md:grid-cols-[minmax(24rem,34%)_1fr]"
+              : "md:grid-cols-[1fr_minmax(24rem,34%)]",
+          )}
+        >
+          <section
+            className={cn(
+              "flex min-h-0 flex-col border-b border-border md:border-b-0",
+              arranjo.duplaNa === "esquerda" ? "md:border-r" : "md:order-2 md:border-l",
             )}
-
-            <div>
-              <Rotulo>
-                Capítulos <span className="tnum text-subtle">{chapters}</span>
-              </Rotulo>
-              <div className="bible-nums bible-nums-ch mt-1.5">
-                {Array.from({ length: chapters }, (_, i) => i + 1).map((n) => (
-                  <button
-                    key={n}
-                    type="button"
-                    data-on={n === cursor.chapter}
-                    aria-label={`Capítulo ${n}`}
-                    aria-pressed={n === cursor.chapter}
-                    onClick={() => go(cursor.bookId, n, 1)}
-                    className="bible-num bible-num-ch focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
-                  >
-                    {n}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <Rotulo>
-                Versículos{" "}
-                <span className="font-normal text-subtle">
-                  {meta?.name} {cursor.chapter} · {verseTotal}
-                </span>
-              </Rotulo>
-              <div className="bible-nums bible-nums-vs mt-1.5">
-                {Array.from({ length: verseTotal }, (_, i) => i + 1).map((n) => (
-                  <button
-                    key={n}
-                    type="button"
-                    data-on={n === cursor.verse}
-                    aria-label={`Versículo ${n}`}
-                    aria-pressed={n === cursor.verse}
-                    onClick={() => go(cursor.bookId, cursor.chapter, n, false)}
-                    onDoubleClick={() => go(cursor.bookId, cursor.chapter, n, true)}
-                    className={cn(
-                      "bible-num bible-num-vs",
-                      "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring",
-                      projected.has(`${cursor.bookId}:${cursor.chapter}:${n}`) && "bible-num-feito",
-                    )}
-                  >
-                    {n}
-                  </button>
-                ))}
-              </div>
-            </div>
+          >
+            {lugar(emCima)}
+            {lugar(embaixo, "border-t border-border")}
           </section>
+          <section className="flex min-h-0 flex-col">{lugar(aoLado)}</section>
         </div>
       )}
 
@@ -613,7 +741,10 @@ export function BibleWorkspace({
         aberto={refAberta}
         textoInicial={refTexto}
         versionId={versionId}
-        aoFechar={() => setRefAberta(false)}
+        aoFechar={() => {
+          typeBuf.current = "";
+          setRefAberta(false);
+        }}
         aoEscolher={(bookId, capitulo, versiculo, projetar) =>
           go(bookId, capitulo, versiculo, projetar)
         }

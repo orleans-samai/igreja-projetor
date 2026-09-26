@@ -230,6 +230,8 @@ export interface LumenState {
   removerApresentacao: (id: string) => void;
   selectMedia: (id: string) => void;
   addMedia: (item: MediaItem) => void;
+  /** Tira a mídia da lista (e dos favoritos) — o arquivo em si é com a pasta. */
+  removeMedia: (id: string) => void;
   comandarMedia: (
     patch: Partial<
       Pick<Deck, "mediaAcao" | "mediaLoop" | "mediaVelocidade" | "mediaVolume" | "mediaMudo">
@@ -459,6 +461,7 @@ const empty = (): Omit<
   | "removerApresentacao"
   | "selectMedia"
   | "addMedia"
+  | "removeMedia"
   | "comandarMedia"
   | "buscarMedia"
   | "setAlert"
@@ -1312,6 +1315,12 @@ export const useLumenStore = create<LumenState>()(
       },
 
       addMedia: (item) => set((s) => ({ media: [item, ...s.media] })),
+
+      removeMedia: (id) =>
+        set((s) => ({
+          media: s.media.filter((m) => m.id !== id),
+          favoriteMedia: s.favoriteMedia.filter((x) => x !== id),
+        })),
 
       /**
        * Comanda o vídeo local que está no telão — mesmo desenho do YouTube:

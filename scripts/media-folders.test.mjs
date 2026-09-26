@@ -194,3 +194,83 @@ test("tipo de mídia desconhecido responde erro em vez de derrubar o app", async
     assert.equal(z.ok, false);
   });
 });
+
+test("importar copia para a pasta do tipo, sem sobrescrever e sem aceitar qualquer arquivo", async () => {
+  await comPastas(async (dir) => {
+    const fora = path.join(dir, "area-de-trabalho");
+    await mkdir(fora, { recursive: true });
+    await writeFile(path.join(fora, "Abertura.mp4"), "video-novo");
+    await writeFile(path.join(fora, "Louvor.mp3"), "audio");
+    await writeFile(path.join(fora, "Cartaz.png"), "imagem");
+    await writeFile(path.join(fora, "planilha.xlsx"), "x");
+    // Já existe um "Abertura.mp4" na pasta: o da igreja não pode sumir.
+    await writeFile(path.join(media.folders().video, "Abertura.mp4"), "video-antigo");
+
+    const r = await media.importarCaminhos([
+      path.join(fora, "Abertura.mp4"),
+      path.join(fora, "Louvor.mp3"),
+      path.join(fora, "Cartaz.png"),
+      path.join(fora, "planilha.xlsx"),
+      path.join(fora, "nao-existe.mp4"),
+      "relativo/sem-raiz.mp4",
+      42,
+    ]);
+
+    assert.deepEqual(
+      r.importados.map((i) => [i.kind, i.name]),
+      [
+        ["video", "Abertura (2).mp4"],
+        ["audio", "Louvor.mp3"],
+        ["image", "Cartaz.png"],
+      ],
+    );
+    assert.equal(r.importados[0].id, "midia:video:Abertura (2).mp4");
+    assert.equal(r.importados[0].url, "lumen://app/__midia/video/Abertura%20(2).mp4");
+    assert.equal(await readFile(path.join(media.folders().video, "Abertura.mp4"), "utf8"), "video-antigo");
+    assert.equal(await readFile(path.join(media.folders().video, "Abertura (2).mp4"), "utf8"), "video-novo");
+    assert.deepEqual(
+      r.recusados.map((x) => x.nome),
+      ["planilha.xlsx", "nao-existe.mp4"],
+    );
+    // O original fica onde estava: importar é copiar, não mover.
+    assert.equal(await readFile(path.join(fora, "Louvor.mp3"), "utf8"), "audio");
+  });
+});
+
+test("arquivo que já mora na pasta não é copiado de novo", async () => {
+  await comPastas(async () => {
+    const dir = media.folders().image;
+    await writeFile(path.join(dir, "Foto.jpg"), "x");
+    const r = await media.importarCaminhos([path.join(dir, "Foto.jpg")]);
+    assert.deepEqual(r.importados.map((i) => i.name), ["Foto.jpg"]);
+    assert.deepEqual(await readdir(dir), ["Foto.jpg"]);
+  });
+});
+
+test("o vigia avisa quando entra mídia na pasta, uma vez só por rajada", async () => {
+  await comPastas(async () => {
+    const avisos = [];
+    media.vigiar((kinds) => avisos.push(kinds));
+    try {
+      const dir = media.folders().video;
+      // Rajada: copiar um vídeo grande dispara vários eventos seguidos.
+      await writeFile(path.join(dir, "Culto.mp4"), "a");
+      await writeFile(path.join(dir, "Culto.mp4"), "ab");
+      await writeFile(path.join(dir, "Culto.mp4"), "abc");
+      const limite = Date.now() + 5000;
+      while (avisos.length === 0 && Date.now() < limite) {
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      assert.equal(avisos.length, 1, JSON.stringify(avisos));
+      assert.deepEqual(avisos[0], ["video"]);
+
+      // Arquivo que não é do tipo (o teste de gravação da pasta) não conta.
+      avisos.length = 0;
+      await writeFile(path.join(dir, "notas.txt"), "x");
+      await new Promise((r) => setTimeout(r, 800));
+      assert.equal(avisos.length, 0);
+    } finally {
+      media.vigiar(null);
+    }
+  });
+});

@@ -52,6 +52,18 @@ export function BibleReferencePopup({
   const [capitulo, setCapitulo] = useState<number | null>(null);
   const [marcado, setMarcado] = useState(0);
   const campo = useRef<HTMLInputElement>(null);
+  const corpo = useRef<HTMLDivElement>(null);
+  const grade = useRef<HTMLDivElement>(null);
+
+  // Com letra grande a lista rola; o item marcado pelo teclado não pode
+  // ficar escondido abaixo da borda. O mouse marca com onMouseMove, não
+  // onMouseEnter: ao rolar, o item que passa sob o cursor parado não rouba
+  // a marcação das setas.
+  useEffect(() => {
+    corpo.current
+      ?.querySelector('[data-on="true"]')
+      ?.scrollIntoView({ block: "nearest" });
+  }, [marcado, passo]);
 
   // Cada abertura começa limpa, com o que já foi digitado dentro.
   useEffect(() => {
@@ -63,6 +75,16 @@ export function BibleReferencePopup({
     setMarcado(0);
     campo.current?.focus();
   }, [aberto, textoInicial]);
+
+  // O teclado mora no campo. Escolher o livro com o mouse trocava a lista, o
+  // botão clicado sumia e o foco caía no body: setas, Enter e Esc paravam de
+  // valer aqui e iam mexer na Bíblia por trás. A cada passo o foco volta.
+  useEffect(() => {
+    if (aberto) campo.current?.focus();
+  }, [aberto, passo]);
+
+  /** Clicar numa opção não tira o foco do campo. */
+  const manterFoco = (e: React.MouseEvent) => e.preventDefault();
 
   const pedido = useMemo(() => separar(texto), [texto]);
 
@@ -155,8 +177,22 @@ export function BibleReferencePopup({
       confirmar(marcado, e.ctrlKey || e.metaKey);
       return;
     }
+    // Na lista de livros, ↑↓ andam um livro. Na grade de números, andam uma
+    // linha — quantas colunas couberem na largura do pop-up.
+    const linha =
+      passo === "livro" || !grade.current
+        ? 1
+        : Math.max(1, getComputedStyle(grade.current).gridTemplateColumns.split(" ").length);
     const passoDoCursor =
-      e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : e.key === "ArrowDown" ? 8 : e.key === "ArrowUp" ? -8 : 0;
+      e.key === "ArrowRight"
+        ? 1
+        : e.key === "ArrowLeft"
+          ? -1
+          : e.key === "ArrowDown"
+            ? linha
+            : e.key === "ArrowUp"
+              ? -linha
+              : 0;
     if (passoDoCursor === 0) return;
     e.preventDefault();
     setMarcado((v) => Math.max(0, Math.min(lista.length - 1, v + passoDoCursor)));
@@ -175,9 +211,11 @@ export function BibleReferencePopup({
         onClick={aoFechar}
       />
 
-      <div className="animate-pop-in relative flex max-h-full w-[min(38rem,100%)] flex-col overflow-hidden rounded-xl bg-surface shadow-[var(--shadow-pop),var(--shadow-border)]">
-        <div className="flex items-center gap-2 border-b border-border px-3 py-2">
-          <Search className="size-3.5 shrink-0 text-subtle" aria-hidden />
+      {/* Grande de propósito: quem procura o livro está de pé, longe da tela,
+          com a igreja esperando — não é um menu para ler de perto. */}
+      <div className="animate-pop-in relative flex max-h-full min-h-[min(34rem,100%)] w-[min(60rem,100%)] flex-col overflow-hidden rounded-xl bg-surface shadow-[var(--shadow-pop),var(--shadow-border)]">
+        <div className="flex items-center gap-3 border-b border-border px-5 py-4">
+          <Search className="size-6 shrink-0 text-subtle" aria-hidden />
           <input
             ref={campo}
             value={texto}
@@ -191,20 +229,20 @@ export function BibleReferencePopup({
             onKeyDown={noTeclado}
             placeholder="Livro, ou a referência inteira: provér 3, joão 3:16"
             aria-label="Livro ou referência"
-            className="min-w-0 flex-1 bg-transparent text-body text-fg outline-none placeholder:text-subtle"
+            className="min-w-0 flex-1 bg-transparent text-display-sm text-fg outline-none placeholder:text-subtle"
           />
           {trilha && (
-            <span className="flex shrink-0 items-center gap-1 text-caption text-muted">
-              {trilha} <ChevronRight className="size-3" aria-hidden />
+            <span className="flex shrink-0 items-center gap-1.5 text-[1.125rem] font-medium text-muted">
+              {trilha} <ChevronRight className="size-5" aria-hidden />
             </span>
           )}
         </div>
 
-        <div className="lumen-scroll min-h-0 flex-1 overflow-y-auto p-2">
+        <div ref={corpo} className="lumen-scroll min-h-0 flex-1 overflow-y-auto p-3">
           {passo === "livro" && (
             <>
               {achados.length === 0 && (
-                <p className="px-2 py-3 text-secondary text-subtle">
+                <p className="px-3 py-4 text-[1.125rem] text-subtle">
                   Nenhum livro com “{pedido.nome}”.
                 </p>
               )}
@@ -213,23 +251,25 @@ export function BibleReferencePopup({
                   <li key={b.id}>
                     <button
                       type="button"
-                      onMouseEnter={() => setMarcado(i)}
+                      data-on={i === marcado}
+                      onMouseDown={manterFoco}
+                      onMouseMove={() => setMarcado(i)}
                       onClick={() => escolherLivro(b.id)}
                       className={cn(
-                        "relative flex w-full items-baseline gap-3 rounded-md px-2.5 py-1.5 text-left",
+                        "relative flex w-full items-baseline gap-4 rounded-lg px-4 py-2.5 text-left",
                         i === marcado ? "bg-elevated" : "hover:bg-elevated/60",
                       )}
                     >
                       <span
                         aria-hidden
-                        className="absolute inset-y-1 left-0 w-0.5 rounded-full"
+                        className="absolute inset-y-1.5 left-0 w-1 rounded-full"
                         style={{ background: `var(--color-bible-${bookSection(b.id)})` }}
                       />
-                      <span className="w-10 shrink-0 text-body font-semibold text-fg">
+                      <span className="w-16 shrink-0 text-[1.25rem] font-semibold text-fg">
                         {bookShort(b)}
                       </span>
-                      <span className="min-w-0 flex-1 truncate text-body text-muted">{b.name}</span>
-                      <span className="tnum shrink-0 text-caption text-subtle">
+                      <span className="min-w-0 flex-1 truncate text-[1.25rem] text-fg/85">{b.name}</span>
+                      <span className="tnum shrink-0 text-[1rem] text-muted">
                         {chapterCount(versionId, b.id)} cap.
                       </span>
                     </button>
@@ -241,12 +281,13 @@ export function BibleReferencePopup({
 
           {passo !== "livro" && (
             <div>
-              <p className="px-1 pb-1.5 text-caption font-medium uppercase tracking-wide text-subtle">
+              <p className="px-1 pb-2.5 text-[1rem] font-medium uppercase tracking-wide text-muted">
                 {passo === "capitulo" ? "Capítulo" : "Versículo"}
               </p>
               <div
+                ref={grade}
                 className={cn(
-                  "bible-nums",
+                  "bible-nums bible-nums-grande",
                   passo === "capitulo" ? "bible-nums-ch" : "bible-nums-vs",
                 )}
               >
@@ -255,7 +296,8 @@ export function BibleReferencePopup({
                     key={n}
                     type="button"
                     data-on={i === marcado}
-                    onMouseEnter={() => setMarcado(i)}
+                    onMouseDown={manterFoco}
+                    onMouseMove={() => setMarcado(i)}
                     onClick={() =>
                       passo === "capitulo" ? escolherCapitulo(n) : confirmar(i, false)
                     }
@@ -271,13 +313,13 @@ export function BibleReferencePopup({
           )}
         </div>
 
-        <div className="flex items-center gap-2 border-t border-border px-3 py-1.5">
-          <p className="min-w-0 flex-1 truncate text-caption text-subtle">
-            <CornerDownLeft className="mr-1 inline size-3" aria-hidden />
+        <div className="flex items-center gap-3 border-t border-border px-5 py-3">
+          <p className="min-w-0 flex-1 truncate text-[1rem] text-muted">
+            <CornerDownLeft className="mr-1.5 inline size-4" aria-hidden />
             Enter escolhe · Esc volta um passo
           </p>
           {passo === "versiculo" && livro && capitulo && (
-            <Button size="sm" onClick={() => confirmar(marcado, true)}>
+            <Button size="lg" className="h-11 px-5 text-[1rem]" onClick={() => confirmar(marcado, true)}>
               <Play /> Projetar
             </Button>
           )}

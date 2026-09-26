@@ -15,7 +15,7 @@ import { stripChords } from "@/lib/lyrics";
 import { fontScaleDe } from "@/lib/font-scale";
 import { relatarLocal } from "@/lib/media-local";
 import { carregadoAte } from "@/lib/media-player";
-import { legendaDoRodape } from "@/lib/slide-rodape";
+import { legendaDoRodape, margensCentradas } from "@/lib/slide-rodape";
 import { fadeDurationMs, slideKey } from "@/lib/transition";
 import type { ClockPosition, FitMode, LiveFrame, OutputStatus, Theme } from "@/lib/types";
 import { cn } from "@/lib/cn";
@@ -275,12 +275,10 @@ function useCabeNaCaixa(chave: string) {
 function SlideBody({
   content,
   paint,
-  alignV,
   escala = 1,
 }: {
   content: SlideContent;
   paint: Theme;
-  alignV: Theme["alignV"];
   escala?: number;
 }) {
   /*
@@ -304,15 +302,15 @@ function SlideBody({
     <div className="relative flex h-full flex-col">
       {/* A área do texto é o que sobra, e ela recorta: é o que permite medir
           o transbordo e encolher em vez de deixar a frase sair pela borda. */}
+      {/* A letra fica sempre no meio da tela, na vertical — nunca lá
+          embaixo nem lá em cima, seja qual for o tema (o "alinhamento
+          vertical" dele não vale mais no telão). Com rodapé, o mesmo espaço
+          fica reservado em cima: sem isso o versículo centrava no que sobra
+          acima da referência e subia meia faixa. */}
       <div
         ref={caixa}
-        className={cn(
-          "flex min-h-0 flex-1 overflow-hidden",
-          alignV === "top" && "items-start",
-          alignV === "center" && "items-center",
-          alignV === "bottom" && "items-end",
-        )}
-        style={rodape ? { paddingBottom: RODAPE_H } : undefined}
+        className="flex min-h-0 flex-1 items-center overflow-hidden"
+        style={rodape ? { paddingTop: RODAPE_H, paddingBottom: RODAPE_H } : undefined}
       >
         <div ref={alvo} className="slide-text max-w-full flex-1" style={textStyle(paint, escala * fator)}>
           {content.body}
@@ -538,12 +536,20 @@ function MediaStage({
   };
 
   if (erro) {
+    // O motivo certo, não um palpite: só o endereço `blob:` é mídia de
+    // sessão. Arquivo da pasta que falha é arquivo que sumiu ou formato que
+    // o telão não toca — e mandar "pôr na pasta" o que já está nela deixava
+    // o operador rodando em círculo.
+    const deSessao = src.startsWith("blob:");
     return (
       <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 px-16 text-center">
         <p className="font-display text-4xl text-stage-fg">{title}</p>
         <p className="max-w-3xl text-2xl text-stage-fg/70">
-          O telão não conseguiu abrir este arquivo. Mídia importada por sessão só aparece na
-          cabine — ponha o arquivo na pasta de mídia para projetar.
+          {deSessao
+            ? "O telão não conseguiu abrir este arquivo. Mídia importada só nesta sessão fica na cabine — arraste o arquivo para o Repertório ou use Importar no app do Windows, que ele vai para a pasta de mídia."
+            : type === "video"
+              ? "O telão não conseguiu abrir este vídeo. O arquivo pode ter saído da pasta de mídia, ou estar num formato que o telão não toca — MP4 (H.264) e WebM funcionam sempre."
+              : "O telão não conseguiu abrir este arquivo. Ele pode ter saído da pasta de mídia, ou estar num formato que o telão não abre."}
         </p>
       </div>
     );
@@ -631,7 +637,8 @@ export function SlideCanvas({
   const next = frame.deck?.slides[frame.index + 1];
   const showChords =
     variant === "audience" ? frame.settings.chordsOnAudience : frame.settings.chordsOnStage;
-  const m = frame.settings.margins;
+  // Em cima e embaixo, a mesma margem: margem torta tirava a letra do meio.
+  const m = margensCentradas(frame.settings.margins);
   // "logo" é um botão que o operador aperta na hora; "idle" é antes de
   // apresentar qualquer coisa — aí quem decide é Configurações de exibição,
   // porque uma igreja quer o papel de parede limpo à espera, outra quer a
@@ -773,7 +780,7 @@ export function SlideCanvas({
               style={{ animation: `lumen-slide-out ${fadeMs}ms ease forwards` }}
               aria-hidden
             >
-              <SlideBody content={leaving.content} paint={paint} alignV={theme.alignV} escala={escalaFonte} />
+              <SlideBody content={leaving.content} paint={paint} escala={escalaFonte} />
             </div>
           )}
           <div
@@ -781,7 +788,7 @@ export function SlideCanvas({
             className="absolute inset-0"
             style={fadeMs > 0 ? { animation: `lumen-slide-in ${fadeMs}ms ease forwards` } : undefined}
           >
-            <SlideBody content={content} paint={paint} alignV={theme.alignV} escala={escalaFonte} />
+            <SlideBody content={content} paint={paint} escala={escalaFonte} />
           </div>
         </div>
       )}

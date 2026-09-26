@@ -1,6 +1,6 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { legendaDoRodape } from "./slide-rodape.ts";
+import { legendaDoRodape, margensCentradas } from "./slide-rodape.ts";
 
 describe("legendaDoRodape", () => {
   test("música mostra o título", () => {
@@ -26,5 +26,14 @@ describe("legendaDoRodape", () => {
   test("espaço sobrando não vira separador solto", () => {
     assert.equal(legendaDoRodape("  Aleluia  ", ""), "Aleluia");
     assert.equal(legendaDoRodape(" ", "João 3.16"), "João 3.16");
+  });
+});
+
+describe("margensCentradas", () => {
+  test("em cima e embaixo ficam iguais, com o mesmo espaço de antes", () => {
+    assert.deepEqual(margensCentradas({ t: 30, r: 8, b: 6, l: 10 }), { t: 18, r: 8, b: 18, l: 10 });
+  });
+  test("margens já simétricas não mudam", () => {
+    assert.deepEqual(margensCentradas({ t: 8, r: 8, b: 8, l: 8 }), { t: 8, r: 8, b: 8, l: 8 });
   });
 });

@@ -16,3 +16,22 @@ export function legendaDoRodape(titulo?: string, referencia?: string): string {
     .filter(Boolean)
     .join(" · ");
 }
+
+/**
+ * As margens do telão, com a letra sempre no meio.
+ *
+ * A igreja pediu: letra nenhuma lá embaixo ou lá em cima, sempre centrada.
+ * Margem de cima diferente da de baixo — de um pacote importado, de um
+ * ajuste antigo — empurrava o versículo para um lado. Em cima e embaixo
+ * valem a média das duas: o espaço para o texto é o mesmo, e o centro é o
+ * centro da tela. Os lados ficam como estão.
+ */
+export function margensCentradas(m: { t: number; r: number; b: number; l: number }): {
+  t: number;
+  r: number;
+  b: number;
+  l: number;
+} {
+  const v = (m.t + m.b) / 2;
+  return { t: v, r: m.r, b: v, l: m.l };
+}

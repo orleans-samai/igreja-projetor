@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require("electron");
+const { contextBridge, ipcRenderer, webUtils } = require("electron");
 
 contextBridge.exposeInMainWorld("lumenDesktop", {
   isDesktop: true,
@@ -24,6 +24,7 @@ contextBridge.exposeInMainWorld("lumenDesktop", {
   },
   remoteControlPushRepertoire: (lista) => ipcRenderer.send("lumen:remote-control-repertoire", lista),
   remoteControlPushMedia: (lista) => ipcRenderer.send("lumen:remote-control-media", lista),
+  remoteControlPushCulto: (dados) => ipcRenderer.send("lumen:remote-control-culto", dados),
   remoteControlPushChurch: (dados) => ipcRenderer.send("lumen:remote-control-church", dados),
   remoteControlPushThemes: (lista) => ipcRenderer.send("lumen:remote-control-themes", lista),
   remoteControlSetDirigentePassword: (senha) =>
@@ -70,6 +71,28 @@ contextBridge.exposeInMainWorld("lumenDesktop", {
   mediaApplyFolder: (kind, dir, mover) => ipcRenderer.invoke("lumen:media-apply", kind, dir, mover),
   mediaResetFolder: (kind) => ipcRenderer.invoke("lumen:media-reset", kind),
   mediaSave: (nome, dados) => ipcRenderer.invoke("lumen:media-save", nome, dados),
+  /**
+   * Copia para a pasta de mídia os arquivos soltos na janela ou escolhidos no
+   * "Importar". O caminho sai do próprio File, aqui no preload: a página
+   * entrega arquivos, nunca um caminho escrito por ela.
+   */
+  mediaImportFiles: (files) => {
+    const caminhos = [];
+    for (const file of Array.from(files || [])) {
+      try {
+        const caminho = webUtils.getPathForFile(file);
+        if (caminho) caminhos.push(caminho);
+      } catch {
+        /* não é um arquivo do disco */
+      }
+    }
+    return ipcRenderer.invoke("lumen:media-import-paths", caminhos);
+  },
+  onMediaChanged: (cb) => {
+    const listener = (_event, kinds) => cb(Array.isArray(kinds) ? kinds : []);
+    ipcRenderer.on("lumen:media-changed", listener);
+    return () => ipcRenderer.removeListener("lumen:media-changed", listener);
+  },
   mediaRename: (kind, nome, novo) => ipcRenderer.invoke("lumen:media-rename", kind, nome, novo),
   mediaDuplicate: (kind, nome) => ipcRenderer.invoke("lumen:media-duplicate", kind, nome),
   mediaDelete: (kind, nome) => ipcRenderer.invoke("lumen:media-delete", kind, nome),

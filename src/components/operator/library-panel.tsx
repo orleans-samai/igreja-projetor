@@ -5,10 +5,12 @@ import {
   Globe,
   ListPlus,
   Loader2,
+  Play,
   Plus,
   RefreshCw,
   Search,
   Star,
+  Trash2,
   Upload,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type Ref } from "react";
@@ -29,14 +31,25 @@ import type { LyricsHit } from "@/lib/lyrics-web";
 import { isWall, optimizeRawText } from "@/lib/slide-optimize";
 import { MediaFolderDialog } from "@/components/operator/media-folder-dialog";
 import {
+  comecarArraste,
+  contarTrazidos,
+  temArquivos,
+  trazerArquivos,
+  type ItemArrastado,
+} from "@/components/operator/soltar-midia";
+import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from "@/components/ui/menu";
+import {
   MEDIA_KINDS,
   applyMediaFolder,
+  avisarMidiaMudou,
   chooseMediaFolder,
   hasMediaFolders,
   humanSize,
   listMedia,
+  mandarParaALixeira,
   mediaKindLabel,
   openMediaFolder,
+  useMidiaMudou,
   type EscolhaDePasta,
   type MediaKind,
   type MediaListing,
@@ -102,17 +115,26 @@ function PorNoCulto({
   );
 }
 
-/** Item de lista da biblioteca: mesma altura, mesma marca de seleção, em toda aba. */
+/**
+ * Item de lista da biblioteca: mesma altura, mesma marca de seleção, em toda aba.
+ *
+ * Com `arrastar`, a linha pode ser levada até a Programação do culto — o
+ * mesmo que o +, para quem pensa arrastando.
+ */
 function LibraryRow({
   selected,
   onClick,
   onDoubleClick,
+  onContextMenu,
+  arrastar,
   title,
   children,
 }: {
   selected: boolean;
   onClick: () => void;
   onDoubleClick?: () => void;
+  onContextMenu?: (e: React.MouseEvent) => void;
+  arrastar?: ItemArrastado;
   title?: string;
   children: React.ReactNode;
 }) {
@@ -121,6 +143,9 @@ function LibraryRow({
       type="button"
       onClick={onClick}
       onDoubleClick={onDoubleClick}
+      onContextMenu={onContextMenu}
+      draggable={Boolean(arrastar)}
+      onDragStart={arrastar ? (e) => comecarArraste(e, arrastar) : undefined}
       title={title}
       data-on={selected}
       className={cn(
@@ -153,9 +178,50 @@ export function LibraryPanel({
   const setTab = useLumenStore((s) => s.setTab);
   const search = useLumenStore((s) => s.search);
   const setSearch = useLumenStore((s) => s.setSearch);
+  const [soltando, setSoltando] = useState(false);
+
+  // Vídeo, música ou foto arrastados do Explorer para cá entram na pasta de
+  // mídia, e a aba Mídia se abre no tipo do arquivo, para o operador ver onde
+  // foi parar.
+  const receberArquivos = async (files: File[]) => {
+    setSoltando(false);
+    if (files.length === 0) return;
+    const r = await trazerArquivos(files, { mostrar: true });
+    if (r.itens.length > 0) setTab("media");
+    contarTrazidos(r, "biblioteca");
+  };
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-surface" data-tour="biblioteca">
+    <div
+      className="relative flex h-full min-h-0 flex-col bg-surface"
+      data-tour="biblioteca"
+      data-soltar-biblioteca
+      onDragOver={(e) => {
+        if (!temArquivos(e.dataTransfer)) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "copy";
+        setSoltando(true);
+      }}
+      onDragLeave={(e) => {
+        if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+        setSoltando(false);
+      }}
+      onDrop={(e) => {
+        if (!temArquivos(e.dataTransfer)) return;
+        e.preventDefault();
+        void receberArquivos(Array.from(e.dataTransfer.files));
+      }}
+    >
+      {soltando && (
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-1 z-20 flex items-center justify-center rounded-lg bg-surface/85 shadow-[inset_0_0_0_2px_var(--color-accent)]"
+        >
+          <p className="flex items-center gap-2 text-body font-medium text-fg">
+            <Upload className="size-4 text-accent" /> Solte para guardar na mídia
+          </p>
+        </div>
+      )}
       <div className="panel-head justify-between">
         <h2>Repertório</h2>
         <div className="flex items-center gap-0.5">
@@ -320,6 +386,15 @@ function SongsList({
                   selected={selected === song.id}
                   onClick={() => selectSong(song.id)}
                   onDoubleClick={() => projetarDaBiblioteca("song", song.id)}
+                  arrastar={{
+                    item: {
+                      type: "song",
+                      refId: song.id,
+                      notes: "",
+                      title: song.title,
+                      subtitle: song.artist,
+                    },
+                  }}
                   title="Um clique seleciona; dois cliques mandam para o telão"
                 >
                   <div className="min-w-0 flex-1">
@@ -547,9 +622,32 @@ function FilterChip({
  * Explorer e atualiza. Antes só dava para importar por sessão — fechou o app,
  * perdeu tudo. A estrela guarda o que se usa todo domingo no topo da lista.
  */
+/**
+ * O último "mostrar" já atendido. Módulo, não estado: a lista de mídia
+ * desmonta ao trocar de aba, e um arrastar de uma hora atrás não pode
+ * trocar o tipo quando ela volta a aparecer.
+ */
+let mostradoAte = 0;
+
+/** A linha da lista de mídia, venha da pasta ou da sessão. */
+interface LinhaDeMidia {
+  id: string;
+  title: string;
+  path: string;
+  detalhe: string;
+  sessao: boolean;
+  /** Nome do arquivo na pasta; sem ele, a mídia não mora no disco. */
+  nome?: string;
+}
+
 function MediaList() {
   const selectMedia = useLumenStore((s) => s.selectMedia);
   const addMedia = useLumenStore((s) => s.addMedia);
+  const removeMedia = useLumenStore((s) => s.removeMedia);
+  const playlists = useLumenStore((s) => s.playlists);
+  const activePlaylistId = useLumenStore((s) => s.activePlaylistId);
+  const aviso = useMidiaMudou();
+  const [menuDe, setMenuDe] = useState<(LinhaDeMidia & { x: number; y: number }) | null>(null);
   const addToPlaylist = useLumenStore((s) => s.addToPlaylist);
   const projetarDaBiblioteca = useLumenStore((s) => s.projetarDaBiblioteca);
   const preview = useLumenStore((s) => s.preview);
@@ -578,6 +676,23 @@ function MediaList() {
     void atualizar(kind);
   }, [kind, atualizar]);
 
+  // A pasta mudou (importar, arrastar, celular, Explorer): relê. Se foi a
+  // cabine que trouxe o arquivo, mostra o tipo dele.
+  useEffect(() => {
+    if (aviso.versao === 0) return;
+    if (aviso.mostrar && aviso.versao > mostradoAte) {
+      mostradoAte = aviso.versao;
+      if (aviso.mostrar !== kind) {
+        setKind(aviso.mostrar);
+        return;
+      }
+    }
+    void atualizar(kind);
+    // `kind` fica de fora de propósito: trocar de tipo já relê pelo efeito
+    // de cima; aqui só interessa o aviso novo.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aviso.versao]);
+
   const doDisco = listing.items ?? [];
   const idsDoDisco = new Set(doDisco.map((f) => f.id));
   // Tudo que está na store e não veio da pasta: material que já vinha no app,
@@ -586,13 +701,14 @@ function MediaList() {
   const q = search.trim().toLowerCase();
 
   // Favoritas primeiro: é o material que volta toda semana.
-  const lista = [
+  const lista: LinhaDeMidia[] = [
     ...doDisco.map((f) => ({
       id: f.id,
       title: f.title,
       path: f.url,
       detalhe: humanSize(f.size),
       sessao: false,
+      nome: f.name,
     })),
     ...daStore.map((m) => ({
       id: m.id,
@@ -609,18 +725,63 @@ function MediaList() {
       return fa - fb || a.title.localeCompare(b.title, "pt-BR");
     });
 
-  const importar = (files: FileList | null) => {
-    if (!files) return;
-    Array.from(files).forEach((file) => {
-      addMedia({
-        id: nid(),
-        type: kind,
-        title: file.name.replace(/\.[^.]+$/, ""),
-        path: URL.createObjectURL(file),
-        sessionOnly: true,
-      });
+  // No app do Windows, "Importar" copia para a pasta: antes criava um
+  // endereço de sessão, que sumia ao fechar o app e o celular não via.
+  const importar = async (files: File[]) => {
+    if (files.length === 0) return;
+    contarTrazidos(await trazerArquivos(files, { mostrar: true }), "biblioteca");
+  };
+
+  const porNoCulto = (m: LinhaDeMidia) => {
+    garantirNaStoreDaLista(m);
+    addToPlaylist({
+      type: "media",
+      refId: m.id,
+      notes: "",
+      title: m.title,
+      subtitle: mediaKindLabel(kind),
     });
-    toast("Mídia disponível nesta sessão");
+  };
+
+  // Mídia de disco só existe na store depois de tocada uma vez; sem isto,
+  // selecionar ou projetar acharia um id que não existe.
+  const garantirNaStoreDaLista = (m: LinhaDeMidia) => {
+    if (!sessionMedia.some((x) => x.id === m.id)) {
+      addMedia({ id: m.id, type: kind, title: m.title, path: m.path });
+    }
+  };
+
+  /**
+   * Excluir pelo botão direito.
+   *
+   * Arquivo da pasta vai para a Lixeira do Windows — de lá volta, se foi
+   * engano. Mídia só da sessão sai da lista. Se estiver no culto de hoje, o
+   * aviso diz: a programação não muda sozinha, mas o operador precisa saber
+   * que aquele item ficou sem arquivo.
+   */
+  const excluir = async (m: LinhaDeMidia) => {
+    const noCulto = (playlists.find((p) => p.id === activePlaylistId)?.items ?? []).some(
+      (it) => it.refId === m.id,
+    );
+    if (m.nome) {
+      const r = await mandarParaALixeira(kind, m.nome);
+      if (!r.ok) {
+        toast.error(r.error || "Não consegui excluir.");
+        return;
+      }
+    } else if (m.path.startsWith("blob:")) {
+      URL.revokeObjectURL(m.path);
+    }
+    removeMedia(m.id);
+    avisarMidiaMudou();
+    void atualizar(kind);
+    const onde = m.nome ? "foi para a Lixeira" : "saiu da lista";
+    toast(
+      noCulto
+        ? `“${m.title}” ${onde}. Ainda está na programação do culto — tire de lá se não for usar.`
+        : `“${m.title}” ${onde}.`,
+      { duration: noCulto ? 9000 : 4000 },
+    );
   };
 
   return (
@@ -720,7 +881,12 @@ function MediaList() {
               }
               className="sr-only"
               multiple
-              onChange={(e) => importar(e.target.files)}
+              onChange={(e) => {
+                const files = Array.from(e.target.files ?? []);
+                // Limpa para escolher o mesmo arquivo de novo disparar outra vez.
+                e.target.value = "";
+                void importar(files);
+              }}
             />
           </label>
         </div>
@@ -767,22 +933,28 @@ function MediaList() {
                 <LibraryRow
                   selected={preview?.refId === m.id}
                   onClick={() => {
-                    // O item de disco precisa existir na store para o preview
-                    // encontrá-lo pelo id.
-                    if (!sessionMedia.some((x) => x.id === m.id)) {
-                      addMedia({ id: m.id, type: kind, title: m.title, path: m.path });
-                    }
+                    garantirNaStoreDaLista(m);
                     selectMedia(m.id);
                   }}
                   onDoubleClick={() => {
-                    // Mídia de disco só existe na store depois de tocada uma
-                    // vez; sem isto, projetar acharia um id que não existe.
-                    if (!sessionMedia.some((x) => x.id === m.id)) {
-                      addMedia({ id: m.id, type: kind, title: m.title, path: m.path });
-                    }
+                    garantirNaStoreDaLista(m);
                     projetarDaBiblioteca("media", m.id);
                   }}
-                  title="Um clique seleciona; dois cliques mandam para o telão"
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    setMenuDe({ ...m, x: e.clientX, y: e.clientY });
+                  }}
+                  arrastar={{
+                    item: {
+                      type: "media",
+                      refId: m.id,
+                      notes: "",
+                      title: m.title,
+                      subtitle: mediaKindLabel(kind),
+                    },
+                    midia: { id: m.id, kind, title: m.title, path: m.path },
+                  }}
+                  title="Um clique seleciona; dois cliques mandam para o telão; botão direito para mais"
                 >
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-body text-fg">{m.title}</span>
@@ -796,15 +968,7 @@ function MediaList() {
                   label={`Pôr ${m.title} no culto`}
                   grupo="group-hover/midia:opacity-100"
                   direita="right-9"
-                  onClick={() =>
-                    addToPlaylist({
-                      type: "media",
-                      refId: m.id,
-                      notes: "",
-                      title: m.title,
-                      subtitle: mediaKindLabel(kind),
-                    })
-                  }
+                  onClick={() => porNoCulto(m)}
                 />
                 <button
                   type="button"
@@ -827,6 +991,59 @@ function MediaList() {
           })}
         </ul>
       )}
+
+      {/* Botão direito numa mídia: o mesmo menu das letras, no ponto do clique. */}
+      <Menu open={Boolean(menuDe)} onOpenChange={(v) => !v && setMenuDe(null)}>
+        <MenuTrigger asChild>
+          <span
+            aria-hidden
+            className="pointer-events-none fixed size-0"
+            style={{ left: menuDe?.x ?? 0, top: menuDe?.y ?? 0 }}
+          />
+        </MenuTrigger>
+        <MenuContent>
+          <MenuItem
+            onSelect={() => {
+              if (menuDe) {
+                garantirNaStoreDaLista(menuDe);
+                projetarDaBiblioteca("media", menuDe.id);
+              }
+              setMenuDe(null);
+            }}
+          >
+            <span className="flex items-center gap-2">
+              <Play className="size-3.5 shrink-0" aria-hidden /> Projetar
+            </span>
+          </MenuItem>
+          <MenuItem
+            onSelect={() => {
+              if (menuDe) {
+                porNoCulto(menuDe);
+                toast(`“${menuDe.title}” entrou no culto`);
+              }
+              setMenuDe(null);
+            }}
+          >
+            <span className="flex items-center gap-2">
+              <ListPlus className="size-3.5 shrink-0" aria-hidden /> Pôr no culto
+            </span>
+          </MenuItem>
+          <MenuSeparator />
+          <MenuItem
+            tone="danger"
+            onSelect={() => {
+              const alvo = menuDe;
+              setMenuDe(null);
+              if (alvo) void excluir(alvo);
+            }}
+          >
+            <span className="flex items-center gap-2">
+              <Trash2 className="size-3.5 shrink-0" aria-hidden />
+              {menuDe?.nome ? "Excluir (vai para a Lixeira)" : "Tirar da lista"}
+            </span>
+          </MenuItem>
+        </MenuContent>
+      </Menu>
     </div>
   );
 }
@@ -924,6 +1141,7 @@ function TextsList() {
                 selected={preview?.refId === t.id}
                 onClick={() => selectText(t.id)}
                 onDoubleClick={() => projetarDaBiblioteca("text", t.id)}
+                arrastar={{ item: { type: "text", refId: t.id, notes: "", title: t.title } }}
                 title="Um clique seleciona; dois cliques mandam para o telão"
               >
                 <span className="min-w-0 flex-1">

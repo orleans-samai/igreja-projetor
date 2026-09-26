@@ -307,6 +307,7 @@ async function apply(kind, dir, mover) {
   // falhar, os arquivos já estão no lugar novo e a mensagem diz o que houve.
   pastas[kind] = destino;
   const gravou = save();
+  rearmar();
   return {
     ok: true,
     dir: destino,
@@ -331,6 +332,7 @@ async function reset(kind) {
     save();
     return { ok: false, error: `Não consegui criar a pasta padrão: ${error?.message || error}` };
   }
+  rearmar();
   return { ok: true, dir: padrao, aviso: gravou.ok ? null : gravou.error };
 }
 
@@ -505,6 +507,158 @@ async function duplicar(kind, nome) {
   return { ok: true, nome: final, id: idFor(kind, final) };
 }
 
+/** O que a janela precisa para mostrar e projetar um arquivo da pasta. */
+function itemDaPasta(kind, nome) {
+  return {
+    id: idFor(kind, nome),
+    kind,
+    name: nome,
+    title: nome.replace(/\.[^.]+$/, ""),
+    url: `lumen://app/__midia/${kind}/${encodeURIComponent(nome)}`,
+  };
+}
+
+/**
+ * Copia para a pasta de mídia os arquivos que o operador arrastou ou
+ * escolheu no "Importar".
+ *
+ * Antes o "Importar" criava um endereço de sessão (`blob:`): o arquivo só
+ * existia naquela janela, sumia ao fechar o app e o celular nunca o via.
+ * Agora ele entra na pasta, como o que chega pela rede — e o que está na
+ * pasta, o celular enxerga.
+ *
+ * Os caminhos vêm do preload, tirados dos próprios arquivos soltos na janela
+ * (`webUtils.getPathForFile`); a página não tem como inventar um. Mesmo
+ * assim só entra extensão de vídeo, áudio ou imagem, e o destino é sempre
+ * um nome livre dentro da pasta do tipo: nada é sobrescrito.
+ *
+ * Sem teto de tamanho, ao contrário da rede: é um arquivo do próprio
+ * computador da igreja, e vídeo de culto passa fácil de 64 MB.
+ *
+ * @param {unknown} caminhos
+ */
+async function importarCaminhos(caminhos) {
+  /** @type {ReturnType<typeof itemDaPasta>[]} */
+  const importados = [];
+  /** @type {{ nome: string; erro: string }[]} */
+  const recusados = [];
+  const lista = Array.isArray(caminhos) ? caminhos.slice(0, 200) : [];
+  for (const bruto of lista) {
+    if (typeof bruto !== "string" || !bruto || !path.isAbsolute(bruto)) continue;
+    const origem = path.resolve(bruto);
+    const nome = nomeSeguro(path.basename(origem));
+    const ext = path.extname(nome).toLowerCase();
+    const kind = Object.keys(KINDS).find((k) => KINDS[k].includes(ext));
+    if (!kind) {
+      recusados.push({ nome, erro: "não é vídeo, áudio nem imagem" });
+      continue;
+    }
+    let st;
+    try {
+      st = await fsp.stat(origem);
+    } catch {
+      recusados.push({ nome, erro: "o arquivo não foi encontrado" });
+      continue;
+    }
+    if (!st.isFile()) {
+      recusados.push({ nome, erro: "não é um arquivo" });
+      continue;
+    }
+    const dir = path.resolve(dirFor(kind));
+    // Já mora na pasta (arrastado da própria lista, ou da pasta pelo
+    // Explorer): nada a copiar, só usar.
+    if (path.dirname(origem).toLowerCase() === dir.toLowerCase()) {
+      importados.push(itemDaPasta(kind, path.basename(origem)));
+      continue;
+    }
+    try {
+      await fsp.mkdir(dir, { recursive: true });
+      const destino = await nomeLivre(dir, nome);
+      await fsp.copyFile(origem, destino, fs.constants.COPYFILE_EXCL);
+      importados.push(itemDaPasta(kind, path.basename(destino)));
+    } catch (error) {
+      recusados.push({ nome, erro: `não consegui copiar (${error?.code || error?.message || error})` });
+    }
+  }
+  return { ok: true, importados, recusados };
+}
+
+/**
+ * Vigia as três pastas e avisa quando algo muda nelas.
+ *
+ * É o que faz o celular ver na hora o arquivo novo — venha ele do "Importar",
+ * de um arrastar, do dirigente ou do Explorer. Antes a cabine só relia a
+ * pasta ao trocar o item no ar, e a mídia recém-chegada ficava invisível
+ * no celular até lá.
+ *
+ * O aviso espera a pasta sossegar (`ESPERA_VIGIA`): copiar um vídeo grande
+ * dispara dezenas de eventos, e o celular não precisa de dezenas de listas.
+ */
+const ESPERA_VIGIA = 350;
+/** @type {Map<string, import("node:fs").FSWatcher>} */
+const vigias = new Map();
+/** @type {((kinds: string[]) => void) | null} */
+let aoMudar = null;
+/** @type {ReturnType<typeof setTimeout> | null} */
+let esperaDoAviso = null;
+const mudados = new Set();
+
+/** @param {((kinds: string[]) => void) | null} fn */
+function vigiar(fn) {
+  aoMudar = fn;
+  rearmar();
+}
+
+/** Troca de pasta muda o que se vigia. */
+function rearmar() {
+  for (const w of vigias.values()) {
+    try {
+      w.close();
+    } catch {
+      /* já fechado */
+    }
+  }
+  vigias.clear();
+  if (!aoMudar) return;
+  for (const kind of Object.keys(KINDS)) {
+    try {
+      // O caminho longo, de verdade: vigiar uma pasta escrita no formato
+      // curto do Windows ("ORLEAN~1") derruba o processo inteiro numa
+      // asserção da libuv quando o primeiro evento chega com o nome longo.
+      const dir = fs.realpathSync.native(dirFor(kind));
+      const w = fs.watch(dir, { persistent: false }, (_evento, nome) => {
+        // Sem nome (acontece no Windows) avisa mesmo assim; com nome, só o
+        // que é daquele tipo — o arquivo de teste de gravação não conta.
+        if (nome && !KINDS[kind].includes(path.extname(String(nome)).toLowerCase())) return;
+        avisarMudanca(kind);
+      });
+      w.on("error", () => {
+        try {
+          w.close();
+        } catch {
+          /* já fechado */
+        }
+        vigias.delete(kind);
+      });
+      vigias.set(kind, w);
+    } catch {
+      /* pasta de rede fora do ar: listar vai avisar */
+    }
+  }
+}
+
+/** @param {string} kind */
+function avisarMudanca(kind) {
+  mudados.add(kind);
+  if (esperaDoAviso) clearTimeout(esperaDoAviso);
+  esperaDoAviso = setTimeout(() => {
+    esperaDoAviso = null;
+    const kinds = [...mudados];
+    mudados.clear();
+    aoMudar?.(kinds);
+  }, ESPERA_VIGIA);
+}
+
 /**
  * Manda o arquivo para a lixeira do Windows, não o apaga.
  *
@@ -538,6 +692,9 @@ module.exports = {
   reset,
   resolveMedia,
   receber,
+  importarCaminhos,
+  vigiar,
+  avisarMudanca,
   KINDS,
   DOCUMENTOS,
   MAX_ARQUIVO,

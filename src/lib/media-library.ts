@@ -1,12 +1,14 @@
+import { useSyncExternalStore } from "react";
 import type {
   EscolhaDePasta,
+  ImportacaoDeMidia,
   MediaFile,
   MediaKind,
   MediaListing,
   TrocaDePasta,
 } from "./windows-desktop";
 
-export type { EscolhaDePasta, MediaFile, MediaKind, MediaListing, TrocaDePasta };
+export type { EscolhaDePasta, ImportacaoDeMidia, MediaFile, MediaKind, MediaListing, TrocaDePasta };
 
 export const MEDIA_KINDS = [
   { value: "video", label: "Vídeo" },
@@ -91,6 +93,112 @@ export async function resetMediaFolder(kind: MediaKind): Promise<TrocaDePasta> {
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : "Falha ao voltar ao padrão." };
   }
+}
+
+/**
+ * O tipo de mídia de um arquivo pelo nome ou pelo tipo que o navegador deu.
+ * Mesmas extensões que o app do Windows aceita na pasta (`desktop/media.cjs`).
+ */
+const EXTENSOES: Record<MediaKind, string[]> = {
+  video: [".mp4", ".webm", ".m4v", ".ogv"],
+  audio: [".mp3", ".m4a", ".aac", ".wav", ".ogg", ".opus", ".flac"],
+  image: [".jpg", ".jpeg", ".png", ".webp", ".gif", ".avif", ".bmp"],
+};
+
+export function tipoDoArquivo(nome: string, mime = ""): MediaKind | null {
+  const ext = /\.[^.]+$/.exec(nome.toLowerCase())?.[0] ?? "";
+  for (const k of MEDIA_KINDS) if (EXTENSOES[k.value].includes(ext)) return k.value;
+  if (mime.startsWith("video/")) return "video";
+  if (mime.startsWith("audio/")) return "audio";
+  if (mime.startsWith("image/")) return "image";
+  return null;
+}
+
+/**
+ * Copia arquivos para a pasta de mídia (app do Windows).
+ *
+ * No navegador não há pasta: devolve `null` e quem chamou decide o que fazer
+ * — a Biblioteca cai no "só nesta sessão".
+ */
+export async function importarParaAPasta(
+  files: File[] | FileList,
+): Promise<ImportacaoDeMidia | null> {
+  const desktop = bridge();
+  if (!desktop) return null;
+  try {
+    return await desktop.mediaImportFiles(files);
+  } catch (error) {
+    return {
+      ok: false,
+      importados: [],
+      recusados: [
+        {
+          nome: "",
+          erro: error instanceof Error ? error.message : "Não consegui copiar para a pasta.",
+        },
+      ],
+    };
+  }
+}
+
+/** Manda um arquivo da pasta para a Lixeira do Windows (volta de lá se foi engano). */
+export async function mandarParaALixeira(
+  kind: MediaKind,
+  nome: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const desktop = bridge();
+  if (!desktop) return { ok: false, error: "Só o app do Windows tem pasta de mídia." };
+  try {
+    return await desktop.mediaDelete(kind, nome);
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Não consegui excluir." };
+  }
+}
+
+/**
+ * "A mídia mudou" — para quem mostra a pasta (Biblioteca) e para quem a
+ * espelha (celular).
+ *
+ * Duas fontes: o vigia das pastas no processo principal, que pega até arquivo
+ * copiado pelo Explorer; e a própria cabine, ao importar ou excluir, que não
+ * precisa esperar o vigia para atualizar a tela. `mostrar` só vem da cabine:
+ * quem arrastou um vídeo quer ver a lista de vídeos; quem copiou algo pelo
+ * Explorer não deve ter a lista trocada debaixo do mouse.
+ */
+export interface AvisoDeMidia {
+  versao: number;
+  mostrar?: MediaKind;
+}
+
+let aviso: AvisoDeMidia = { versao: 0 };
+const ouvintes = new Set<() => void>();
+let ligadoAoDisco = false;
+
+export function avisarMidiaMudou(mostrar?: MediaKind) {
+  aviso = { versao: aviso.versao + 1, mostrar };
+  for (const ouvir of ouvintes) ouvir();
+}
+
+function assinar(ouvir: () => void) {
+  ouvintes.add(ouvir);
+  if (!ligadoAoDisco) {
+    const desktop = bridge();
+    if (desktop?.onMediaChanged) {
+      ligadoAoDisco = true;
+      desktop.onMediaChanged(() => avisarMidiaMudou());
+    }
+  }
+  return () => {
+    ouvintes.delete(ouvir);
+  };
+}
+
+export function useMidiaMudou(): AvisoDeMidia {
+  return useSyncExternalStore(
+    assinar,
+    () => aviso,
+    () => aviso,
+  );
 }
 
 /** Tamanho legível para a linha de apoio do item. */

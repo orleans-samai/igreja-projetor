@@ -168,6 +168,13 @@ export interface MediaFile {
   at: number;
 }
 
+/** O que entrou na pasta de mídia e o que ficou de fora, com o motivo. */
+export interface ImportacaoDeMidia {
+  ok: boolean;
+  importados: Pick<MediaFile, "id" | "kind" | "name" | "title" | "url">[];
+  recusados: { nome: string; erro: string }[];
+}
+
 export interface MediaListing {
   ok: boolean;
   dir?: string;
@@ -253,6 +260,10 @@ declare global {
         nome: string,
       ) => Promise<{ ok: boolean; nome?: string; id?: string; error?: string }>;
       mediaDelete: (kind: MediaKind, nome: string) => Promise<{ ok: boolean; error?: string }>;
+      /** Copia para a pasta de mídia arquivos soltos na janela ou do "Importar". */
+      mediaImportFiles: (files: File[] | FileList) => Promise<ImportacaoDeMidia>;
+      /** Algo mudou nas pastas de mídia (arquivo novo, renomeado, excluído). */
+      onMediaChanged: (cb: (kinds: MediaKind[]) => void) => () => void;
       apresentacaoPptx: (nome: string) => Promise<
         | {
             ok: true;
@@ -296,6 +307,8 @@ declare global {
         lista: import("./remote-control").TemaRemoto[],
       ) => void;
       remoteControlPushMedia: (lista: import("./remote-control").MidiaRemota[]) => void;
+      /** A programação do culto aberta na cabine, para a aba Culto do celular. */
+      remoteControlPushCulto: (dados: import("./remote-control").CultoRemoto) => void;
       remoteControlPushChurch: (dados: { nome: string; logo: string }) => void;
       remoteControlSetDirigentePassword: (
         senha: string,

@@ -2,10 +2,10 @@ import { ImagePlus, Loader2, Plus, Sparkles, Trash2, X } from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Input, Label, Textarea } from "@/components/ui/input";
+import { Input, Label } from "@/components/ui/input";
 import { Segmented } from "@/components/ui/segmented";
 import { cn } from "@/lib/cn";
-import { PUBLICOS, QUANTIDADE_MAXIMA, type Briefing, type CampoDeTexto, type ImagemDoUsuario } from "../briefing.ts";
+import { CAMPOS_DO_FORMULARIO, PUBLICOS, QUANTIDADE_MAXIMA, type Briefing, type ImagemDoUsuario } from "../briefing.ts";
 import { CATEGORIAS, acharCategoria, type AjusteDeCategoria } from "../catalogo/categorias.ts";
 import { ILUSTRACOES } from "../catalogo/ilustracoes.ts";
 import type { FamiliaId } from "../documento.ts";
@@ -16,30 +16,15 @@ import { importarImagem } from "./imagens-do-briefing.ts";
 /**
  * O briefing: o que é, o que está escrito, que imagens, que cara.
  *
- * Só o nome do evento é obrigatório. Campo em branco não aparece na arte e
- * não deixa buraco — por isso nenhum campo vem preenchido com texto de
- * exemplo: o que está aqui é o que a igreja escreveu.
+ * Escrito na arte, só o título e a referência bíblica — foi o que a igreja
+ * pediu (ver `CAMPOS_DO_FORMULARIO`). Nenhum campo vem preenchido com texto
+ * de exemplo: o que está aqui é o que a igreja escreveu.
  */
 
-const CAMPOS: { chave: CampoDeTexto; rotulo: string; longo?: boolean; dica?: string }[] = [
-  { chave: "titulo", rotulo: "Nome do evento" },
-  { chave: "subtitulo", rotulo: "Subtítulo" },
-  { chave: "mensagem", rotulo: "Mensagem ou chamada", dica: "Ex.: o convite, numa frase." },
-  { chave: "data", rotulo: "Data" },
-  { chave: "horario", rotulo: "Horário" },
-  { chave: "local", rotulo: "Local" },
-  { chave: "endereco", rotulo: "Endereço" },
-  { chave: "organizacao", rotulo: "Organização" },
-  { chave: "tema", rotulo: "Tema" },
-  { chave: "pregador", rotulo: "Pregador" },
-  { chave: "ministerio", rotulo: "Ministério de louvor" },
-  { chave: "palavraBase", rotulo: "Palavra-base" },
-  { chave: "referencia", rotulo: "Referência bíblica" },
-  { chave: "textoBiblico", rotulo: "Texto bíblico", longo: true },
-  { chave: "informacoes", rotulo: "Informações", longo: true },
-  { chave: "contato", rotulo: "Contato" },
-  { chave: "redes", rotulo: "Redes sociais" },
-];
+const CAMPOS: Record<(typeof CAMPOS_DO_FORMULARIO)[number], { rotulo: string; dica?: string }> = {
+  titulo: { rotulo: "Título" },
+  referencia: { rotulo: "Referência bíblica", dica: "Ex.: Salmos 23:1" },
+};
 
 const PRINCIPAIS = ["quadrado", "retrato", "story", "projecao"];
 
@@ -124,7 +109,6 @@ export function Formulario({
   ajuste,
   aoAjustar,
   aoGerar,
-  buscarVersiculo,
 }: {
   b: Briefing;
   aoMudar: (b: Briefing) => void;
@@ -132,7 +116,6 @@ export function Formulario({
   ajuste: AjusteDeCategoria;
   aoAjustar: (a: AjusteDeCategoria) => void;
   aoGerar: () => void;
-  buscarVersiculo: (referencia: string) => string | null;
 }) {
   const [importando, setImportando] = useState(false);
   const arquivo = useRef<HTMLInputElement>(null);
@@ -191,34 +174,20 @@ export function Formulario({
       </Secao>
 
       <Secao titulo="O que a arte diz">
-        <p className="text-secondary text-muted">Só o nome é obrigatório. Campo em branco não aparece na arte.</p>
+        <p className="text-secondary text-muted">Só o título é obrigatório. Sem referência, a arte sai só com o título.</p>
         <div className="grid gap-2 sm:grid-cols-2">
-          {CAMPOS.map((c) => (
-            <div key={c.chave} className={c.longo ? "sm:col-span-2" : undefined}>
-              <Label htmlFor={`arte-${c.chave}`}>{c.rotulo}</Label>
-              {c.longo ? (
-                <Textarea id={`arte-${c.chave}`} rows={2} value={b[c.chave]} onChange={(e) => muda({ [c.chave]: e.target.value } as Partial<Briefing>)} />
-              ) : (
-                <Input id={`arte-${c.chave}`} value={b[c.chave]} placeholder={c.dica} onChange={(e) => muda({ [c.chave]: e.target.value } as Partial<Briefing>)} />
-              )}
+          {CAMPOS_DO_FORMULARIO.map((chave) => (
+            <div key={chave}>
+              <Label htmlFor={`arte-${chave}`}>{CAMPOS[chave].rotulo}</Label>
+              <Input
+                id={`arte-${chave}`}
+                value={b[chave]}
+                placeholder={CAMPOS[chave].dica}
+                onChange={(e) => muda({ [chave]: e.target.value } as Partial<Briefing>)}
+              />
             </div>
           ))}
         </div>
-        {/* O texto bíblico vem da Bíblia do Lúmen — nunca inventado. */}
-        {b.referencia.trim() && !b.textoBiblico.trim() && (
-          <Button
-            size="sm"
-            variant="secondary"
-            className="justify-self-start"
-            onClick={() => {
-              const t = buscarVersiculo(b.referencia);
-              if (!t) toast("Não achei essa passagem na Bíblia instalada.");
-              else muda({ textoBiblico: t });
-            }}
-          >
-            Buscar “{b.referencia}” na Bíblia do Lúmen
-          </Button>
-        )}
       </Secao>
 
       <Secao titulo="Imagens">
@@ -351,7 +320,7 @@ export function Formulario({
         <Button onClick={aoGerar} disabled={!b.titulo.trim()}>
           <Sparkles /> Gerar artes
         </Button>
-        {!b.titulo.trim() && <span className="text-secondary text-muted">Escreva o nome do evento para gerar.</span>}
+        {!b.titulo.trim() && <span className="text-secondary text-muted">Escreva o título para gerar.</span>}
       </div>
     </div>
   );

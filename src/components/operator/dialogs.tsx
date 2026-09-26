@@ -10,7 +10,7 @@ import { IaConfiguracoes } from "@/components/operator/ia-configuracoes";
 import { IdentidadeDaIgreja } from "@/components/operator/logo-dialog";
 import { MediaFoldersSection } from "@/components/operator/media-folders-section";
 import { ACCENT_PRESETS } from "@/lib/accent-presets";
-import { importBibleVersion } from "@/lib/bible";
+import { importarArquivoDeBiblia } from "@/lib/bible";
 import { nid } from "@/lib/fold";
 import { LyricsSearchPanel } from "@/components/operator/lyrics-search-dialog";
 import { formatImportedLyrics, parseLyrics } from "@/lib/lyrics";
@@ -508,7 +508,7 @@ export function SettingsDialog({
                   const file = e.target.files?.[0];
                   if (!file) return;
                   try {
-                    const bible = await importBibleVersion(JSON.parse(await file.text()));
+                    const bible = await importarArquivoDeBiblia(file);
                     addExtraVersion(bible.id, bible.name);
                     toast(`Versão ${bible.name} importada`);
                   } catch (err) {
@@ -534,8 +534,10 @@ export function SettingsDialog({
             </Button>
           </div>
           <p className="text-secondary text-subtle">
-            A Bíblia embutida é Almeida 1819, domínio público. Não embutimos NVI, NAA nem outras
-            versões com copyright — importe só o que a igreja tem direito de usar.
+            O Lúmen vem com cinco Bíblias de uso livre (Almeida 1819, Bíblia Livre, Nova Bíblia
+            Viva, Bíblia Portuguesa Mundial e Bíblia Livre Para Todos). NVI, NAA, ARA e outras têm
+            direitos autorais e não vêm no app: se a igreja tem licença, importe o arquivo aqui ou
+            pelo seletor de versões da tela da Bíblia.
           </p>
         </div>
       </DialogContent>

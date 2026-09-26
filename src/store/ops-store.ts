@@ -3,6 +3,7 @@ import { persist } from "zustand/middleware";
 import { durableStorage } from "@/lib/durable-storage";
 import { nid } from "@/lib/fold";
 import { ORDEM_PADRAO, ordemValida, type PainelId } from "@/lib/paineis";
+import { ARRANJO_PADRAO, arranjoValido, type ArranjoDaBiblia } from "@/lib/paineis-da-biblia";
 import {
   publishOps,
   readInbox,
@@ -43,6 +44,8 @@ interface OpsState {
   slideEditId: string | null;
   /** Ordem das colunas da cabine, escolhida pelo operador. */
   ordemPaineis: PainelId[];
+  /** Onde fica cada parte da tela da Bíblia, também escolhido pelo operador. */
+  arranjoBiblia: ArranjoDaBiblia;
   /** Modo de arrastar painel para trocar de lugar. */
   reorganizando: boolean;
   voiceOn: boolean;
@@ -80,6 +83,7 @@ interface OpsState {
   setGridOpen: (v: boolean) => void;
   setSlideEditId: (v: string | null) => void;
   setOrdemPaineis: (v: PainelId[]) => void;
+  setArranjoBiblia: (v: ArranjoDaBiblia) => void;
   setReorganizando: (v: boolean) => void;
   setVoiceOn: (v: boolean) => void;
   setAutoRun: (v: boolean) => void;
@@ -120,6 +124,7 @@ export const useOpsStore = create<OpsState>()(
       gridOpen: true,
       slideEditId: null,
       ordemPaineis: [...ORDEM_PADRAO],
+      arranjoBiblia: ARRANJO_PADRAO,
       reorganizando: false,
       voiceOn: false,
       autoRun: false,
@@ -164,6 +169,7 @@ export const useOpsStore = create<OpsState>()(
       // Sempre pelo saneador: o que entra aqui vai para o disco e volta numa
       // sessão futura, talvez de outra versão do app.
       setOrdemPaineis: (v) => set({ ordemPaineis: ordemValida(v) }),
+      setArranjoBiblia: (v) => set({ arranjoBiblia: arranjoValido(v) }),
       setReorganizando: (reorganizando) => set({ reorganizando }),
       setVoiceOn: (voiceOn) => set({ voiceOn }),
       setAutoRun: (autoRun) => {
@@ -256,6 +262,7 @@ export const useOpsStore = create<OpsState>()(
         gridZoom: s.gridZoom,
         gridOpen: s.gridOpen,
         ordemPaineis: s.ordemPaineis,
+        arranjoBiblia: s.arranjoBiblia,
       }),
     },
   ),

@@ -60,6 +60,8 @@ export interface MensagemChat {
 export type EventoRemoto =
   | { tipo: "dispositivos"; novo?: string }
   | { tipo: "chat"; mensagem: MensagemChat }
+  // Tirar um item da programação, ou mandá-lo para o telão, pela aba Culto.
+  | { tipo: "culto-remover" | "culto-projetar"; id: string; titulo: string; de: string }
   | {
       tipo: "musica";
       de: string;
@@ -130,6 +132,22 @@ export interface AchadoRemoto {
   titulo: string;
   artista: string;
   fonte: string;
+}
+
+/** Um item da programação do culto, como a aba Culto do celular mostra. */
+export interface ItemDoCultoRemoto {
+  id: string;
+  titulo: string;
+  tipo: "song" | "bible" | "media" | "text" | "apresentacao";
+  /** Autor, versão da Bíblia ou tipo de arquivo. */
+  detalhe: string;
+  etapa: "no-ar" | "proximo" | "concluido" | "pendente";
+}
+
+/** A programação aberta na cabine, espelhada no celular. */
+export interface CultoRemoto {
+  nome: string;
+  itens: ItemDoCultoRemoto[];
 }
 
 /** O que a cabine espelha da pasta de mídia para o celular. */

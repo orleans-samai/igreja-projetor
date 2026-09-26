@@ -862,6 +862,23 @@
   font-size: 0.72rem;
 }
 
+/* No pop-up "ir para referência" os números são alvos para ler de longe. */
+.bible-nums-grande {
+  gap: 4px;
+}
+
+.bible-nums-grande.bible-nums-ch,
+.bible-nums-grande.bible-nums-vs {
+  grid-template-columns: repeat(auto-fill, minmax(3.5rem, 1fr));
+}
+
+.bible-nums-grande .bible-num {
+  min-height: 3rem;
+  border-radius: 6px;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
 /* Versículo já projetado neste culto: um ponto, não uma cor de fundo. */
 .bible-num-feito::after {
   content: "";

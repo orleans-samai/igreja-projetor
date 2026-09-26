@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Hint } from "@/components/ui/tooltip";
 import { nid } from "@/lib/fold";
 import { useLumenStore } from "@/store/lumen-store";
-import { briefingVazio, chaveDoProjeto, normalizar, type Briefing } from "../briefing.ts";
+import { briefingVazio, chaveDoProjeto, normalizar, soOQueOFormularioPede, type Briefing } from "../briefing.ts";
 import { CONJUNTOS } from "../catalogo/tipografia.ts";
 import type { DocumentoDeArte } from "../documento.ts";
 import { useEditorDeArte } from "../editor-store.ts";
@@ -126,9 +126,7 @@ function Inicio({ aoCriar, aoAbrir }: { aoCriar: (continuar: boolean) => void; a
 
 export function PainelDeArtes({ registrarGuarda }: { registrarGuarda: (guarda: () => boolean) => void }) {
   const [tela, setTela] = useState<Tela>("inicio");
-  const igreja = useLumenStore((s) => s.settings.churchName);
   const logoUrl = useLumenStore((s) => s.settings.logoUrl);
-  const jumpRef = useLumenStore((s) => s.jumpRef);
   const ultimo = useArtesStore((s) => s.ultimoBriefing);
   const ajustes = useArtesStore((s) => s.ajustes);
   const salvarArte = useArtesStore((s) => s.salvarArte);
@@ -146,7 +144,9 @@ export function PainelDeArtes({ registrarGuarda }: { registrarGuarda: (guarda: (
     void garantirFontes();
   }, []);
 
-  const novoBriefing = (): Briefing => ({ ...briefingVazio(), organizacao: igreja || "", logo: logoUrl ? MARCA_DE_LOGO : null });
+  // Sem organização pré-preenchida: a arte leva só título e referência, e a
+  // igreja aparece pela logo.
+  const novoBriefing = (): Briefing => ({ ...briefingVazio(), logo: logoUrl ? MARCA_DE_LOGO : null });
   const [briefing, setBriefing] = useState<Briefing>(novoBriefing);
   const [base, setBase] = useState<DocumentoDeArte[]>([]);
   const [limitacoes, setLimitacoes] = useState<string[]>([]);
@@ -168,7 +168,7 @@ export function PainelDeArtes({ registrarGuarda }: { registrarGuarda: (guarda: (
   const gerar = async (novoLote: boolean) => {
     await garantirFontes();
     const logo = briefing.logo ? await logoDaIgreja(logoUrl) : null;
-    const b = normalizar({ ...briefing, logo });
+    const b = normalizar(soOQueOFormularioPede({ ...briefing, logo }));
     lembrarBriefing(b);
     semente.current = novoLote || !semente.current ? (Date.now() % 2147483647) + 1 : semente.current;
     parar.current = false;
@@ -251,11 +251,6 @@ export function PainelDeArtes({ registrarGuarda }: { registrarGuarda: (guarda: (
           ajuste={ajustes[briefing.categoria] ?? {}}
           aoAjustar={(a) => ajustarCategoria(briefing.categoria, a)}
           aoGerar={() => void gerar(true)}
-          buscarVersiculo={(ref) => {
-            const achou = jumpRef(ref, false);
-            const preview = useLumenStore.getState().preview;
-            return achou ? (preview?.slides[0]?.text ?? null) : null;
-          }}
         />
       </div>
     );

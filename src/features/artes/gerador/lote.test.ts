@@ -1,6 +1,6 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { briefingVazio, type Briefing, type ImagemDoUsuario } from "../briefing.ts";
+import { briefingVazio, soOQueOFormularioPede, type Briefing, type ImagemDoUsuario } from "../briefing.ts";
 import { distancia } from "../catalogo/cores.ts";
 import { PALETAS, coresDa, luminosidadeDe } from "../catalogo/paletas.ts";
 import { caixaVisual, todasAsCamadas, type DocumentoDeArte } from "../documento.ts";
@@ -391,5 +391,35 @@ describe("formatos, regeneração e edição", () => {
     assert.ok(parecidas(a, b));
     assert.ok(acharVariante(o.variante));
     assert.equal(luminosidadeDe(PALETAS[0]), "clara");
+  });
+});
+
+describe("só título e referência bíblica", () => {
+  test("o formulário apaga o resto, inclusive o que vinha guardado", () => {
+    const b = soOQueOFormularioPede({ ...briefing(), referencia: "Romanos 12:2", textoBiblico: "Não vos conformeis" });
+    assert.equal(b.titulo, "Escola Bíblica Dominical");
+    assert.equal(b.referencia, "Romanos 12:2");
+    for (const campo of ["subtitulo", "data", "horario", "local", "organizacao", "textoBiblico"] as const) {
+      assert.equal(b[campo], "", campo);
+    }
+  });
+
+  test("oito opções variadas em cada formato, sem uma palavra além das duas", () => {
+    const b = soOQueOFormularioPede({ ...briefing(), referencia: "Romanos 12:2" });
+    const permitidas = new Set(
+      `${b.titulo} ${b.referencia}`.toLowerCase().split(/[\s·]+/).filter(Boolean),
+    );
+    for (const formatoId of ["quadrado", "retrato", "story", "projecao"]) {
+      const lote = gerarLote({ briefing: b, formatoId, semente: 11 });
+      assert.equal(lote.opcoes.length, 8, formatoId);
+      assert.ok(new Set(lote.opcoes.map((o) => o.familia)).size >= 6, formatoId);
+      for (const doc of lote.opcoes) {
+        for (const t of textos(doc)) {
+          for (const palavra of t.toLowerCase().replace(new RegExp(String.fromCharCode(0xa0), "g"), " ").split(/[\s·]+/).filter(Boolean)) {
+            assert.ok(permitidas.has(palavra), `${doc.variante} (${formatoId}) escreveu “${palavra}”`);
+          }
+        }
+      }
+    }
   });
 });

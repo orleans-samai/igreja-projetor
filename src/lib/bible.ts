@@ -102,24 +102,81 @@ async function idbKeys(): Promise<string[]> {
   }
 }
 
-export function normalizeImported(raw: unknown): CompactBible {
+/**
+ * O nome da versão a partir do arquivo, quando o JSON não traz nome:
+ * "nvi.json" vira "NVI", "Almeida Atualizada.json" fica como está.
+ */
+export function nomePeloArquivo(nomeDoArquivo: string): string {
+  const base = nomeDoArquivo
+    .replace(/^.*[\\/]/, "")
+    .replace(/\.json$/i, "")
+    .replace(/[_-]+/g, " ")
+    .trim();
+  if (!base) return "Versão importada";
+  return base.length <= 5 && !base.includes(" ") ? base.toUpperCase() : base;
+}
+
+/**
+ * Onde começa a lista de livros de um arquivo sem numeração: a Bíblia
+ * inteira (66), só o Antigo (39) ou só o Novo Testamento (27). Pela ordem,
+ * não pela abreviação — "jo" e "jó" viram a mesma coisa sem acento, e
+ * errar ali trocaria João por Jó no telão.
+ */
+function primeiroLivro(quantos: number): number {
+  if (quantos === 66 || quantos === 39) return 1;
+  if (quantos === 27) return 40;
+  return 0;
+}
+
+export function normalizeImported(raw: unknown, nomeDoArquivo = ""): CompactBible {
   if (!raw || typeof raw !== "object") throw new Error("JSON inválido");
+  const nomePadrao = nomeDoArquivo ? nomePeloArquivo(nomeDoArquivo) : "Versão importada";
+  const idPadrao = () =>
+    nomeDoArquivo ? `importada-${fold(nomePadrao).replace(/[^a-z0-9]+/g, "-")}` : nid();
+
+  // Lista de livros solta, cada um com os capítulos em listas de versículos
+  // ({ abbrev, name, chapters: string[][] }) — o formato em que circula a
+  // maior parte das Bíblias em JSON em português. Não traz nome nem
+  // licença: o nome sai do arquivo.
+  if (Array.isArray(raw)) {
+    const livros = raw as Array<Record<string, unknown>>;
+    const inicio = primeiroLivro(livros.length);
+    const capitulosOk = livros.every(
+      (l) => l && Array.isArray(l.chapters) && (l.chapters as unknown[]).every(Array.isArray),
+    );
+    if (!inicio || !capitulosOk) {
+      throw new Error(
+        "Formato não reconhecido: a lista precisa ter 66 livros (ou 39, ou 27), cada um com os capítulos.",
+      );
+    }
+    return {
+      id: idPadrao(),
+      name: nomePadrao,
+      license: "importada pela igreja",
+      books: livros.map((l, k) => ({
+        i: inicio + k,
+        o: bookById(inicio + k)?.osis ?? String(l.abbrev ?? ""),
+        c: (l.chapters as unknown[][]).map((cap) => cap.map((v) => String(v ?? "").trim())),
+      })),
+    };
+  }
+
   const data = raw as Record<string, unknown>;
 
   if (Array.isArray(data.books)) {
     const books = data.books as Array<Record<string, unknown>>;
     if (books[0] && Array.isArray((books[0] as { c?: unknown }).c)) {
       return {
-        id: String(data.id ?? nid()),
-        name: String(data.name ?? "Versão importada"),
+        id: String(data.id ?? idPadrao()),
+        name: String(data.name ?? nomePadrao),
         license: String(data.license ?? "importada"),
         books: books as unknown as CompactBook[],
       };
     }
     if (books[0] && (books[0].bookId || books[0].chapters)) {
       return {
-        id: String(data.version ?? data.id ?? nid()),
-        name: String(data.name ?? "Versão importada"),
+        id: String(data.version ?? data.id ?? idPadrao()),
+        name: String(data.name ?? nomePadrao),
         license: String(data.license ?? "importada"),
         books: books.map((b) => ({
           i: Number(b.bookId ?? 0),
@@ -131,7 +188,9 @@ export function normalizeImported(raw: unknown): CompactBible {
       };
     }
   }
-  throw new Error("Formato não reconhecido. Use o JSON compacto Lúmen ou o formato midvash.");
+  throw new Error(
+    "Formato não reconhecido. O Lúmen lê o JSON compacto dele, o formato midvash e a lista de livros com capítulos (abbrev/chapters).",
+  );
 }
 
 export async function loadBuiltinBible(id: string = "almeida-1819"): Promise<CompactBible> {
@@ -179,8 +238,26 @@ export async function hydrateExtraVersions(): Promise<CompactBible[]> {
   return list;
 }
 
-export async function importBibleVersion(raw: unknown): Promise<CompactBible> {
-  const bible = normalizeImported(raw);
+/**
+ * Lê o arquivo que a igreja escolheu. O Bloco de Notas do Windows grava
+ * JSON com a marca de ordem de bytes (BOM) no começo, e `JSON.parse` a
+ * recusa — o arquivo certo parecia "inválido".
+ */
+export function lerJsonDeBiblia(texto: string): unknown {
+  try {
+    return JSON.parse(texto.replace(/^\uFEFF/, ""));
+  } catch {
+    throw new Error("O arquivo não é um JSON válido.");
+  }
+}
+
+/** Importa um arquivo de Bíblia escolhido pela igreja (Configurações ou tela da Bíblia). */
+export async function importarArquivoDeBiblia(file: File): Promise<CompactBible> {
+  return importBibleVersion(lerJsonDeBiblia(await file.text()), file.name);
+}
+
+export async function importBibleVersion(raw: unknown, nomeDoArquivo = ""): Promise<CompactBible> {
+  const bible = normalizeImported(raw, nomeDoArquivo);
   const desktop = typeof window !== "undefined" ? window.lumenDesktop : undefined;
   if (desktop?.isDesktop) {
     const raw = await desktop.storageGet("lumen-bibles-v1");

@@ -403,6 +403,11 @@ if (!gotLock) {
     // Imagens de quem roda o teste.
     artesImagens.definirExportacao(smokeTest ? path.join(dataDir, "artes-exportadas") : path.join(app.getPath("pictures"), "Lúmen - Artes"));
     await media.ensure();
+    // Arquivo novo, renomeado ou excluído nas pastas de mídia — por onde for:
+    // a cabine relê a lista e espelha para o celular na hora.
+    media.vigiar((kinds) => {
+      if (cabine && !cabine.isDestroyed()) cabine.webContents.send("lumen:media-changed", kinds);
+    });
     origin = await startServer();
     screen.on("display-added", displaysChanged);
     screen.on("display-removed", displaysChanged);
@@ -510,6 +515,7 @@ handle("lumen:media-reset", (kind) => media.reset(kind));
 // O vídeo renderizado pelo VFX entra pela mesma porta do arquivo que chega
 // pela rede: uma função só decide extensão aceita, pasta e nome repetido.
 handle("lumen:media-save", (nome, dados) => media.receber(nome, Buffer.from(dados)));
+handle("lumen:media-import-paths", (caminhos) => media.importarCaminhos(caminhos));
 handle("lumen:media-rename", (kind, nome, novo) => media.renomear(kind, nome, novo));
 handle("lumen:media-duplicate", (kind, nome) => media.duplicar(kind, nome));
 handle("lumen:media-delete", (kind, nome) => media.excluir(kind, nome));
@@ -556,6 +562,7 @@ onEvent("lumen:remote-control-state", (payload) => remoteControl.atualizarEstado
 onEvent("lumen:remote-control-repertoire", (lista) => remoteControl.atualizarRepertorio(lista));
 onEvent("lumen:remote-control-themes", (lista) => remoteControl.atualizarTemas(lista));
 onEvent("lumen:remote-control-media", (lista) => remoteControl.atualizarMidia(lista));
+onEvent("lumen:remote-control-culto", (dados) => remoteControl.atualizarCulto(dados));
 onEvent("lumen:remote-control-church", (dados) => remoteControl.atualizarIgreja(dados));
 handle("lumen:remote-control-dirigente-password", (senha) => remoteControl.definirSenhaDirigente(senha));
 onEvent("lumen:remote-control-answer", (pedido, resposta) => remoteControl.responderPedido(pedido, resposta));

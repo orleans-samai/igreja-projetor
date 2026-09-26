@@ -405,7 +405,6 @@ export const FERRAMENTAS: readonly Ferramenta[] = [
           .regex(/^#[0-9a-fA-F]{6}$/, "use uma cor no formato #rrggbb")
           .optional(),
         alinhamento: z.enum(["left", "center", "right"]).optional(),
-        vertical: z.enum(["top", "center", "bottom"]).optional(),
         entrelinha: z.number().min(0.9).max(2).optional(),
         margem: z.number().int().min(0).max(25).optional(),
         maiuscula: z.boolean().optional(),
@@ -421,7 +420,6 @@ export const FERRAMENTAS: readonly Ferramenta[] = [
       if (a.peso) partes.push(`peso ${a.peso}`);
       if (a.cor) partes.push(`cor ${a.cor}`);
       if (a.alinhamento) partes.push(`alinhada à ${a.alinhamento}`);
-      if (a.vertical) partes.push(`na parte de ${a.vertical}`);
       if (a.entrelinha) partes.push(`entrelinha ${a.entrelinha}`);
       if (a.margem !== undefined) partes.push(`margem ${a.margem}`);
       if (a.maiuscula !== undefined) partes.push(a.maiuscula ? "em maiúsculas" : "sem maiúsculas");
@@ -433,7 +431,6 @@ export const FERRAMENTAS: readonly Ferramenta[] = [
         fontWeight: a.peso,
         textColor: a.cor,
         alignH: a.alinhamento,
-        alignV: a.vertical,
         lineHeight: a.entrelinha,
         margin: a.margem,
         uppercase: a.maiuscula,

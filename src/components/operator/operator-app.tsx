@@ -413,7 +413,7 @@ export function OperatorApp() {
             de músicas — vídeo e grade de letras — sai de cena enquanto ela está
             aberta, senão ela fica com uma fresta e o rodapé vaza por cima. */}
         {!bibleOpen && <YoutubePanel />}
-        <ReorganizeBar />
+        <ReorganizeBar biblia={bibleOpen} />
         <TourBanner />
 
         {!bibleOpen && !colunasCabem && (

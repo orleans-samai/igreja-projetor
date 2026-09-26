@@ -1,19 +1,21 @@
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { toast } from "sonner";
 import { nid } from "@/lib/fold";
 import { parseLyrics } from "@/lib/lyrics";
 import { loadSong, suggestSongs } from "@/lib/lyrics-suggestions";
 import { avisarMensagem } from "@/components/operator/aviso-de-mensagem";
 import { importarRecebido } from "@/lib/apresentacao";
-import { MEDIA_KINDS, listMedia, mediaKindLabel } from "@/lib/media-library";
+import { MEDIA_KINDS, listMedia, mediaKindLabel, useMidiaMudou } from "@/lib/media-library";
 import { TETO_DE_CAPAS, capaDe } from "@/lib/midia-capa";
 import {
   estadoRemoto,
   volumeDePorcento,
   type AcaoRemota,
+  type CultoRemoto,
   type TemaRemoto,
 } from "@/lib/remote-control";
 import { temaDaMusica, temasUsados } from "@/lib/tema-remoto";
+import { etapaDoItem } from "@/lib/culto-etapas";
 import { useChatStore } from "@/store/chat-store";
 import { useLumenStore, type LumenState } from "@/store/lumen-store";
 import type { Theme } from "@/lib/types";
@@ -141,13 +143,22 @@ export function useRemoteControl() {
    * A pasta de mídia do PC, espelhada para o celular.
    *
    * Lê o disco, não a store: a store só conhece o que já foi tocado nesta
-   * sessão, e o pedido era ver tudo o que está na pasta. Atualiza quando o
-   * culto muda de item — é quando alguém acabou de largar um arquivo novo lá.
+   * sessão, e o pedido era ver tudo o que está na pasta.
+   *
+   * Atualiza na hora em que a pasta muda — importar, arrastar, arquivo do
+   * dirigente, cópia pelo Explorer (o processo principal vigia as pastas).
+   * Antes só relia ao trocar o item no ar, e a mídia nova ficava invisível
+   * no celular até lá.
    */
+  // Avisos seguidos disparam leituras seguidas; só a mais nova publica. Uma
+  // antiga, atrasada pelas capas, mandaria ao celular uma lista velha.
+  const rodadaDaMidia = useRef(0);
   const espelharMidia = useCallback(async () => {
     const d = window.lumenDesktop;
     if (!d?.isDesktop) return;
+    const rodada = ++rodadaDaMidia.current;
     const listas = await Promise.all(MEDIA_KINDS.map((k) => listMedia(k.value)));
+    if (rodada !== rodadaDaMidia.current) return;
     const midia = listas.flatMap((lista, i) =>
       (lista.items ?? []).map((item) => ({
         id: item.id,
@@ -169,12 +180,47 @@ export function useRemoteControl() {
       })),
     );
     const semCapa = midia.slice(TETO_DE_CAPAS).map(({ url: _url, ...m }) => m);
+    if (rodada !== rodadaDaMidia.current) return;
     window.lumenDesktop?.remoteControlPushMedia([...comCapa, ...semCapa]);
   }, []);
 
+  /**
+   * A programação do culto aberta aqui, espelhada na aba Culto do celular.
+   *
+   * Lida da store na hora de mandar, não do render: a mesma função serve
+   * para quando o celular pede para tirar um item que a cabine já não tinha
+   * — aí nada mudou aqui, e é preciso reenviar a verdade assim mesmo.
+   */
+  const espelharCulto = useCallback(() => {
+    const d = window.lumenDesktop;
+    if (!d?.isDesktop) return;
+    const st = useLumenStore.getState();
+    const pl = st.playlists.find((p) => p.id === st.activePlaylistId) ?? st.playlists[0];
+    const itens = pl?.items ?? [];
+    const noAr =
+      st.status !== "idle" && st.live ? itens.findIndex((it) => it.refId === st.live?.refId) : -1;
+    const culto: CultoRemoto = {
+      nome: pl?.name ?? "",
+      itens: itens.map((it, i) => ({
+        id: it.id,
+        titulo: it.title,
+        tipo: it.type as CultoRemoto["itens"][number]["tipo"],
+        detalhe: it.subtitle ?? "",
+        etapa: etapaDoItem(i, noAr),
+      })),
+    };
+    d.remoteControlPushCulto(culto);
+  }, []);
+  const playlists = useLumenStore((s) => s.playlists);
+  const activePlaylistId = useLumenStore((s) => s.activePlaylistId);
+  useEffect(() => {
+    espelharCulto();
+  }, [espelharCulto, playlists, activePlaylistId, live?.refId, status]);
+
+  const avisoDeMidia = useMidiaMudou();
   useEffect(() => {
     void espelharMidia();
-  }, [espelharMidia, live?.refId]);
+  }, [espelharMidia, live?.refId, avisoDeMidia.versao]);
 
   // A página do dirigente abre com a cara da casa: logo e nome vêm daqui,
   // porque é a cabine quem guarda as configurações da igreja.
@@ -211,6 +257,23 @@ export function useRemoteControl() {
       }
       if (evento.tipo === "dispositivos") {
         if (evento.novo) toast(`${evento.novo} entrou pelo celular.`);
+        return;
+      }
+      if (evento.tipo === "culto-remover" || evento.tipo === "culto-projetar") {
+        const st = useLumenStore.getState();
+        const pl = st.playlists.find((p) => p.id === st.activePlaylistId);
+        const indice = pl?.items.findIndex((it) => it.id === evento.id) ?? -1;
+        if (indice < 0) {
+          // O celular viu uma programação que já mudou aqui: manda a atual.
+          espelharCulto();
+          return;
+        }
+        if (evento.tipo === "culto-remover") {
+          st.removePlaylistItem(evento.id);
+          toast(`${evento.de} tirou “${evento.titulo}” do culto.`);
+        } else {
+          st.presentPlaylistItem(indice);
+        }
         return;
       }
       if (evento.tipo === "arquivo") {
@@ -365,5 +428,5 @@ export function useRemoteControl() {
         );
       }
     });
-  }, []);
+  }, [espelharCulto]);
 }

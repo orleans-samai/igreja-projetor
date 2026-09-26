@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="pt-BR">
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#141416">
 <title>Lúmen — controle remoto</title>
 <!--
@@ -52,6 +52,7 @@
     font: 15px/1.45 -apple-system, "Segoe UI", Roboto, sans-serif;
     -webkit-tap-highlight-color: transparent; user-select: none;
     overscroll-behavior: none;
+    touch-action: manipulation;
   }
   button, input, textarea, select { font: inherit; -webkit-tap-highlight-color: transparent; }
   [hidden] { display: none !important; }
@@ -117,7 +118,7 @@
   .depois { display: none; }
 
   /* ── abas ────────────────────────────────────────────────────── */
-  .abas { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  .abas { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
   .abas button {
     position: relative;
     display: flex; flex-direction: column; align-items: center; gap: 7px;
@@ -156,7 +157,7 @@
   .linha { display: flex; align-items: center; gap: 10px; }
 
   .campo {
-    width: 100%; padding: 15px 16px; border-radius: var(--r);
+    width: 100%; padding: 15px 16px; border-radius: var(--r); font-size: 16px;
     background: var(--superficie); border: 1px solid var(--borda); color: var(--fg);
   }
   .campo::placeholder { color: var(--subtle); }
@@ -207,6 +208,27 @@
   }
   .lista > li > button:active { background: var(--realce); }
   .lista .autor { display: block; margin-top: 3px; font-size: 13px; color: var(--muted); }
+
+  /* ── culto: a programação da cabine ──────────────────────────── */
+  .culto-item .numero {
+    width: 22px; flex: none; text-align: right;
+    color: var(--subtle); font-size: 13px; font-variant-numeric: tabular-nums;
+  }
+  .culto-item .corpo-item { flex: 1; min-width: 0; }
+  .culto-item .nome { display: block; font-size: 15px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .culto-item .etapa { display: block; margin-top: 3px; font-size: 12.5px; color: var(--muted); }
+  .culto-item .etapa b { font-weight: 700; }
+  .lista > li > .culto-item.no-ar { border-color: var(--live-borda); background: var(--live-fraco); }
+  .culto-item.no-ar .etapa b { color: var(--live); }
+  .culto-item.concluido { opacity: .55; }
+  .culto-item .acoes { display: flex; gap: 6px; flex: none; }
+  .acao-item {
+    padding: 9px 11px; border-radius: 10px; font-size: 13px; font-weight: 600;
+    border: 1px solid var(--borda); background: var(--elevada); color: var(--fg);
+  }
+  .acao-item:disabled { opacity: .4; }
+  .acao-item.perigo { color: var(--perigo); }
+  .acao-item.perigo.confirmar { background: var(--perigo); border-color: var(--perigo); color: #fff; }
 
   .capa {
     position: relative; width: 104px; height: 74px; flex: none;
@@ -451,6 +473,13 @@
         </svg>
         Mídia
       </button>
+      <button role="tab" id="abaCulto" aria-selected="false">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <line x1="10" y1="6" x2="21" y2="6"/><line x1="10" y1="12" x2="21" y2="12"/><line x1="10" y1="18" x2="21" y2="18"/>
+          <path d="M4 6h1v4"/><path d="M4 10h2"/><path d="M6 18H4c0-1 2-2 2-3s-1-1.5-2-1"/>
+        </svg>
+        Culto
+      </button>
       <button role="tab" id="abaChat" aria-selected="false">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.2A8.4 8.4 0 0 1 12 3a8.4 8.4 0 0 1 9 8.5Z"/>
@@ -619,6 +648,18 @@
       <ul class="lista" id="midiaLista"></ul>
     </section>
 
+    <!-- Culto: a programação aberta na cabine -->
+    <section class="painel" id="painelCulto" hidden>
+      <p class="aviso" id="semCulto" hidden>
+        Este aparelho ainda não vê a programação. Peça na cabine para liberar.
+      </p>
+      <div class="cabecalho-lista">
+        <span id="cultoNome">—</span>
+        <span id="cultoEstado"></span>
+      </div>
+      <ul class="lista" id="cultoLista"></ul>
+    </section>
+
     <!-- Chat -->
     <section class="painel" id="painelChat" hidden>
       <div id="chatLista"></div>
@@ -647,6 +688,25 @@
 <script>
 (function () {
   "use strict";
+
+  /*
+   * Zoom travado. A página é um controle, não um texto para ler de perto:
+   * dar zoom sem querer (pinça ao segurar o celular, dois toques rápidos no
+   * Próximo) deixava metade dos botões fora da tela no meio do culto.
+   *
+   * O iPhone ignora o "user-scalable=no" da viewport desde o iOS 10, então
+   * a pinça é cancelada aqui — pelos eventos de gesto do Safari e pelo
+   * arrasto com dois dedos, que é como o Android a entrega. O toque duplo
+   * sai no CSS (touch-action: manipulation), e os campos têm 16 px, abaixo
+   * do que o iPhone dá zoom sozinho ao focar.
+   */
+  ["gesturestart", "gesturechange", "gestureend"].forEach(function (tipo) {
+    document.addEventListener(tipo, function (e) { e.preventDefault(); }, { passive: false });
+  });
+  document.addEventListener("touchmove", function (e) {
+    if (e.touches && e.touches.length > 1) e.preventDefault();
+  }, { passive: false });
+
   var CHAVE = "lumen-remote-token";
   var CHAVE_NOME = "lumen-remote-nome";
   var CHAVE_RASCUNHO = "lumen-remote-rascunho";
@@ -757,6 +817,7 @@
       definirPermissao(d.permissao);
       aplicarEstado(d.estado);
       $("chatLista").innerHTML = "";
+      coresUsadas = {};
       (d.chat || []).forEach(function (m) { desenharMensagem(m, true); });
       rolarChat();
       return;
@@ -764,6 +825,17 @@
     if (d.tipo === "estado") return aplicarEstado(d.estado);
     if (d.tipo === "permissao") return definirPermissao(d.permissao);
     if (d.tipo === "chat") return receberChat(d.mensagem);
+    // A pasta de mídia da cabine mudou: quem está olhando a lista vê o
+    // arquivo novo na hora, sem sair e voltar da aba.
+    if (d.tipo === "midia") {
+      if (abaAtual === "midia") carregarMidia(true);
+      return;
+    }
+    // A programação mudou na cabine (ou alguém tirou um item daqui).
+    if (d.tipo === "culto") {
+      if (abaAtual === "culto") carregarCulto(true);
+      return;
+    }
     if (d.tipo === "desconectado") {
       localStorage.removeItem(CHAVE);
       token = null;
@@ -812,6 +884,8 @@
     if (musicaEmSlides) desenharSlides();
     if (podeEditar && abaAtual === "letras" && !musicaAberta && !musicaEmSlides) carregarRepertorio();
     if (podeEditar && abaAtual === "midia") carregarMidia();
+    $("semCulto").hidden = podeEditar;
+    if (abaAtual === "culto") carregarCulto(true);
   }
 
   function aplicarEstado(e) {
@@ -931,12 +1005,14 @@
       controle: "painelControle",
       letras: "painelLetras",
       midia: "painelMidia",
+      culto: "painelCulto",
       chat: "painelChat",
     };
     var abas = {
       controle: "abaControle",
       letras: "abaLetras",
       midia: "abaMidia",
+      culto: "abaCulto",
       chat: "abaChat",
     };
     Object.keys(mapa).forEach(function (k) {
@@ -950,6 +1026,138 @@
     }
     if (nome === "letras" && !musicaAberta && !musicaEmSlides) carregarRepertorio();
     if (nome === "midia") carregarMidia();
+    if (nome === "culto") carregarCulto();
+  }
+
+  // ─────────────────────────────────────────── culto
+
+  /**
+   * A programação do culto aberta na cabine, vista daqui.
+   *
+   * Ver e tirar item é de editor; mandar para o telão é de quem tem o
+   * controle. Tirar pede dois toques — o primeiro arma o botão por alguns
+   * segundos —, porque um dedo escorregando no meio do culto não pode
+   * apagar o próximo louvor. Quem aplica é a cabine; a lista daqui se
+   * redesenha quando ela confirma.
+   */
+  var NOME_DO_ITEM = { song: "Música", bible: "Bíblia", media: "Mídia", text: "Aviso", apresentacao: "Apresentação" };
+  var ROTULO_DA_ETAPA = { "no-ar": "No ar", proximo: "Próximo", concluido: "Concluído", pendente: "" };
+  var culto = { nome: "", itens: [] };
+  var armado = null;
+  var relogioDoArmado = 0;
+
+  function carregarCulto(silencioso) {
+    if (permissao !== "editor" && permissao !== "controle") {
+      $("cultoLista").innerHTML = "";
+      $("cultoNome").textContent = "—";
+      $("cultoEstado").textContent = "";
+      return;
+    }
+    if (!silencioso) $("cultoEstado").textContent = "Lendo…";
+    fetch("/culto?token=" + encodeURIComponent(token))
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d.ok) { $("cultoEstado").textContent = d.erro || "Não deu para ler a programação."; return; }
+        culto = d.culto || { nome: "", itens: [] };
+        desenharCulto();
+      })
+      .catch(function () { $("cultoEstado").textContent = "Sem conexão com a cabine."; });
+  }
+
+  function desenharCulto() {
+    $("cultoNome").textContent = culto.nome || "Programação do culto";
+    var n = culto.itens.length;
+    $("cultoEstado").textContent = n === 1 ? "1 item" : n + " itens";
+    var lista = $("cultoLista");
+    lista.innerHTML = "";
+    if (n === 0) {
+      var vazio = document.createElement("li");
+      vazio.className = "dica";
+      vazio.textContent = "A programação está vazia na cabine.";
+      lista.appendChild(vazio);
+      return;
+    }
+    culto.itens.forEach(function (it, i) {
+      var li = document.createElement("li");
+      var linha = document.createElement("div");
+      linha.className = "item culto-item " + it.etapa;
+      linha.setAttribute("data-item-do-culto", it.id);
+
+      var numero = document.createElement("span");
+      numero.className = "numero";
+      numero.textContent = String(i + 1);
+
+      var corpo = document.createElement("span");
+      corpo.className = "corpo-item";
+      var nome = document.createElement("span");
+      nome.className = "nome";
+      nome.textContent = it.titulo;
+      var etapa = document.createElement("span");
+      etapa.className = "etapa";
+      var rotulo = ROTULO_DA_ETAPA[it.etapa] || "";
+      if (rotulo) {
+        var marca = document.createElement("b");
+        marca.textContent = rotulo;
+        etapa.appendChild(marca);
+        etapa.appendChild(document.createTextNode(" · "));
+      }
+      etapa.appendChild(document.createTextNode([NOME_DO_ITEM[it.tipo] || "Item", it.detalhe].filter(Boolean).join(" · ")));
+      corpo.appendChild(nome);
+      corpo.appendChild(etapa);
+
+      var acoes = document.createElement("span");
+      acoes.className = "acoes";
+      var projetar = document.createElement("button");
+      projetar.type = "button";
+      projetar.className = "acao-item";
+      projetar.textContent = "Projetar";
+      projetar.setAttribute("aria-label", "Projetar " + it.titulo);
+      projetar.disabled = permissao !== "controle";
+      projetar.addEventListener("click", function () { agirNoCulto("projetar", it); });
+      var tirar = document.createElement("button");
+      var confirmando = armado === it.id;
+      tirar.type = "button";
+      tirar.className = "acao-item perigo" + (confirmando ? " confirmar" : "");
+      tirar.textContent = confirmando ? "Confirmar" : "Excluir";
+      tirar.setAttribute("aria-label", (confirmando ? "Confirmar a exclusão de " : "Excluir ") + it.titulo);
+      tirar.addEventListener("click", function () {
+        if (armado !== it.id) {
+          armado = it.id;
+          clearTimeout(relogioDoArmado);
+          relogioDoArmado = setTimeout(function () { armado = null; desenharCulto(); }, 4000);
+          desenharCulto();
+          return;
+        }
+        armado = null;
+        clearTimeout(relogioDoArmado);
+        agirNoCulto("remover", it);
+      });
+      acoes.appendChild(projetar);
+      acoes.appendChild(tirar);
+
+      linha.appendChild(numero);
+      linha.appendChild(corpo);
+      linha.appendChild(acoes);
+      li.appendChild(linha);
+      lista.appendChild(li);
+    });
+  }
+
+  function agirNoCulto(acao, it) {
+    fetch("/culto/" + acao, {
+      method: "POST",
+      body: JSON.stringify({ token: token, id: it.id }),
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d.ok) {
+          $("cultoEstado").textContent = d.erro || "A cabine não aceitou.";
+          carregarCulto(true);
+          return;
+        }
+        if (acao === "remover") $("cultoEstado").textContent = "\u201c" + it.titulo + "\u201d saiu do culto.";
+      })
+      .catch(function () { $("cultoEstado").textContent = "Sem conexão com a cabine."; });
   }
 
   // ─────────────────────────────────────────── letras
@@ -992,9 +1200,9 @@
   var midia = [];
   var midiaTipo = "todos";
 
-  function carregarMidia() {
+  function carregarMidia(silencioso) {
     if (permissao !== "editor" && permissao !== "controle") return;
-    $("midiaEstado").textContent = "Lendo a pasta…";
+    if (!silencioso) $("midiaEstado").textContent = "Lendo a pasta…";
     fetch("/midia?token=" + encodeURIComponent(token))
       .then(function (r) { return r.json(); })
       .then(function (d) {
@@ -1425,12 +1633,50 @@
     return !m.daCabine && !!meuNome && m.de === meuNome;
   }
 
+  /**
+   * Uma cor para cada pessoa no chat — a mesma paleta e a mesma conta de
+   * src/lib/cor-do-chat.ts (o teste de lá confere as três telas). A cor
+   * preferida sai do nome; se outra pessoa da conversa já estiver com ela,
+   * vai para a próxima livre. A própria mensagem aparece como "Você", sem cor.
+   */
+  var CORES_DO_CHAT = ["#5cc8f5", "#b39bfa", "#4fd1a1", "#f58bc4", "#fb9d5c", "#3fd6e8", "#b5e35a", "#f78b8b"];
+  var coresUsadas = {};
+
+  function chaveDaPessoa(m) {
+    return m.daCabine ? "cabine" : "p:" + String(m.de || "").trim().toLowerCase();
+  }
+
+  function corDaPessoa(chave) {
+    if (Object.prototype.hasOwnProperty.call(coresUsadas, chave)) return CORES_DO_CHAT[coresUsadas[chave]];
+    var ocupadas = {};
+    Object.keys(coresUsadas).forEach(function (k) { ocupadas[coresUsadas[k]] = true; });
+    var h = 0;
+    for (var i = 0; i < chave.length; i += 1) h = (h * 31 + chave.charCodeAt(i)) >>> 0;
+    var inicio = h % CORES_DO_CHAT.length;
+    var escolhida = inicio;
+    for (var k = 0; k < CORES_DO_CHAT.length; k += 1) {
+      var idx = (inicio + k) % CORES_DO_CHAT.length;
+      if (!ocupadas[idx]) { escolhida = idx; break; }
+    }
+    coresUsadas[chave] = escolhida;
+    return CORES_DO_CHAT[escolhida];
+  }
+
+  /** Nome e filete na cor de quem escreveu. */
+  function pintarPessoa(div, de, m) {
+    var cor = corDaPessoa(chaveDaPessoa(m));
+    de.style.color = cor;
+    div.style.borderLeft = "3px solid " + cor;
+  }
+
   function desenharMensagem(m, silencioso) {
+    var minha = ehMinha(m);
     var div = document.createElement("div");
-    div.className = "msg" + (m.daCabine ? " cabine" : ehMinha(m) ? " minha" : "");
+    div.className = "msg" + (m.daCabine ? " cabine" : minha ? " minha" : "");
     var de = document.createElement("p");
     de.className = "de";
-    de.textContent = m.de + " · " + hora(m.em);
+    de.textContent = (minha ? "Você" : m.de) + " · " + hora(m.em);
+    if (!minha) pintarPessoa(div, de, m);
     div.appendChild(de);
     if (m.audio) {
       var som = document.createElement("audio");
@@ -1520,6 +1766,7 @@
   $("abaControle").addEventListener("click", function () { trocarAba("controle"); });
   $("abaLetras").addEventListener("click", function () { trocarAba("letras"); });
   $("abaMidia").addEventListener("click", function () { trocarAba("midia"); });
+  $("abaCulto").addEventListener("click", function () { trocarAba("culto"); });
   $("abaChat").addEventListener("click", function () { trocarAba("chat"); });
 
   $("volume").addEventListener("pointerdown", function () { arrastandoVolume = true; });

@@ -16,7 +16,17 @@ import { Hint } from "@/components/ui/tooltip";
 import { ThemeThumb } from "@/components/operator/theme-rail";
 import { cn } from "@/lib/cn";
 import { etapaDoItem, type Etapa } from "@/lib/culto-etapas";
+import type { PlaylistItem } from "@/lib/types";
 import { useLumenStore } from "@/store/lumen-store";
+import {
+  contarTrazidos,
+  garantirNaStore,
+  itemDoCulto,
+  lerItem,
+  temArquivos,
+  temItem,
+  trazerArquivos,
+} from "@/components/operator/soltar-midia";
 
 export function PlaylistPanel({ showThemes = false }: { showThemes?: boolean }) {
   const playlists = useLumenStore((s) => s.playlists);
@@ -41,6 +51,44 @@ export function PlaylistPanel({ showThemes = false }: { showThemes?: boolean }) 
   const nextPlaylistItem = useLumenStore((s) => s.nextPlaylistItem);
   const [dragFrom, setDragFrom] = useState<number | null>(null);
   const [dragOver, setDragOver] = useState<number | null>(null);
+  /** Algo de fora (arquivo ou linha da Biblioteca) pairando sobre o culto. */
+  const [soltando, setSoltando] = useState(false);
+
+  const deFora = (dt: DataTransfer) => temArquivos(dt) || temItem(dt);
+
+  /**
+   * Arquivo do Explorer ou linha da Biblioteca solto no culto.
+   *
+   * Entra onde foi solto — acima da linha marcada — ou no fim, se caiu no
+   * espaço vazio. Arquivo vai antes para a pasta de mídia, para existir no
+   * domingo seguinte e aparecer no celular.
+   */
+  const receber = async (dt: DataTransfer, indice: number | null) => {
+    setSoltando(false);
+    setDragOver(null);
+    // O DataTransfer esvazia quando o evento termina: tudo que se lê dele
+    // é lido agora, antes de qualquer espera.
+    const dado = lerItem(dt);
+    const files = Array.from(dt.files);
+    let novos: Omit<PlaylistItem, "id">[] = [];
+    if (dado) {
+      if (dado.midia) garantirNaStore(dado.midia);
+      novos = [dado.item];
+      toast(`“${dado.item.title}” entrou no culto`);
+    } else if (files.length > 0) {
+      const r = await trazerArquivos(files);
+      novos = r.itens.map(itemDoCulto);
+      contarTrazidos(r, "culto");
+    }
+    if (novos.length === 0) return;
+    // Depois de copiar um vídeo grande o culto pode ter mudado: conta agora.
+    const st = useLumenStore.getState();
+    const antes = st.playlists.find((p) => p.id === st.activePlaylistId)?.items.length ?? 0;
+    for (const n of novos) addToPlaylist(n);
+    if (indice !== null && indice < antes) {
+      novos.forEach((_, k) => move(antes + k, indice + k));
+    }
+  };
 
   const pl = playlists.find((p) => p.id === activeId) ?? playlists[0];
   const count = pl?.items.length ?? 0;
@@ -175,7 +223,30 @@ export function PlaylistPanel({ showThemes = false }: { showThemes?: boolean }) 
         </MenuContent>
       </Menu>
 
-      <ul className="lumen-scroll min-h-0 flex-1 overflow-y-auto">
+      <ul
+        className={cn(
+          "lumen-scroll relative min-h-0 flex-1 overflow-y-auto",
+          "transition-[box-shadow,background-color] duration-[var(--motion-fast)] ease-[var(--ease-out)]",
+          soltando && "bg-accent/5 shadow-[inset_0_0_0_2px_var(--color-accent)]",
+        )}
+        data-soltar-culto
+        onDragOver={(e) => {
+          if (dragFrom !== null || !deFora(e.dataTransfer)) return;
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "copy";
+          setSoltando(true);
+        }}
+        onDragLeave={(e) => {
+          if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+          setSoltando(false);
+          setDragOver(null);
+        }}
+        onDrop={(e) => {
+          if (dragFrom !== null || !deFora(e.dataTransfer)) return;
+          e.preventDefault();
+          void receber(e.dataTransfer, dragOver);
+        }}
+      >
         {pl?.items.map((item, i) => {
           const etapa = etapaDoItem(i, indiceNoAr);
           const onAir = etapa === "no-ar";
@@ -186,6 +257,7 @@ export function PlaylistPanel({ showThemes = false }: { showThemes?: boolean }) 
               draggable
               onDragStart={() => setDragFrom(i)}
               onDragOver={(e) => {
+                if (dragFrom === null && !deFora(e.dataTransfer)) return;
                 e.preventDefault();
                 setDragOver(i);
               }}
@@ -194,8 +266,12 @@ export function PlaylistPanel({ showThemes = false }: { showThemes?: boolean }) 
                 setDragFrom(null);
                 setDragOver(null);
               }}
-              onDrop={() => {
-                if (dragFrom !== null && dragFrom !== i) move(dragFrom, i);
+              onDrop={(e) => {
+                // Arquivo e linha da Biblioteca sobem para a lista, que sabe
+                // recebê-los; aqui só se reordena o que já está no culto.
+                if (dragFrom === null) return;
+                e.stopPropagation();
+                if (dragFrom !== i) move(dragFrom, i);
                 setDragFrom(null);
                 setDragOver(null);
               }}
@@ -207,7 +283,10 @@ export function PlaylistPanel({ showThemes = false }: { showThemes?: boolean }) 
                 // O que já passou recua um pouco, para o olho cair no que falta.
                 etapa === "concluido" && "opacity-55",
                 dragFrom === i && "opacity-40",
-                dragOver === i && dragFrom !== i && "shadow-[inset_0_2px_0_0_var(--color-accent)]",
+                dragOver === i &&
+                  dragFrom !== i &&
+                  (dragFrom !== null || soltando) &&
+                  "shadow-[inset_0_2px_0_0_var(--color-accent)]",
               )}
             >
               {(selected || onAir) && (
@@ -259,7 +338,7 @@ export function PlaylistPanel({ showThemes = false }: { showThemes?: boolean }) 
         {(!pl || pl.items.length === 0) && (
           <Empty
             title="O culto ainda está vazio."
-            hint="No repertório, o + de cada linha traz o item para cá. Dois cliques lá projetam na hora."
+            hint="No repertório, o + de cada linha traz o item para cá — ou arraste a linha, ou um vídeo, música ou foto do computador. Dois cliques lá projetam na hora."
           />
         )}
       </ul>

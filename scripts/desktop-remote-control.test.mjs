@@ -1065,3 +1065,181 @@ test("capa gigante é aparada antes de ir para o celular", async () => {
     await derrubar(ctx);
   }
 });
+
+test("mídia nova chega ao celular na hora, pelo fluxo de eventos", async () => {
+  const ctx = await subir();
+  try {
+    const token = await comPermissao(ctx, "editor");
+    const controlador = new AbortController();
+    const resposta = await fetch(`${ctx.base}/estado?token=${token}`, { signal: controlador.signal });
+    const leitor = resposta.body.getReader();
+
+    ctx.rc.atualizarMidia([{ id: "midia:video:Chamada.mp4", tipo: "video", titulo: "Chamada" }]);
+    let bruto = "";
+    while (!bruto.includes('"tipo":"midia"')) {
+      const { value, done } = await leitor.read();
+      if (done) break;
+      bruto += Buffer.from(value).toString("utf8");
+    }
+    // O aviso não carrega a lista: ver a mídia exige permissão de editor, e
+    // o fluxo chega a todo aparelho pareado.
+    assert.match(bruto, /"tipo":"midia"}/);
+    assert.ok(!bruto.includes("Chamada"), "o aviso não pode levar os nomes da pasta");
+    controlador.abort();
+
+    const { midia } = await (await fetch(`${ctx.base}/midia?token=${token}`)).json();
+    assert.deepEqual(
+      midia.map((m) => m.titulo),
+      ["Chamada"],
+    );
+  } finally {
+    await derrubar(ctx);
+  }
+});
+
+test("a mesma lista reenviada não avisa, e a capa que já veio não some", async () => {
+  const ctx = await subir();
+  try {
+    const avisos = [];
+    const transmitir = ctx.rc._transmitir.bind(ctx.rc);
+    ctx.rc._transmitir = (payload) => {
+      avisos.push(payload.tipo);
+      transmitir(payload);
+    };
+    const soNomes = [{ id: "v1", tipo: "video", titulo: "Chamada" }];
+    ctx.rc.atualizarMidia(soNomes);
+    assert.deepEqual(avisos, ["midia"]);
+
+    // Trocar o item no ar reenvia a mesma pasta: nada mudou, nada de aviso.
+    ctx.rc.atualizarMidia(soNomes);
+    assert.deepEqual(avisos, ["midia"]);
+
+    // Chegou a capa: vale avisar, para o celular desenhá-la.
+    ctx.rc.atualizarMidia([
+      { id: "v1", tipo: "video", titulo: "Chamada", capa: "data:image/jpeg;base64,AAAA", segundos: 30 },
+    ]);
+    assert.deepEqual(avisos, ["midia", "midia"]);
+
+    // A cabine manda primeiro só os nomes; a capa de antes fica até a nova chegar.
+    ctx.rc.atualizarMidia(soNomes);
+    assert.deepEqual(avisos, ["midia", "midia"], "reenviar só os nomes não pode apagar a capa");
+    ctx.rc.atualizarMidia([...soNomes, { id: "i1", tipo: "image", titulo: "Foto nova" }]);
+    assert.deepEqual(avisos, ["midia", "midia", "midia"]);
+
+    const token = await comPermissao(ctx, "editor");
+    const { midia } = await (await fetch(`${ctx.base}/midia?token=${token}`)).json();
+    const chamada = midia.find((m) => m.id === "v1");
+    assert.equal(chamada.capa, "data:image/jpeg;base64,AAAA");
+    assert.equal(chamada.segundos, 30);
+    assert.ok(midia.some((m) => m.titulo === "Foto nova"));
+  } finally {
+    await derrubar(ctx);
+  }
+});
+
+const CULTO = {
+  nome: "Domingo 19h",
+  itens: [
+    { id: "i1", titulo: "Boas-vindas", tipo: "text", detalhe: "", etapa: "concluido" },
+    { id: "i2", titulo: "Cântico da alvorada", tipo: "song", detalhe: "Coletivo", etapa: "no-ar" },
+    { id: "i3", titulo: "João 3:16", tipo: "bible", detalhe: "Almeida", etapa: "proximo" },
+  ],
+};
+
+async function postar(ctx, rota, corpo) {
+  const r = await fetch(`${ctx.base}${rota}`, { method: "POST", body: JSON.stringify(corpo) });
+  return { status: r.status, corpo: await r.json() };
+}
+
+test("a programação do culto chega ao celular de editor, e não ao de só chat", async () => {
+  const ctx = await subir();
+  try {
+    ctx.rc.atualizarCulto(CULTO);
+    const soChat = await parear(ctx.base);
+    assert.equal((await fetch(`${ctx.base}/culto?token=${soChat}`)).status, 403);
+
+    const editor = await comPermissao(ctx, "editor");
+    const { culto } = await (await fetch(`${ctx.base}/culto?token=${editor}`)).json();
+    assert.equal(culto.nome, "Domingo 19h");
+    assert.deepEqual(culto.itens.map((i) => [i.titulo, i.etapa]), [
+      ["Boas-vindas", "concluido"],
+      ["Cântico da alvorada", "no-ar"],
+      ["João 3:16", "proximo"],
+    ]);
+  } finally {
+    await derrubar(ctx);
+  }
+});
+
+test("mudou a programação, o celular é avisado; a mesma reenviada, não", async () => {
+  const ctx = await subir();
+  try {
+    const avisos = [];
+    const transmitir = ctx.rc._transmitir.bind(ctx.rc);
+    ctx.rc._transmitir = (payload) => {
+      avisos.push(payload.tipo);
+      transmitir(payload);
+    };
+    ctx.rc.atualizarCulto(CULTO);
+    ctx.rc.atualizarCulto(CULTO);
+    assert.deepEqual(avisos, ["culto"]);
+    ctx.rc.atualizarCulto({ ...CULTO, itens: CULTO.itens.slice(1) });
+    assert.deepEqual(avisos, ["culto", "culto"]);
+    // Etapa ou tipo inventados não passam adiante.
+    ctx.rc.atualizarCulto({ nome: "X", itens: [{ id: "z", titulo: "Z", tipo: "script", etapa: "hackeado" }] });
+    assert.deepEqual(ctx.rc.culto.itens[0], { id: "z", titulo: "Z", tipo: "outro", detalhe: "", etapa: "pendente" });
+  } finally {
+    await derrubar(ctx);
+  }
+});
+
+test("excluir do culto pelo celular é de editor e só vale para item que está lá", async () => {
+  const ctx = await subir();
+  const vistos = [];
+  // Parear também avisa a cabine ("dispositivos"); aqui só interessa o culto.
+  ctx.rc.onEvento = (e) => e.tipo.startsWith("culto-") && vistos.push(e);
+  try {
+    ctx.rc.atualizarCulto(CULTO);
+    const soChat = await parear(ctx.base);
+    assert.equal((await postar(ctx, "/culto/remover", { token: soChat, id: "i3" })).status, 403);
+
+    const editor = await comPermissao(ctx, "editor");
+    const inventado = await postar(ctx, "/culto/remover", { token: editor, id: "nao-existe" });
+    assert.equal(inventado.status, 404);
+    assert.equal(vistos.length, 0);
+
+    const ok = await postar(ctx, "/culto/remover", { token: editor, id: "i3" });
+    assert.equal(ok.status, 200);
+    assert.equal(vistos.length, 1);
+    assert.equal(vistos[0].tipo, "culto-remover");
+    assert.equal(vistos[0].id, "i3");
+    assert.equal(vistos[0].titulo, "João 3:16");
+    // Some daqui na hora, sem esperar a cabine confirmar.
+    const { culto } = await (await fetch(`${ctx.base}/culto?token=${editor}`)).json();
+    assert.deepEqual(culto.itens.map((i) => i.id), ["i1", "i2"]);
+  } finally {
+    await derrubar(ctx);
+  }
+});
+
+test("projetar um item do culto pelo celular exige o controle do telão", async () => {
+  const ctx = await subir();
+  const vistos = [];
+  // Parear também avisa a cabine ("dispositivos"); aqui só interessa o culto.
+  ctx.rc.onEvento = (e) => e.tipo.startsWith("culto-") && vistos.push(e);
+  try {
+    ctx.rc.atualizarCulto(CULTO);
+    const editor = await comPermissao(ctx, "editor");
+    assert.equal((await postar(ctx, "/culto/projetar", { token: editor, id: "i3" })).status, 403);
+    const controle = await comPermissao(ctx, "controle");
+    assert.equal((await postar(ctx, "/culto/projetar", { token: controle, id: "i3" })).status, 200);
+    assert.deepEqual(
+      vistos.map((e) => [e.tipo, e.id]),
+      [["culto-projetar", "i3"]],
+    );
+    // Projetar não tira nada da programação.
+    assert.equal(ctx.rc.culto.itens.length, 3);
+  } finally {
+    await derrubar(ctx);
+  }
+});

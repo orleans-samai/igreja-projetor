@@ -22,6 +22,27 @@ const errors = [];
  * a do aviso do dirigente. `page.evaluate` aguarda a promessa; é por ele
  * que esta espera pergunta.
  */
+/** Um WAV de verdade, curtinho (0,1 s de silêncio): a cabine gera capa e duração dele. */
+function wavCurto() {
+  const amostras = 800;
+  const b = Buffer.alloc(44 + amostras);
+  b.write("RIFF", 0);
+  b.writeUInt32LE(36 + amostras, 4);
+  b.write("WAVE", 8);
+  b.write("fmt ", 12);
+  b.writeUInt32LE(16, 16);
+  b.writeUInt16LE(1, 20); // PCM
+  b.writeUInt16LE(1, 22); // mono
+  b.writeUInt32LE(8000, 24);
+  b.writeUInt32LE(8000, 28);
+  b.writeUInt16LE(1, 32);
+  b.writeUInt16LE(8, 34);
+  b.write("data", 36);
+  b.writeUInt32LE(amostras, 40);
+  b.fill(128, 44);
+  return b;
+}
+
 async function esperarAsync(pagina, fn, arg, { timeout = 15000, intervalo = 300, oQue = "a condição" } = {}) {
   const fim = Date.now() + timeout;
   while (Date.now() < fim) {
@@ -89,7 +110,7 @@ try {
   );
   assert.equal(await page.getByRole("tab", { name: "Bíblia" }).count(), 0, "a Bíblia ainda é aba");
   await botaoBiblia.click();
-  const versaoBiblia = page.getByLabel("Versão da Bíblia");
+  const versaoBiblia = page.getByLabel("Versão da Bíblia", { exact: true });
   await versaoBiblia.waitFor();
   assert.equal(await page.getByLabel("Referência bíblica").count(), 0, "o painelzinho da Bíblia ainda está lá");
   assert.deepEqual(await versaoBiblia.locator("option").allTextContents(), [
@@ -98,6 +119,7 @@ try {
     "Nova Bíblia Viva",
     "Bíblia Portuguesa Mundial",
     "Bíblia Livre Para Todos (NT)",
+    "Importar outra versão…",
   ]);
   const versiculoNaTela = (n) =>
     page.evaluate((v) => document.querySelector(`[data-verse="${v}"]`)?.textContent ?? "", n);
@@ -134,10 +156,70 @@ try {
   await page.waitForFunction(() => [...document.querySelectorAll("h2")].some((h) => h.textContent.includes("Mateus 17:22")));
   assert.match(await tituloDaBiblia(), /Mateus 17:22/);
   await page.screenshot({ animations: "disabled", path: path.join(evidence, "biblia.png") });
+  // A letra fica no meio do telão, na vertical — nunca lá embaixo nem lá em
+  // cima, com ou sem a referência no rodapé.
+  const desvioDoCentro = await page.evaluate(() => {
+    const palco = document.querySelector('[aria-label="Projetar versículo"] .aspect-video');
+    const p = palco.getBoundingClientRect();
+    const t = palco.querySelector(".slide-text").getBoundingClientRect();
+    return Math.abs(t.y + t.height / 2 - (p.y + p.height / 2)) / p.height;
+  });
+  assert.ok(desvioDoCentro < 0.03, `o versículo saiu do meio do telão (${(desvioDoCentro * 100).toFixed(1)}%)`);
+  // Versão que a igreja tem licença para usar (NVI, NAA…) não vem no app:
+  // importa pelo próprio seletor. O arquivo é o formato em que essas
+  // versões circulam (lista de livros com capítulos), salvo com BOM como o
+  // Bloco de Notas faz — e o texto aqui é de teste, não de Bíblia nenhuma.
+  const arquivoDeVersao = path.join(profile, "versao-de-teste.json");
+  const livrosDeTeste = Array.from({ length: 66 }, (_, k) => ({
+    abbrev: `l${k + 1}`,
+    chapters: Array.from({ length: 30 }, (_, c) =>
+      Array.from({ length: 30 }, (_, v) => `Texto de teste ${k + 1}.${c + 1}.${v + 1}`),
+    ),
+  }));
+  await writeFile(arquivoDeVersao, "\uFEFF" + JSON.stringify(livrosDeTeste), "utf8");
+  await page.locator('input[aria-label="Arquivo da versão da Bíblia"]').setInputFiles(arquivoDeVersao);
+  await page.waitForFunction(
+    () => document.querySelector('select[aria-label="Versão da Bíblia"]').selectedOptions[0]?.textContent === "versao de teste",
+    null,
+    { timeout: 10000 },
+  );
+  // A tela estava em Mateus 17:22 e continua lá, agora no texto importado.
+  await page.waitForFunction(() => document.body.textContent.includes("Texto de teste 40.17.22"), null, { timeout: 10000 });
+
   // Volta como estava, para o resto do teste não depender desta parte.
   await versaoBiblia.selectOption("almeida-1819");
   await page.waitForFunction(() => document.querySelector('select[aria-label="Versão da Bíblia"]').value === "almeida-1819");
-  await page.getByRole("button", { name: "Voltar", exact: true }).click();
+  // Reorganizar com a Bíblia aberta mexe nas três partes dela: soltar uma
+  // sobre a outra troca as duas, e "Trocar lados" passa a coluna dupla.
+  const xDaParte = (parte) =>
+    page.evaluate((p) => document.querySelector(`[data-lugar-da-biblia="${p}"]`).getBoundingClientRect().x, parte);
+  await page.getByRole("button", { name: "Reorganizar", exact: true }).click();
+  await page.locator('[data-parte-da-biblia="previa"]').dragTo(page.locator('[data-parte-da-biblia="navegacao"]'));
+  await page.waitForFunction(
+    () =>
+      document.querySelector('[data-lugar-da-biblia="previa"]').getBoundingClientRect().x >
+      document.querySelector('[data-lugar-da-biblia="navegacao"]').getBoundingClientRect().x,
+    null,
+    { timeout: 5000 },
+  );
+  await page.getByRole("button", { name: "Trocar lados", exact: true }).click();
+  await page.waitForFunction(
+    () =>
+      document.querySelector('[data-lugar-da-biblia="versiculos"]').getBoundingClientRect().x >
+      document.querySelector('[data-lugar-da-biblia="previa"]').getBoundingClientRect().x,
+    null,
+    { timeout: 5000 },
+  );
+  await page.screenshot({ animations: "disabled", path: path.join(evidence, "biblia-reorganizada.png") });
+  await page.getByRole("button", { name: "Voltar ao padrão", exact: true }).click();
+  await page.getByRole("button", { name: "Concluir", exact: true }).click();
+  await page.locator("[data-parte-da-biblia]").first().waitFor({ state: "detached", timeout: 5000 });
+  assert.ok((await xDaParte("versiculos")) < (await xDaParte("navegacao")), "Voltar ao padrão não devolveu a Bíblia");
+
+  // O "Voltar" é dourado, como o botão que abriu a Bíblia.
+  const voltarDaBiblia = page.getByRole("button", { name: "Voltar", exact: true });
+  assert.match(await voltarDaBiblia.getAttribute("class"), /\bouro\b/, "o Voltar da Bíblia não está dourado");
+  await voltarDaBiblia.click();
   await versaoBiblia.waitFor({ state: "detached" });
 
   assert.equal(await page.evaluate(async () => (await fetch("/missing.js")).status), 404);
@@ -313,8 +395,10 @@ try {
   await dialogoArtes.waitFor({ state: "visible", timeout: 10000 });
   await dialogoArtes.getByRole("button", { name: "Criar nova arte" }).click();
   await page.getByRole("button", { name: "Conferência", exact: true }).click();
-  await page.getByLabel("Nome do evento").fill("Conferência de Jovens");
-  await page.getByLabel("Data", { exact: true }).fill("12 de março");
+  // O formulário pede só o título e a referência bíblica.
+  await dialogoArtes.getByLabel("Título", { exact: true }).fill("Conferência de Jovens");
+  await dialogoArtes.getByLabel("Referência bíblica").fill("Romanos 12:2");
+  assert.equal(await dialogoArtes.getByLabel("Data", { exact: true }).count(), 0, "o formulário de artes ainda pede a data");
   await page.getByRole("button", { name: "Gerar artes" }).click();
   await page.waitForFunction(
     () => document.querySelectorAll("[data-opcao-de-arte] img[src^='data:image/jpeg']").length === 8,
@@ -557,6 +641,57 @@ try {
   assert.equal(midiaNoCelular.ok, true);
   assert.ok(Array.isArray(midiaNoCelular.midia));
 
+  // ---- Mídia nova chega ao celular na hora: pelo Importar e pelo Explorer ----
+  // Antes o "Importar" criava um endereço de sessão que o celular nunca via,
+  // e a cabine só reespelhava a pasta ao trocar o item no ar.
+  const noCelularEm5s = async (titulo) => {
+    const limite = Date.now() + 5000;
+    while (Date.now() < limite) {
+      const r = await fetch(`${remoteBase}/midia?token=${pareado.token}`).then((x) => x.json());
+      if ((r.midia ?? []).some((m) => m.titulo === titulo)) return true;
+      await new Promise((ok) => setTimeout(ok, 150));
+    }
+    return false;
+  };
+  const fora = await mkdtemp(path.join(os.tmpdir(), "lumen-importar-"));
+  const hino = path.join(fora, "Hino de abertura.wav");
+  await writeFile(hino, wavCurto());
+  const biblioteca = page.locator("[data-soltar-biblioteca]");
+  await biblioteca.getByRole("tab", { name: "Mídia", exact: true }).click();
+  await biblioteca.getByRole("tab", { name: "Áudio", exact: true }).click();
+  await biblioteca.locator('input[type="file"]').setInputFiles(hino);
+  assert.ok(await noCelularEm5s("Hino de abertura"), "a mídia importada não chegou ao celular em 5 s");
+  const pastaDeAudio = await page.evaluate(() => window.lumenDesktop.mediaList("audio"));
+  assert.ok(
+    (pastaDeAudio.items ?? []).some((i) => i.name === "Hino de abertura.wav" && i.size > 0),
+    "o Importar não gravou o arquivo na pasta de áudio",
+  );
+  const linhaDoHino = biblioteca.locator("li", { hasText: "Hino de abertura" }).locator("button").first();
+  await linhaDoHino.waitFor({ timeout: 5000 });
+
+  // Copiado pelo Explorer, sem passar pela cabine: o vigia da pasta avisa.
+  await writeFile(path.join(pastaDeAudio.dir, "Copiado pelo Explorer.wav"), wavCurto());
+  assert.ok(
+    await noCelularEm5s("Copiado pelo Explorer"),
+    "arquivo copiado direto na pasta não chegou ao celular em 5 s",
+  );
+
+  // Arrastar a linha da biblioteca para a programação do culto.
+  const culto = page.locator("[data-soltar-culto]");
+  await linhaDoHino.dragTo(culto);
+  await page.waitForFunction(
+    () => document.querySelector("[data-soltar-culto]")?.textContent.includes("Hino de abertura"),
+    null,
+    { timeout: 5000 },
+  );
+
+  // Botão direito na mídia: projetar, pôr no culto e excluir (para a Lixeira).
+  await linhaDoHino.click({ button: "right" });
+  await page.getByRole("menuitem", { name: /Excluir \(vai para a Lixeira\)/ }).waitFor({ timeout: 5000 });
+  await page.getByRole("menuitem", { name: /Pôr no culto/ }).waitFor({ timeout: 5000 });
+  await page.keyboard.press("Escape");
+  await page.getByRole("menuitem", { name: /Excluir/ }).waitFor({ state: "detached", timeout: 5000 });
+
   const repertorioNoCelular = await fetch(`${remoteBase}/repertorio?token=${pareado.token}`).then((r) => r.json());
   assert.ok(repertorioNoCelular.musicas.length > 0, "o celular não recebeu o repertório");
   const escolhida = repertorioNoCelular.musicas[0];
@@ -725,6 +860,41 @@ try {
   await celular.click("#slidesVoltar");
   await celular.waitForSelector("#letrasLista:not([hidden])", { timeout: 10000 });
   assert.equal(await celular.locator("#letrasSlides").isHidden(), true);
+
+  // ---- Aba Culto: a programação da cabine no celular, projetar e excluir ----
+  await celular.click("#abaCulto");
+  await celular.waitForSelector("#cultoLista [data-item-do-culto]", { timeout: 10000 });
+  const titulosDaCabine = () =>
+    page.$$eval("[data-soltar-culto] > li", (lis) => lis.map((li) => li.querySelector(".truncate")?.textContent));
+  const titulosNoCelular = () => celular.$$eval("#cultoLista .nome", (els) => els.map((e) => e.textContent));
+  assert.deepEqual(await titulosNoCelular(), await titulosDaCabine(), "a aba Culto não mostra a programação da cabine");
+
+  const primeiroDoCulto = (await titulosNoCelular())[0];
+  await celular.getByRole("button", { name: `Projetar ${primeiroDoCulto}`, exact: true }).click();
+  await page.waitForFunction(
+    (titulo) => JSON.parse(localStorage.getItem("lumen-live-frame") ?? "null")?.deck?.title === titulo,
+    primeiroDoCulto,
+    { timeout: 10000 },
+  );
+
+  // Excluir pede dois toques: o primeiro só arma o botão.
+  await celular.getByRole("button", { name: "Excluir Hino de abertura", exact: true }).click();
+  assert.ok((await titulosDaCabine()).includes("Hino de abertura"), "um toque só já excluiu");
+  await celular.getByRole("button", { name: "Confirmar a exclusão de Hino de abertura", exact: true }).click();
+  await page.waitForFunction(
+    () =>
+      ![...document.querySelectorAll("[data-soltar-culto] > li")].some(
+        (li) => li.querySelector(".truncate")?.textContent === "Hino de abertura",
+      ),
+    null,
+    { timeout: 5000 },
+  );
+  await celular.waitForFunction(
+    () => ![...document.querySelectorAll("#cultoLista .nome")].some((e) => e.textContent === "Hino de abertura"),
+    null,
+    { timeout: 5000 },
+  );
+  assert.deepEqual(await titulosNoCelular(), await titulosDaCabine(), "celular e cabine divergiram depois de excluir");
 
   await celular.close();
 
@@ -1354,7 +1524,7 @@ try {
   assert.deepEqual(errors, []);
   const disk = JSON.parse(await readFile(path.join(profile, "data", "library.json"), "utf8"));
   assert.ok(disk.values["lumen-v2"]);
-  console.log(`PASS: offline, fonts, Bible (gold button opens the Bible screen, five versions, New-Testament-only notice, omitted verse lands on the next), restart persistence, projector, media ranges, preflight, Auto-Slide, remote control (LAN, entrada por nome, nome fixo na rede), update check, review before apply, 1366×768 at 100/125/150% and 800×600, no scroll and exactly one layout at ten sizes from 800×600 to 2560×1440, including every pixel around the 1280 cutover and the chat stays on screen, church logo and name reachable from the menu bar, art studio makes a batch of 8 distinct Konva designs from a briefing, opens one in the editor, saves it and exports PNG and JPEG at exactly 1080×1080, VFX has three modes and a dynamic video becomes a real file in the Vídeos tab, local AI off by default and the cabine independent of it, dirigente page signs in, sends a file, chats and files a notice, and its PowerPoint and PDF become slides in the service programme, video as a theme background, find a song by a lyric excerpt, right-click on lyrics edits or removes, double-click to project, fixed text only in the footer, YouTube collapses the lyrics strip, phone has one play/pause button and the screen volume, every new chat message pops up in gold on the phone, the cabine and the dirigente page (never for its own author), sees the media folder, projects from it, opens a song as a grid of slides and puts one on the screen, and searches lyrics through the cabine. Evidence: ${evidence}`);
+  console.log(`PASS: offline, fonts, Bible (gold buttons in and out of the Bible screen, five versions plus importing a licensed one, its three parts rearranged by dragging and swapping sides, New-Testament-only notice, omitted verse lands on the next), restart persistence, projector, media ranges, preflight, Auto-Slide, remote control (LAN, entrada por nome, nome fixo na rede), update check, review before apply, 1366×768 at 100/125/150% and 800×600, no scroll and exactly one layout at ten sizes from 800×600 to 2560×1440, including every pixel around the 1280 cutover and the chat stays on screen, church logo and name reachable from the menu bar, art studio makes a batch of 8 distinct Konva designs from just a title and a Bible reference, opens one in the editor, saves it and exports PNG and JPEG at exactly 1080×1080, VFX has three modes and a dynamic video becomes a real file in the Vídeos tab, local AI off by default and the cabine independent of it, dirigente page signs in, sends a file, chats and files a notice, and its PowerPoint and PDF become slides in the service programme, video as a theme background, find a song by a lyric excerpt, right-click on lyrics edits or removes, double-click to project, fixed text only in the footer and the verse always centred vertically, YouTube collapses the lyrics strip, phone has one play/pause button and the screen volume, every new chat message pops up in gold on the phone, the cabine and the dirigente page (never for its own author), sees the media folder, gets a file imported in the cabine or copied in by Explorer within 5 s, a library row dragged into the service programme, a right-click menu that deletes media, a Culto tab that mirrors the service programme and projects or deletes (two taps) from it, projects from it, opens a song as a grid of slides and puts one on the screen, and searches lyrics through the cabine. Evidence: ${evidence}`);
 } finally {
   if (app) {
     // O fim do teste deixa uma música no ar, e a cabine (de propósito)

@@ -131,6 +131,25 @@ export const CAMPOS_DE_TEXTO = [
 
 export type CampoDeTexto = (typeof CAMPOS_DE_TEXTO)[number];
 
+/**
+ * O que o formulário pede: o título e a referência bíblica, nada mais.
+ *
+ * A igreja pediu artes com só isso escrito. O modelo continua com os outros
+ * campos — artes antigas e as já salvas os usam —, mas o que se gera agora
+ * passa por `soOQueOFormularioPede`: um valor antigo guardado no último
+ * briefing, ou a organização que vinha preenchida com o nome da igreja, não
+ * pode aparecer na arte sem estar na tela.
+ */
+export const CAMPOS_DO_FORMULARIO = ["titulo", "referencia"] as const satisfies readonly CampoDeTexto[];
+
+export function soOQueOFormularioPede(b: Briefing): Briefing {
+  const saida: Briefing = { ...b };
+  for (const campo of CAMPOS_DE_TEXTO) {
+    if (!(CAMPOS_DO_FORMULARIO as readonly CampoDeTexto[]).includes(campo)) saida[campo] = "";
+  }
+  return saida;
+}
+
 export const QUANTIDADE_PADRAO = 8;
 export const QUANTIDADE_MAXIMA = 16;
 

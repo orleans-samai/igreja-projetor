@@ -68,6 +68,10 @@ const MAX_CAPA = 96 * 1024;
 const MAX_SLIDE = 5000;
 /** O que o celular pode mandar para o telão pelo nome do item. */
 const TIPOS_PROJETAVEIS = ["song", "text", "media"];
+/** O que pode aparecer na programação do culto, e em que etapa. */
+const TIPOS_DO_CULTO = ["song", "bible", "media", "text", "apresentacao"];
+const ETAPAS_DO_CULTO = ["no-ar", "proximo", "concluido", "pendente"];
+const MAX_ITENS_DO_CULTO = 300;
 /**
  * Quanto o celular espera a cabine antes de desistir de um pedido.
  *
@@ -112,6 +116,17 @@ function podeFazer(permissao, minima) {
  * @param {string} bruto
  * @param {boolean} manterQuebras tabulação e quebra de linha sobrevivem
  */
+/**
+ * O que o celular enxerga da lista de mídia, resumido: quem está, com que
+ * nome e se já tem capa. Mudou isto, vale avisar; a mesma lista reenviada
+ * (troca de item no ar) não vale.
+ */
+function assinaturaDaMidia(lista) {
+  return lista
+    .map((m) => `${m.id}|${m.tipo}|${m.titulo}|${m.capa ? m.capa.length : 0}|${m.segundos}`)
+    .join("\n");
+}
+
 function semControle(bruto, manterQuebras = false) {
   let saida = "";
   for (const ch of String(bruto || "")) {
@@ -169,6 +184,8 @@ class RemoteControl {
     this.temas = [];
     /** Espelho da pasta de mídia: vídeo, áudio e imagem que a cabine enxerga. */
     this.midia = [];
+    /** A programação do culto aberta na cabine. */
+    this.culto = { nome: "", itens: [] };
     /**
      * Pedidos que só a cabine sabe responder — buscar letra na internet, abrir
      * uma letra achada. O celular fica esperando o HTTP; a cabine responde
@@ -415,8 +432,22 @@ class RemoteControl {
     return true;
   }
 
-  /** A pasta de mídia do PC, espelhada para o celular. */
+  /**
+   * A pasta de mídia do PC, espelhada para o celular.
+   *
+   * A cabine manda a lista duas vezes — primeiro só os nomes, depois com
+   * capa e duração. Item que já tinha capa e chega sem ela fica com a que
+   * tinha: sem isso, cada troca de item no ar apagava as capas do celular
+   * por um instante.
+   *
+   * Mudou de verdade (entrou, saiu, ganhou capa)? Os aparelhos abertos
+   * recebem um aviso e releem a lista na hora. O aviso não leva a lista:
+   * ver a mídia exige permissão de editor, e o fluxo de eventos chega a
+   * todos os pareados.
+   */
   atualizarMidia(lista) {
+    const anteriores = new Map(this.midia.map((m) => [m.id, m]));
+    const antes = assinaturaDaMidia(this.midia);
     this.midia = (Array.isArray(lista) ? lista : [])
       .filter((m) => m && typeof m.id === "string" && typeof m.titulo === "string")
       .slice(0, 2000)
@@ -434,7 +465,13 @@ class RemoteControl {
             ? m.capa.slice(0, MAX_CAPA)
             : "",
         segundos: Number.isFinite(m.segundos) ? Math.max(0, Math.round(m.segundos)) : 0,
-      }));
+      }))
+      .map((m) => {
+        const antigo = anteriores.get(m.id);
+        if (!antigo || m.capa) return m;
+        return { ...m, capa: antigo.capa, segundos: m.segundos || antigo.segundos };
+      });
+    if (assinaturaDaMidia(this.midia) !== antes) this._transmitir({ tipo: "midia" });
   }
 
   /**
@@ -468,6 +505,32 @@ class RemoteControl {
 
   atualizarRepertorio(lista) {
     this.repertorio = Array.isArray(lista) ? lista : [];
+  }
+
+  /**
+   * A programação do culto que está aberta na cabine, espelhada no celular.
+   *
+   * Mudou (item entrou, saiu, trocou de lugar, outro foi para o ar)? Os
+   * aparelhos abertos recebem um aviso e releem. Como na mídia, o aviso não
+   * leva a lista: ver a programação é de editor.
+   */
+  atualizarCulto(dados) {
+    const antes = JSON.stringify(this.culto);
+    const itens = Array.isArray(dados?.itens) ? dados.itens : [];
+    this.culto = {
+      nome: semControle(String(dados?.nome || "")).slice(0, 80),
+      itens: itens
+        .filter((i) => i && typeof i.id === "string" && i.id && typeof i.titulo === "string")
+        .slice(0, MAX_ITENS_DO_CULTO)
+        .map((i) => ({
+          id: i.id.slice(0, 64),
+          titulo: semControle(i.titulo).slice(0, 120),
+          tipo: TIPOS_DO_CULTO.includes(i.tipo) ? i.tipo : "outro",
+          detalhe: semControle(String(i.detalhe || "")).slice(0, 80),
+          etapa: ETAPAS_DO_CULTO.includes(i.etapa) ? i.etapa : "pendente",
+        })),
+    };
+    if (JSON.stringify(this.culto) !== antes) this._transmitir({ tipo: "culto" });
   }
 
   /**
@@ -632,6 +695,9 @@ class RemoteControl {
       if (m === "POST" && p === "/dirigente/chat") return await this._chatDirigente(req, res);
       if (m === "POST" && p === "/dirigente/aviso") return await this._avisoDirigente(req, res);
       if (m === "GET" && p === "/midia") return this._midia(res, url);
+      if (m === "GET" && p === "/culto") return this._culto(res, url);
+      if (m === "POST" && p === "/culto/remover") return await this._itemDoCulto(req, res, "remover");
+      if (m === "POST" && p === "/culto/projetar") return await this._itemDoCulto(req, res, "projetar");
       if (m === "POST" && p === "/projetar") return await this._projetar(req, res);
       if (m === "POST" && p === "/volume") return await this._volume(req, res);
       if (m === "POST" && p === "/buscar") return await this._buscar(req, res);
@@ -824,6 +890,60 @@ class RemoteControl {
     }
     if (!podeFazer(disp.permissao, "editor")) return this._semPermissao(res, "editor");
     this._json(res, 200, { ok: true, midia: this.midia });
+  }
+
+  _culto(res, url) {
+    const disp = this._sessao(url.searchParams.get("token"));
+    if (!disp) {
+      this._json(res, 401, { ok: false, erro: "Sessão expirada. Pareie novamente." });
+      return;
+    }
+    if (!podeFazer(disp.permissao, "editor")) return this._semPermissao(res, "editor");
+    this._json(res, 200, { ok: true, culto: this.culto });
+  }
+
+  /**
+   * Tirar um item da programação ou mandá-lo para o telão, pelo celular.
+   *
+   * Tirar é de editor — mexe no plano, como editar uma letra. Projetar é de
+   * quem tem o controle do telão. O item precisa estar na programação que a
+   * cabine mostrou; quem aplica é a cabine, que é dona do culto. Tirar some
+   * daqui na hora, para o celular não mostrar um item que já saiu enquanto a
+   * cabine confirma.
+   *
+   * @param {"remover" | "projetar"} acao
+   */
+  async _itemDoCulto(req, res, acao) {
+    let corpo;
+    try {
+      corpo = JSON.parse(await this._lerCorpo(req));
+    } catch {
+      corpo = {};
+    }
+    const disp = this._sessao(corpo.token);
+    if (!disp) {
+      this._json(res, 401, { ok: false, erro: "Sessão expirada. Pareie novamente." });
+      return;
+    }
+    const precisa = acao === "remover" ? "editor" : "controle";
+    if (!podeFazer(disp.permissao, precisa)) return this._semPermissao(res, precisa);
+    const id = String(corpo.id || "");
+    const item = this.culto.itens.find((i) => i.id === id);
+    if (!item) {
+      this._json(res, 404, { ok: false, erro: "Este item não está mais na programação." });
+      return;
+    }
+    if (acao === "remover") {
+      this.culto = { ...this.culto, itens: this.culto.itens.filter((i) => i.id !== id) };
+      this._transmitir({ tipo: "culto" });
+    }
+    this.onEvento?.({
+      tipo: acao === "remover" ? "culto-remover" : "culto-projetar",
+      id,
+      titulo: item.titulo,
+      de: disp.nome,
+    });
+    this._json(res, 200, { ok: true });
   }
 
   /**
