@@ -269,6 +269,11 @@ declare global {
         paginas: Uint8Array[],
       ) => Promise<{ ok: true; id: string; urls: string[] } | { ok: false; error: string }>;
       apresentacaoRemover: (id: string) => Promise<{ ok: boolean }>;
+      /** Guarda uma foto ou logo das artes em disco; devolve um endereço permanente. */
+      artesImagemSalvar: (dados: Uint8Array) => Promise<{ ok: true; url: string } | { ok: false; error: string }>;
+      /** Grava a arte exportada em Imagens\Lúmen - Artes, sem janela de salvar. */
+      artesExportar: (nome: string, dados: Uint8Array) => Promise<{ ok: true; caminho: string } | { ok: false; error: string }>;
+      artesMostrar: (caminho: string) => Promise<void>;
       apresentacaoEscolher: () => Promise<
         { ok: true; nome: string } | { ok: false; error?: string; cancelado?: boolean }
       >;

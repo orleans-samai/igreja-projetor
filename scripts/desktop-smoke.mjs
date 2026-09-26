@@ -1,5 +1,5 @@
 import { _electron as electron } from "playwright";
-import { mkdtemp, readFile, mkdir, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, mkdir, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import assert from "node:assert/strict";
@@ -304,7 +304,10 @@ try {
     { timeout: 10000 },
   );
 
-  // ---- Artes: do formulário ao desenho, sem sair do app ----
+  // ---- Artes: briefing → lote → editor → arquivo, sem sair do app ----
+  // O lote vem do gerador de regras (sem IA); as miniaturas são o mesmo
+  // desenho Konva que vira arquivo; o arquivo sai com o tamanho exato do
+  // formato, gravado na pasta de artes — aqui, dentro do perfil de teste.
   await page.getByRole("button", { name: "Artes", exact: true }).click();
   const dialogoArtes = page.getByRole("dialog", { name: "Artes" });
   await dialogoArtes.waitFor({ state: "visible", timeout: 10000 });
@@ -312,34 +315,58 @@ try {
   await page.getByRole("button", { name: "Conferência", exact: true }).click();
   await page.getByLabel("Nome do evento").fill("Conferência de Jovens");
   await page.getByLabel("Data", { exact: true }).fill("12 de março");
-  await page.getByRole("button", { name: "Escolher o formato" }).click();
-  await page.getByRole("button", { name: /^Instagram quadrado/ }).click();
-  // Doze desenhos com os mesmos dados, cada um desenhado pelo renderizador
-  // de verdade — a miniatura é o mesmo SVG do arquivo.
-  const opcoes = page.getByRole("button", { name: /^Escolher o desenho / });
-  await opcoes.first().waitFor({ timeout: 10000 });
-  assert.equal(await opcoes.count(), 12);
-  const desenhos = await page.evaluate(
-    () => document.querySelectorAll('[role="dialog"] svg[viewBox="0 0 1080 1080"]').length,
-  );
-  assert.ok(desenhos >= 12, `esperava 12 desenhos, achei ${desenhos}`);
-  await opcoes.first().click();
-
-  // O editor abre com o mesmo desenho e com o texto do formulário dentro.
-  // Espera o texto aparecer em vez de amostrar um quadro: o SVG entra um
-  // tique depois do botão, e a tipografia sorteada pode pôr tudo em caixa
-  // alta — a comparação ignora caixa e espaço entre as linhas.
-  await page.getByRole("button", { name: "Salvar", exact: true }).waitFor({ timeout: 10000 });
+  await page.getByRole("button", { name: "Gerar artes" }).click();
   await page.waitForFunction(
-    () => {
-      const svg = document.querySelector('[role="dialog"] svg[viewBox="0 0 1080 1080"]');
-      const texto = (svg?.textContent ?? "").toLocaleUpperCase("pt-BR").replace(/\s+/g, "");
-      return texto.includes("CONFERÊNCIADEJOVENS");
-    },
+    () => document.querySelectorAll("[data-opcao-de-arte] img[src^='data:image/jpeg']").length === 8,
+    null,
+    { timeout: 45000 },
+  );
+  const rotulos = await page.$$eval("[data-opcao-de-arte] span.truncate", (els) => els.map((e) => e.textContent));
+  assert.equal(rotulos.length, 8);
+  assert.ok(new Set(rotulos).size >= 5, `o lote veio repetido: ${rotulos.join(", ")}`);
+  await page.screenshot({ animations: "disabled", path: path.join(evidence, "artes-galeria.png") });
+
+  // O editor abre com a composição e o texto do formulário numa camada.
+  await page.getByRole("button", { name: /^Editar / }).first().click();
+  await page.locator("[data-editor-de-arte] canvas").first().waitFor({ timeout: 20000 });
+  await page.waitForFunction(
+    () => (document.querySelector('[aria-label="Camadas"]')?.textContent ?? "").toLocaleUpperCase("pt-BR").includes("CONFERÊNCIA"),
     null,
     { timeout: 10000 },
   );
+  await page.getByRole("button", { name: "Salvar", exact: true }).click();
+  await esperarAsync(
+    page,
+    async () => (await window.lumenDesktop.storageGet("lumen-artes-v1") ?? "").includes("Conferência de Jovens"),
+    undefined,
+    { oQue: "a arte salva chegar ao disco" },
+  );
+  await page.screenshot({ animations: "disabled", path: path.join(evidence, "artes-editor.png") });
 
+  // Exportar: PNG e JPEG com as dimensões do formato, lidas do arquivo.
+  const pastaArtes = path.join(profile, "artes-exportadas");
+  const arquivosDaPasta = async () => (await readdir(pastaArtes).catch(() => [])).sort();
+  for (const [menu, ext] of [[/^PNG · 1080×1080/, ".png"], [/^JPEG · 1080×1080/, ".jpg"]]) {
+    const antes = (await arquivosDaPasta()).length;
+    await page.getByRole("button", { name: "Exportar", exact: true }).click();
+    await page.getByRole("menuitem", { name: menu }).click();
+    const fimDaEspera = Date.now() + 20000;
+    while ((await arquivosDaPasta()).length === antes && Date.now() < fimDaEspera) await page.waitForTimeout(250);
+    const novo = (await arquivosDaPasta()).find((a) => a.endsWith(ext));
+    assert.ok(novo, `a exportação ${ext} não gravou arquivo`);
+    const bytes = await readFile(path.join(pastaArtes, novo));
+    let dims;
+    if (ext === ".png") dims = [bytes.readUInt32BE(16), bytes.readUInt32BE(20)];
+    else {
+      // JPEG: o primeiro marcador SOF traz altura e largura.
+      let i = 2;
+      while (i < bytes.length && !(bytes[i] === 0xff && bytes[i + 1] >= 0xc0 && bytes[i + 1] <= 0xc2)) i += 2 + bytes.readUInt16BE(i + 2);
+      dims = [bytes.readUInt16BE(i + 7), bytes.readUInt16BE(i + 5)];
+    }
+    assert.deepEqual(dims, [1080, 1080], `${novo} saiu com ${dims.join("×")}`);
+  }
+
+  await page.getByRole("button", { name: "Fechar a arte" }).click();
   await page.keyboard.press("Escape");
   await dialogoArtes.waitFor({ state: "hidden", timeout: 10000 });
 
@@ -1001,6 +1028,16 @@ try {
       mobile: false,
     });
     await page.waitForTimeout(600);
+    // Espera o desenho certo para esta largura antes de medir: colunas a
+    // partir de 1280, abas abaixo. A troca vem de um evento do navegador e
+    // pode levar um instante; 5 s sem trocar já é defeito.
+    await page
+      .waitForFunction(
+        (colunas) => (document.querySelectorAll('[role="separator"]').length > 0) === colunas,
+        largura >= 1280,
+        { timeout: 5000 },
+      )
+      .catch(() => {});
     const rolagem = await page.evaluate(() => {
       const d = document.documentElement;
       const chat = document.querySelector('[aria-label="Chat com os celulares"]');
@@ -1043,6 +1080,8 @@ try {
     // com o repertório, o culto, o que está no ar e os fundos à vista.
     if (largura >= 1280) {
       assert.ok(desenho.colunas, `${onde} comporta as colunas e mesmo assim abriu em abas`);
+    } else {
+      assert.ok(desenho.abas, `${onde} não comporta as colunas e mesmo assim ficou em colunas`);
     }
 
     // As abas do repertório inteiras, com o botão dourado da Bíblia ao
@@ -1315,7 +1354,7 @@ try {
   assert.deepEqual(errors, []);
   const disk = JSON.parse(await readFile(path.join(profile, "data", "library.json"), "utf8"));
   assert.ok(disk.values["lumen-v2"]);
-  console.log(`PASS: offline, fonts, Bible (gold button opens the Bible screen, five versions, New-Testament-only notice, omitted verse lands on the next), restart persistence, projector, media ranges, preflight, Auto-Slide, remote control (LAN, entrada por nome, nome fixo na rede), update check, review before apply, 1366×768 at 100/125/150% and 800×600, no scroll and exactly one layout at ten sizes from 800×600 to 2560×1440, including every pixel around the 1280 cutover and the chat stays on screen, church logo and name reachable from the menu bar, art studio makes a design from a form, VFX has three modes and a dynamic video becomes a real file in the Vídeos tab, local AI off by default and the cabine independent of it, dirigente page signs in, sends a file, chats and files a notice, and its PowerPoint and PDF become slides in the service programme, video as a theme background, find a song by a lyric excerpt, right-click on lyrics edits or removes, double-click to project, fixed text only in the footer, YouTube collapses the lyrics strip, phone has one play/pause button and the screen volume, every new chat message pops up in gold on the phone, the cabine and the dirigente page (never for its own author), sees the media folder, projects from it, opens a song as a grid of slides and puts one on the screen, and searches lyrics through the cabine. Evidence: ${evidence}`);
+  console.log(`PASS: offline, fonts, Bible (gold button opens the Bible screen, five versions, New-Testament-only notice, omitted verse lands on the next), restart persistence, projector, media ranges, preflight, Auto-Slide, remote control (LAN, entrada por nome, nome fixo na rede), update check, review before apply, 1366×768 at 100/125/150% and 800×600, no scroll and exactly one layout at ten sizes from 800×600 to 2560×1440, including every pixel around the 1280 cutover and the chat stays on screen, church logo and name reachable from the menu bar, art studio makes a batch of 8 distinct Konva designs from a briefing, opens one in the editor, saves it and exports PNG and JPEG at exactly 1080×1080, VFX has three modes and a dynamic video becomes a real file in the Vídeos tab, local AI off by default and the cabine independent of it, dirigente page signs in, sends a file, chats and files a notice, and its PowerPoint and PDF become slides in the service programme, video as a theme background, find a song by a lyric excerpt, right-click on lyrics edits or removes, double-click to project, fixed text only in the footer, YouTube collapses the lyrics strip, phone has one play/pause button and the screen volume, every new chat message pops up in gold on the phone, the cabine and the dirigente page (never for its own author), sees the media folder, projects from it, opens a song as a grid of slides and puts one on the screen, and searches lyrics through the cabine. Evidence: ${evidence}`);
 } finally {
   if (app) {
     // O fim do teste deixa uma música no ar, e a cabine (de propósito)

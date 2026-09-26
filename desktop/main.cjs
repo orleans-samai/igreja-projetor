@@ -16,6 +16,7 @@ const updater = require("./updater.cjs");
 const { abortou } = require("./navegacao.cjs");
 const { alturaDaCabine, larguraDaCabine } = require("./janela.cjs");
 const apresentacoes = require("./apresentacoes.cjs");
+const artesImagens = require("./artes-imagens.cjs");
 
 
 const ORIGIN = "lumen://app";
@@ -102,6 +103,8 @@ async function startServer() {
       // As imagens de cada slide de apresentação importada. Mesmo desenho
       // da mídia: o caminho no disco é montado só lá dentro.
       if (pathname.startsWith("/__apresentacao/")) file = await apresentacoes.resolver(pathname);
+      // Fotos e logos das artes: o endereço sobrevive ao app fechar.
+      if (pathname.startsWith("/__artes/")) file = await artesImagens.resolver(pathname);
       if (pathname.startsWith("/__pacotes/")) file = await packages.resolvePackage(request.url, packageRoot);
     } catch { /* url malformada cai no 404 */ }
     if (!file) file = await resolveAsset(wwwRoot(), request.url);
@@ -395,6 +398,10 @@ if (!gotLock) {
     await storage.init();
     media.init(dataDir);
     apresentacoes.init(dataDir);
+    artesImagens.init(dataDir);
+    // No teste, a exportação fica no perfil isolado — nunca na pasta de
+    // Imagens de quem roda o teste.
+    artesImagens.definirExportacao(smokeTest ? path.join(dataDir, "artes-exportadas") : path.join(app.getPath("pictures"), "Lúmen - Artes"));
     await media.ensure();
     origin = await startServer();
     screen.on("display-added", displaysChanged);
@@ -512,6 +519,11 @@ handle("lumen:apresentacao-pptx", (nome) => apresentacoes.importarPptx(nome));
 handle("lumen:apresentacao-pdf", (nome) => apresentacoes.lerPdf(nome));
 handle("lumen:apresentacao-paginas", (paginas) => apresentacoes.salvarPaginas(paginas));
 handle("lumen:apresentacao-remover", (id) => apresentacoes.remover(id));
+handle("lumen:artes-imagem-salvar", (dados) => artesImagens.salvar(dados));
+handle("lumen:artes-exportar", (nome, dados) => artesImagens.exportar(nome, dados));
+handle("lumen:artes-mostrar", (caminho) => {
+  if (artesImagens.dentroDaExportacao(caminho)) shell.showItemInFolder(caminho);
+});
 /**
  * Importar da cabine, sem dirigente: o operador escolhe o arquivo e ele
  * entra pela mesma porta do que chega pela rede. Um caminho só decide

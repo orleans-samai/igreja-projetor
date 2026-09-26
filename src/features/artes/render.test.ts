@@ -1,38 +1,6 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { escapar, paraSvg, quebrarTexto } from "./render.ts";
-import { montar } from "./variacoes.ts";
-import { FORMATOS } from "./formatos.ts";
-import { dadosVazios, type DadosDoEvento } from "./types.ts";
-
-/**
- * O texto do SVG, com as linhas juntas.
- *
- * O título é quebrado em `<tspan>` — um por linha — e agora ele é grande
- * o bastante para caber em duas. Procurar a frase inteira no SVG cru
- * passou a falhar por causa da quebra, que é o comportamento certo. O que
- * interessa é que as palavras estejam lá, na ordem, e escapadas.
- */
-function textoDoSvg(svg: string): string {
-  return [...svg.matchAll(/<tspan[^>]*>([^<]*)<\/tspan>/g)].map((m) => m[1]).join(" ");
-}
-
-function dados(extra: Partial<DadosDoEvento> = {}): DadosDoEvento {
-  return { ...dadosVazios(), titulo: "Culto da Benção", data: "12 de março", ...extra };
-}
-
-function arte(semente = 1, formatoId = "quadrado", d = dados()) {
-  const f = FORMATOS.find((x) => x.id === formatoId)!;
-  return montar({
-    id: "a1",
-    nome: "T",
-    dados: d,
-    semente,
-    formatoId: f.id,
-    largura: f.largura,
-    altura: f.altura,
-  });
-}
+import { escapar, quebrarTexto } from "./render.ts";
 
 describe("escapar", () => {
   test("o que vem do formulário não vira marcação", () => {
@@ -67,61 +35,5 @@ describe("quebrarTexto", () => {
   test("vazio não vira linha em branco", () => {
     assert.deepEqual(quebrarTexto("", 400, 40), []);
     assert.deepEqual(quebrarTexto("   \n  ", 400, 40), []);
-  });
-});
-
-describe("paraSvg", () => {
-  test("sai um SVG válido, no tamanho do formato", () => {
-    const svg = paraSvg(arte(1, "story"));
-    assert.match(svg, /^<svg xmlns="http:\/\/www\.w3\.org\/2000\/svg"/);
-    assert.match(svg, /width="1080" height="1920" viewBox="0 0 1080 1920"/);
-    assert.match(svg, /<\/svg>$/);
-  });
-
-  test("a miniatura é o mesmo desenho num quadro menor", () => {
-    // Miniatura que mente é pior que miniatura feia: o viewBox não muda.
-    const cheio = paraSvg(arte(1), 1);
-    const mini = paraSvg(arte(1), 0.15);
-    assert.match(mini, /width="162" height="162"/);
-    assert.equal(
-      mini.replace(/width="\d+" height="\d+"/, ""),
-      cheio.replace(/width="\d+" height="\d+"/, ""),
-    );
-  });
-
-  test("o título aparece no desenho", () => {
-    assert.match(textoDoSvg(paraSvg(arte())), /Culto da Benção/);
-  });
-
-  test("texto do formulário não injeta marcação no arquivo", () => {
-    const svg = paraSvg(arte(1, "quadrado", dados({ titulo: '<script>x</script>' })));
-    assert.ok(!svg.includes("<script>"), "injetou marcação no SVG");
-    assert.match(svg, /&lt;script&gt;/);
-  });
-
-  test("elemento oculto não é desenhado", () => {
-    const doc = arte();
-    const comOculto = {
-      ...doc,
-      elementos: doc.elementos.map((e) =>
-        e.tipo === "texto" && e.campo === "titulo" ? { ...e, oculto: true } : e,
-      ),
-    };
-    assert.ok(!textoDoSvg(paraSvg(comOculto)).includes("Culto da Benção"));
-  });
-
-  test("todo formato desenha, e nenhum sai vazio", () => {
-    for (const f of FORMATOS) {
-      const svg = paraSvg(arte(3, f.id));
-      assert.ok(svg.length > 200, f.id);
-      assert.match(svg, /<text /, f.id);
-      assert.match(svg, /<rect |<image /, f.id);
-    }
-  });
-
-  test("foto de fundo entra com véu por cima", () => {
-    const svg = paraSvg(arte(2, "quadrado", dados({ imagem: "lumen://foto.jpg" })));
-    assert.match(svg, /<image href="lumen:\/\/foto\.jpg"/);
-    assert.match(svg, /fill="#000000" opacity="0\.45"/);
   });
 });
