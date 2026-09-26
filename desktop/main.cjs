@@ -220,6 +220,23 @@ function createWindow(route, opts = {}) {
   win.webContents.on("will-navigate", (event, url) => {
     if (!url.startsWith(ORIGIN + "/")) event.preventDefault();
   });
+  // A cabine segura o fechamento enquanto o culto está no ar. Sem este
+  // aviso, o Electron cancelava o fechamento em silêncio: o X da janela
+  // simplesmente não fazia nada, e sair do app no fim do culto exigia
+  // adivinhar que era preciso parar a projeção antes.
+  win.webContents.on("will-prevent-unload", (event) => {
+    const escolha = dialog.showMessageBoxSync(win, {
+      type: "warning",
+      title: "Lúmen",
+      message: "O culto está no ar.",
+      detail: "Fechar agora tira a projeção do telão.",
+      buttons: ["Continuar no ar", "Fechar mesmo assim"],
+      defaultId: 0,
+      cancelId: 0,
+    });
+    // preventDefault aqui ignora o aviso da página e deixa fechar.
+    if (escolha === 1) event.preventDefault();
+  });
   win.webContents.setWindowOpenHandler(({ url }) => {
     try {
       const u = new URL(url);

@@ -36,14 +36,8 @@ export function avisarMensagem(m: MensagemChat): void {
           useChatStore.getState().abrir(true);
           toast.dismiss(id);
         }}
-        className="flex w-[min(420px,calc(100vw-2rem))] items-start gap-3 rounded-xl px-4 py-3 text-left shadow-[0_18px_40px_rgba(0,0,0,.45)]"
-        style={{
-          // Ouro de verdade, não o âmbar do "no ar": o âmbar é a cor que
-          // diz "isto está no telão", e um recado não está no telão.
-          background: "linear-gradient(135deg, #f4d58a 0%, #e0b352 55%, #c9962f 100%)",
-          color: "#1d1605",
-          border: "1px solid rgba(255, 236, 180, .7)",
-        }}
+        // O dourado mora em `.ouro` (styles.css), junto com o porquê.
+        className="ouro flex w-[min(420px,calc(100vw-2rem))] items-start gap-3 rounded-xl border border-[rgb(255_236_180/0.7)] px-4 py-3 text-left shadow-[0_18px_40px_rgba(0,0,0,.45)]"
       >
         <span className="mt-0.5 shrink-0 rounded-full bg-[rgba(29,22,5,.12)] p-1.5">
           {m.audio ? <Mic className="size-4" aria-hidden /> : <MessageCircle className="size-4" aria-hidden />}

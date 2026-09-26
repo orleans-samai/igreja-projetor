@@ -1,14 +1,15 @@
 /**
- * Local Bible engine. The built-in text is Almeida 1819 (public domain).
- * Extra versions the church legally owns can be imported as JSON:
+ * Local Bible engine. Five versions ship with the app, all free to project
+ * (the licenses are in public/bible/LICENCAS.txt). Extra versions the church
+ * legally owns can be imported as JSON:
  *   { id, name, license, books: [{ i, o, c: string[][] }] }
  * or the midvash/bible-data shape ({ books: [{ bookId, book, chapters }] }).
  */
 
-import { bookById, bookByOsis } from "./bible-books";
-import { fold, nid } from "./fold";
-import { parseBibleRef, formatRef, type ParsedRef } from "./bible-ref";
-import type { CompactBible, CompactBook, Slide } from "./types";
+import { bookById, bookByOsis } from "./bible-books.ts";
+import { fold, nid } from "./fold.ts";
+import { parseBibleRef, formatRef, type ParsedRef } from "./bible-ref.ts";
+import type { CompactBible, CompactBook, Slide } from "./types.ts";
 
 export const BUILTIN_BIBLES = [
   { id: "almeida-1819", url: "/bible/almeida-1819.json", name: "Almeida 1819", license: "domínio público" },
@@ -17,6 +18,27 @@ export const BUILTIN_BIBLES = [
     url: "/bible/blivre-2018.json",
     name: "Bíblia Livre (BLIVRE)",
     license: "CC BY 4.0 — Diego Santos, Mario Sérgio e Marco Teles (biblialivre.org)",
+  },
+  // As três de baixo vêm do eBible.org, geradas por scripts/gerar-biblias.mjs.
+  {
+    id: "nvb-2007",
+    url: "/bible/nvb-2007.json",
+    name: "Nova Bíblia Viva",
+    license: "Biblica® Open Nova Bíblia Viva™ © 2007, 2010 Biblica, Inc. — CC BY-SA 4.0",
+  },
+  {
+    id: "bpm-2026",
+    url: "/bible/bpm-2026.json",
+    name: "Bíblia Portuguesa Mundial",
+    license: "domínio público — eBible.org",
+  },
+  {
+    // Só o Novo Testamento: quem pede Gênesis nela é avisado na tela da
+    // Bíblia, em vez de ver a lista vazia.
+    id: "blt-2022",
+    url: "/bible/blt-2022.json",
+    name: "Bíblia Livre Para Todos (NT)",
+    license: "© 2022 Free Bible Ministry, Inc. — CC BY-SA 4.0 — eBible.org",
   },
 ] as const;
 
@@ -175,6 +197,31 @@ export function getBible(versionId: string): CompactBible | null {
   return builtins.get(versionId) ?? extras.get(versionId) ?? builtins.get("almeida-1819") ?? null;
 }
 
+/**
+ * Deixa a versão pronta para uso. Devolve false se ela não existe.
+ *
+ * Tem que vir antes de a versão virar a escolhida. Com duas versões, as
+ * duas desciam do disco quando a tela da Bíblia abria; com cinco (14 MB),
+ * só desce a que alguém escolhe. E `getBible` cai na Almeida quando não
+ * acha a pedida: trocar antes de carregar poria no telão o texto de uma
+ * com o nome da outra embaixo.
+ */
+export async function carregarVersao(id: string): Promise<boolean> {
+  if (BUILTIN_BIBLES.some((b) => b.id === id)) {
+    await loadBuiltinBible(id);
+    return true;
+  }
+  if (extras.has(id)) return true;
+  await hydrateExtraVersions();
+  return extras.has(id);
+}
+
+/** Se a versão traz o livro — a Bíblia Livre Para Todos só tem o Novo Testamento. */
+export function versaoTemLivro(versionId: string, bookId: number): boolean {
+  const bible = getBible(versionId);
+  return !!bible?.books.some((b) => b.i === bookId && b.c.length > 0);
+}
+
 export function listVersions(): { id: string; name: string; license: string }[] {
   const list: { id: string; name: string; license: string }[] = BUILTIN_BIBLES.map(
     ({ id, name, license }) => ({ id, name, license }),
@@ -229,6 +276,10 @@ export function chapterSlides(
   const verses = book?.c[chapter - 1] ?? [];
   const slides: Slide[] = [];
   verses.forEach((text, i) => {
+    // Versículo que a tradução omite (Mateus 17:21 na NVB e na BLT) vem
+    // vazio para os seguintes ficarem no número certo. No telão ele não
+    // vira slide: seria só a referência sobre uma tela em branco.
+    if (!text.trim()) return;
     const verse = i + 1;
     const reference = formatRef(meta?.name ?? "Livro", chapter, verse);
     const wrapped = wrapVerse(text, maxLines);

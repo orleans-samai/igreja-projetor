@@ -15,12 +15,16 @@ import { OptimizeButton } from "@/components/operator/optimize-bar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
+  BUILTIN_BIBLES,
+  carregarVersao,
   chapterCount,
   chapterVerseCount,
   chapterVerses,
   hydrateExtraVersions,
+  listVersions,
   loadBuiltinBible,
   searchVerses,
+  versaoTemLivro,
 } from "@/lib/bible";
 import {
   BOOKS,
@@ -54,11 +58,14 @@ function Testamento({
   livros,
   atual,
   aoEscolher,
+  temLivro,
 }: {
   titulo: string;
   livros: typeof BOOKS;
   atual: number;
   aoEscolher: (id: number) => void;
+  /** Livro que a versão escolhida não traz fica apagado — continua clicável e explica o porquê. */
+  temLivro: (id: number) => boolean;
 }) {
   if (livros.length === 0) return null;
   return (
@@ -67,24 +74,31 @@ function Testamento({
         {titulo} <span className="tnum text-subtle">{livros.length}</span>
       </Rotulo>
       <div className="bible-mosaic mt-1.5">
-        {livros.map((book) => (
-          <button
-            key={book.id}
-            type="button"
-            title={book.name}
-            aria-label={book.name}
-            aria-pressed={book.id === atual}
-            data-on={book.id === atual}
-            onClick={() => aoEscolher(book.id)}
-            style={
-              { "--secao": `var(--color-bible-${bookSection(book.id)})` } as React.CSSProperties
-            }
-            className="bible-tile focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
-          >
-            <span className="bible-tile-abbr">{bookShort(book)}</span>
-            <span className="bible-tile-name">{bookTinyName(book)}</span>
-          </button>
-        ))}
+        {livros.map((book) => {
+          const tem = temLivro(book.id);
+          return (
+            <button
+              key={book.id}
+              type="button"
+              title={tem ? book.name : `${book.name} — não está nesta versão`}
+              aria-label={tem ? book.name : `${book.name}, não está nesta versão`}
+              data-ausente={!tem || undefined}
+              aria-pressed={book.id === atual}
+              data-on={book.id === atual}
+              onClick={() => aoEscolher(book.id)}
+              style={
+                { "--secao": `var(--color-bible-${bookSection(book.id)})` } as React.CSSProperties
+              }
+              className={cn(
+                "bible-tile focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring",
+                !tem && "opacity-35",
+              )}
+            >
+              <span className="bible-tile-abbr">{bookShort(book)}</span>
+              <span className="bible-tile-name">{bookTinyName(book)}</span>
+            </button>
+          );
+        })}
       </div>
     </div>
   );
@@ -131,7 +145,9 @@ export function BibleWorkspace({
 
   useEffect(() => {
     let alive = true;
-    Promise.all([loadBuiltinBible(), loadBuiltinBible("blivre-2018"), hydrateExtraVersions()])
+    // A Almeida é a rede de segurança de `getBible`; a escolhida é a que a
+    // tela mostra. As outras só descem do disco quando alguém as escolhe.
+    Promise.all([loadBuiltinBible(), hydrateExtraVersions(), carregarVersao(versionId)])
       .then(() => {
         if (!alive) return;
         setReady(true);
@@ -158,6 +174,8 @@ export function BibleWorkspace({
     );
   }, [filtro]);
   const currentRef = meta ? `${meta.name} ${cursor.chapter}:${cursor.verse}` : "";
+  const livroFalta = ready && !versaoTemLivro(versionId, cursor.bookId);
+  const nomeDaVersao = listVersions().find((v) => v.id === versionId);
   const loved = favorites.includes(currentRef);
   const recentBible = useMemo(
     () => logs.filter((l) => l.kind === "bible").slice(0, 12),
@@ -277,13 +295,17 @@ export function BibleWorkspace({
           {meta?.name}: {cursor.chapter}
         </p>
         <select
-          className="field w-40"
+          className="field w-52 max-w-full"
           value={versionId}
           onChange={(e) => changeVersion(e.target.value)}
           aria-label="Versão da Bíblia"
+          title={nomeDaVersao ? `${nomeDaVersao.name} · ${nomeDaVersao.license}` : undefined}
         >
-          <option value="almeida-1819">Almeida 1819</option>
-          <option value="blivre-2018">Bíblia Livre (BLIVRE)</option>
+          {BUILTIN_BIBLES.map((v) => (
+            <option key={v.id} value={v.id}>
+              {v.name}
+            </option>
+          ))}
           {extra.map((v) => (
             <option key={v.id} value={v.id}>
               {v.name}
@@ -397,6 +419,21 @@ export function BibleWorkspace({
       )}
       {err && <p className="px-4 py-10 text-body text-danger">{err}</p>}
 
+      {livroFalta && (
+        <div
+          role="status"
+          className="animate-swap-in flex flex-wrap items-center gap-2 border-b border-border bg-surface px-4 py-2 text-body text-muted"
+        >
+          <span className="min-w-0 flex-1">
+            A {nomeDaVersao?.name ?? "versão escolhida"} não traz {meta?.name ?? "este livro"} — ela
+            só tem o Novo Testamento.
+          </span>
+          <Button size="sm" variant="secondary" onClick={() => changeVersion("almeida-1819")}>
+            Abrir na Almeida 1819
+          </Button>
+        </div>
+      )}
+
       {ready && (
         <div className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[minmax(24rem,34%)_1fr]">
           <section className="flex min-h-0 flex-col border-b border-border md:border-b-0 md:border-r">
@@ -436,9 +473,17 @@ export function BibleWorkspace({
                         <span aria-hidden className="absolute inset-y-0 left-0 w-0.5 bg-fg" />
                       )}
                       <span className="w-6 shrink-0 text-caption tnum text-subtle">{v.n}</span>
-                      <span className="min-w-0 flex-1 text-body leading-relaxed text-fg">
-                        {v.text}
-                      </span>
+                      {v.text ? (
+                        <span className="min-w-0 flex-1 text-body leading-relaxed text-fg">
+                          {v.text}
+                        </span>
+                      ) : (
+                        // Vazio de propósito: a tradução segue os manuscritos
+                        // mais antigos, que não trazem este versículo.
+                        <span className="min-w-0 flex-1 text-body italic text-subtle">
+                          não consta nesta tradução
+                        </span>
+                      )}
                       {done && <Check className="size-3.5 shrink-0 text-ok" />}
                     </button>
                   </li>
@@ -495,12 +540,14 @@ export function BibleWorkspace({
               livros={livros.filter((b) => b.id <= 39)}
               atual={cursor.bookId}
               aoEscolher={(id) => go(id, 1, 1)}
+              temLivro={(id) => versaoTemLivro(versionId, id)}
             />
             <Testamento
               titulo="Novo Testamento"
               livros={livros.filter((b) => b.id > 39)}
               atual={cursor.bookId}
               aoEscolher={(id) => go(id, 1, 1)}
+              temLivro={(id) => versaoTemLivro(versionId, id)}
             />
 
             {livros.length === 0 && (

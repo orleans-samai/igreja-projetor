@@ -8,13 +8,6 @@ export interface SegmentedItem<T extends string> {
   /** Contagem à direita do rótulo — nunca inventa número, só mostra o que existe. */
   count?: number;
   /**
-   * Puxa o olho para esta aba quando ela não está escolhida.
-   *
-   * Existe para uma aba que o operador procura no meio do culto e não pode
-   * caçar — a Bíblia, quando o pregador pede um versículo na hora.
-   */
-  destaque?: boolean;
-  /**
    * Aba que existe mas não abre agora.
    *
    * Continua na fileira, apagada, em vez de sumir: uma aba que some leva
@@ -129,16 +122,15 @@ export function Segmented<T extends string>({
             onClick={() => onChange(item.value)}
             className={cn(
               "relative z-10 inline-flex h-7 min-w-0 items-center justify-center gap-1.5 rounded-sm",
-              full ? "px-1" : "px-2.5",
+              // Largura total divide o espaço em partes iguais: o respiro
+              // lateral mínimo é o que deixa "Letras" e "Avisos" inteiros
+              // numa coluna de 200px.
+              full ? "px-0.5" : "px-2.5",
               "text-secondary font-medium whitespace-nowrap",
               "transition-colors duration-[var(--motion-fast)] ease-[var(--ease-out)]",
               "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring",
               "[&_svg]:size-3.5 [&_svg]:shrink-0",
-              on
-                ? "text-fg"
-                : item.destaque
-                  ? "text-accent hover:text-accent"
-                  : "text-muted hover:text-fg",
+              on ? "text-fg" : "text-muted hover:text-fg",
               item.disabled && "cursor-default opacity-45 hover:text-muted",
               full && "flex-1",
             )}

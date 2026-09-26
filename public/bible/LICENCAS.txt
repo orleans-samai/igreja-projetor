@@ -1,0 +1,44 @@
+Bíblias que acompanham o Lúmen
+==============================
+
+Todas podem ser projetadas no culto sem pedir permissão a ninguém. As de
+licença CC pedem uma coisa só: dizer de quem é o texto — o nome da versão
+já sai no rodapé do slide, e está escrito aqui por extenso.
+
+Nenhuma palavra do texto foi mudada. O que se fez foi trocar o formato
+(de um versículo por linha para o JSON que o app lê) e deixar de fora os
+livros deuterocanônicos, que o app não tem como mostrar.
+
+
+almeida-1819.json — Almeida 1819
+  Domínio público.
+
+blivre-2018.json — Bíblia Livre (BLIVRE)
+  Copyright © Diego Santos, Mario Sérgio e Marco Teles (biblialivre).
+  Licença Creative Commons Atribuição 4.0 (CC BY 4.0):
+  https://creativecommons.org/licenses/by/4.0/
+
+nvb-2007.json — Nova Bíblia Viva
+  Biblica® Open Nova Bíblia Viva™
+  Copyright © 2007, 2010 by Biblica, Inc.
+  Licença Creative Commons Atribuição-CompartilhaIgual 4.0 (CC BY-SA 4.0):
+  https://creativecommons.org/licenses/by-sa/4.0/
+  “Biblica” é uma marca registrada no Escritório de Patentes e Marcas dos
+  EUA por Biblica, Inc. Usado com permissão.
+  Original gratuito em https://www.biblica.com e https://open.bible
+  Arquivo de origem: https://ebible.org/Scriptures/poronbv_vpl.zip
+
+bpm-2026.json — Bíblia Portuguesa Mundial
+  Domínio público. A tradução ainda está em revisão pelos autores.
+  Arquivo de origem: https://ebible.org/Scriptures/porbrbsl_vpl.zip
+  Única mudança além do formato: o espaço solto que ficava antes de
+  vírgula e ponto, onde o eBible tirou uma nota de rodapé, foi removido.
+
+blt-2022.json — Bíblia Livre Para Todos (só o Novo Testamento)
+  Copyright © 2022 Free Bible Ministry, Inc.
+  Licença Creative Commons Atribuição-CompartilhaIgual 4.0 (CC BY-SA 4.0):
+  https://creativecommons.org/licenses/by-sa/4.0/
+  Arquivo de origem: https://ebible.org/Scriptures/porblt_vpl.zip
+
+Para gerar de novo as três do eBible:
+  node --experimental-strip-types scripts/gerar-biblias.mjs <pasta-com-os-vpl>

@@ -1,5 +1,4 @@
 import {
-  BookOpen,
   FileJson,
   FolderCog,
   FolderOpen,
@@ -20,13 +19,6 @@ import { Input } from "@/components/ui/input";
 import { Empty } from "@/components/ui/panel";
 import { Segmented } from "@/components/ui/segmented";
 import { Hint } from "@/components/ui/tooltip";
-import { BOOKS } from "@/lib/bible-books";
-import {
-  chapterCount,
-  hydrateExtraVersions,
-  loadBuiltinBible,
-  searchVerses,
-} from "@/lib/bible";
 import { cn } from "@/lib/cn";
 import { trechoQueBate } from "@/lib/busca-trecho";
 import { fold, nid } from "@/lib/fold";
@@ -56,11 +48,20 @@ const TABS = [
   { value: "songs", label: "Letras" },
   { value: "texts", label: "Avisos" },
   { value: "media", label: "Mídia" },
-  // A Bíblia puxa o olho: é a aba que o operador procura no meio do culto,
-  // quando o pregador pede um versículo na hora, e a única que não pode ser
-  // caçada entre as outras.
-  { value: "bible", label: "Bíblia", destaque: true },
-] as const satisfies readonly { value: LibraryTab; label: string; destaque?: boolean }[];
+] as const satisfies readonly { value: LibraryTab; label: string }[];
+
+type AbaDoRepertorio = (typeof TABS)[number]["value"];
+
+/**
+ * A aba que o repertório mostra.
+ *
+ * A Bíblia deixou de ser aba: o botão dourado abre a tela dela direto. Quem
+ * saiu do app com a aba "bible" escolhida (ou a "history", que nunca teve
+ * lista aqui) volta para as letras, e não para um painel vazio.
+ */
+function abaVisivel(tab: LibraryTab): AbaDoRepertorio {
+  return tab === "texts" || tab === "media" ? tab : "songs";
+}
 
 /**
  * O + que põe o item no culto, sem tirar a mão do mouse.
@@ -142,15 +143,13 @@ export function LibraryPanel({
   onWebLyrics,
   onOpenBible,
   searchRef,
-  bibleRef,
 }: {
   onNewSong: () => void;
   onWebLyrics: () => void;
   onOpenBible: () => void;
   searchRef?: Ref<HTMLInputElement>;
-  bibleRef?: Ref<HTMLInputElement>;
 }) {
-  const tab = useLumenStore((s) => s.libraryTab);
+  const tab = abaVisivel(useLumenStore((s) => s.libraryTab));
   const setTab = useLumenStore((s) => s.setTab);
   const search = useLumenStore((s) => s.search);
   const setSearch = useLumenStore((s) => s.setSearch);
@@ -184,34 +183,55 @@ export function LibraryPanel({
       </div>
 
       <div className="space-y-2 border-b border-border p-2">
-        <Segmented
-          label="Tipo de conteúdo"
-          full
-          items={TABS}
-          value={tab}
-          onChange={(v) => setTab(v)}
-        />
-        {tab !== "bible" && (
-          <div className="relative">
-            <Search
-              aria-hidden
-              className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-subtle"
-            />
-            <Input
-              ref={searchRef}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Pesquisar no repertório"
-              className="pl-8"
-              aria-label="Buscar no repertório"
-            />
-          </div>
-        )}
+        <div className="flex items-center gap-0.5">
+          <Segmented
+            label="Tipo de conteúdo"
+            full
+            className="min-w-0 flex-1"
+            items={TABS}
+            value={tab}
+            onChange={(v) => setTab(v)}
+          />
+          {/* A Bíblia não é aba: é o que o operador procura no meio do
+              culto, quando o pregador pede um versículo na hora. Dourada
+              para ser achada sem procurar, e vai direto à tela da Bíblia —
+              que já tem busca, versão, livros, favoritos e o Projetar.
+              Só a palavra, sem ícone: na coluna estreita o ícone empurrava
+              "Letras" e "Avisos" para reticências, e o dourado já basta
+              para achar. */}
+          <Hint label="Abrir a Bíblia" keys="Ctrl+B">
+            <button
+              type="button"
+              onClick={onOpenBible}
+              data-abrir-biblia
+              className={cn(
+                "ouro inline-flex h-8 shrink-0 items-center rounded-md px-2",
+                "text-secondary font-semibold whitespace-nowrap",
+                "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring",
+              )}
+            >
+              Bíblia
+            </button>
+          </Hint>
+        </div>
+        <div className="relative">
+          <Search
+            aria-hidden
+            className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-subtle"
+          />
+          <Input
+            ref={searchRef}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Pesquisar no repertório"
+            className="pl-8"
+            aria-label="Buscar no repertório"
+          />
+        </div>
       </div>
 
       <div className="lumen-scroll min-h-0 flex-1 overflow-y-auto">
         {tab === "songs" && <SongsList onNewSong={onNewSong} onWebLyrics={onWebLyrics} />}
-        {tab === "bible" && <BibleList bibleRef={bibleRef} onOpenBible={onOpenBible} />}
         {tab === "media" && <MediaList />}
         {tab === "texts" && <TextsList />}
       </div>
@@ -517,193 +537,6 @@ function FilterChip({
     >
       {children}
     </button>
-  );
-}
-
-function BibleList({
-  bibleRef,
-  onOpenBible,
-}: {
-  bibleRef?: Ref<HTMLInputElement>;
-  onOpenBible: () => void;
-}) {
-  const [ready, setReady] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-  const cursor = useLumenStore((s) => s.bibleCursor);
-  const versionId = useLumenStore((s) => s.bibleVersionId);
-  const extra = useLumenStore((s) => s.extraVersionIds);
-  const query = useLumenStore((s) => s.bibleQuery);
-  const setQuery = useLumenStore((s) => s.setBibleQuery);
-  const load = useLumenStore((s) => s.loadBibleChapter);
-  const changeVersion = useLumenStore((s) => s.changeVersion);
-  const jumpRef = useLumenStore((s) => s.jumpRef);
-  const present = useLumenStore((s) => s.presentPreview);
-  const favorites = useLumenStore((s) => s.favorites);
-  const toggleFavorite = useLumenStore((s) => s.toggleFavorite);
-  const [badRef, setBadRef] = useState(false);
-
-  useEffect(() => {
-    let alive = true;
-    Promise.all([loadBuiltinBible(), loadBuiltinBible("blivre-2018"), hydrateExtraVersions()])
-      .then(() => {
-        if (alive) {
-          setReady(true);
-          load(cursor.bookId, cursor.chapter, cursor.verse, false);
-        }
-      })
-      .catch((e: Error) => alive && setErr(e.message));
-    return () => {
-      alive = false;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const chapters = ready ? chapterCount(versionId, cursor.bookId) : 0;
-  const hits = ready && query.length > 2 ? searchVerses(versionId, query) : [];
-
-  const go = (bookId: number, chapter: number, verse = 1, fire = false) => {
-    load(bookId, chapter, verse, fire);
-  };
-
-  return (
-    <div className="animate-swap-in flex flex-col gap-2 p-2">
-      <Input
-        ref={bibleRef}
-        placeholder="jo 3 16 — ou um trecho"
-        value={query}
-        invalid={badRef}
-        onChange={(e) => {
-          setQuery(e.target.value);
-          if (badRef) setBadRef(false);
-        }}
-        onKeyDown={(e) => {
-          if (e.key !== "Enter") return;
-          e.preventDefault();
-          const ok = jumpRef(query, true);
-          if (ok) return;
-          const hit = hits[0];
-          if (hit) {
-            go(hit.bookId, hit.chapter, hit.verse, true);
-            return;
-          }
-          setBadRef(true);
-        }}
-        aria-label="Referência bíblica"
-      />
-      {badRef && (
-        <p className="animate-swap-in text-caption text-danger">
-          Não achei essa referência. Tente “jo 3 16” ou um trecho do versículo.
-        </p>
-      )}
-
-      <Button size="sm" variant="secondary" onClick={onOpenBible}>
-        <BookOpen /> Abrir mosaico da Bíblia
-      </Button>
-
-      {!ready && !err && (
-        <div className="space-y-2 py-2" aria-live="polite">
-          <div className="sweep-bar h-0.5 w-full rounded-sm" />
-          <p className="text-secondary text-muted">Carregando a Bíblia…</p>
-        </div>
-      )}
-      {err && <p className="py-2 text-secondary text-danger">{err}</p>}
-
-      {ready && (
-        <>
-          <select
-            className="field w-full"
-            value={versionId}
-            onChange={(e) => changeVersion(e.target.value)}
-            aria-label="Versão da Bíblia"
-          >
-            <option value="almeida-1819">Almeida 1819</option>
-            <option value="blivre-2018">Bíblia Livre (BLIVRE)</option>
-            {extra.map((v) => (
-              <option key={v.id} value={v.id}>
-                {v.name}
-              </option>
-            ))}
-          </select>
-
-          <div className="flex gap-2">
-            <select
-              className="field min-w-0 flex-1"
-              value={cursor.bookId}
-              onChange={(e) => go(Number(e.target.value), 1, 1)}
-              aria-label="Livro"
-            >
-              {BOOKS.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.name}
-                </option>
-              ))}
-            </select>
-            <select
-              className="field tnum w-20"
-              value={cursor.chapter}
-              onChange={(e) => go(cursor.bookId, Number(e.target.value), 1)}
-              aria-label="Capítulo"
-            >
-              {Array.from({ length: chapters }, (_, i) => (
-                <option key={i + 1} value={i + 1}>
-                  {i + 1}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="flex gap-2">
-            <Button size="sm" className="flex-1" onClick={present}>
-              Projetar capítulo
-            </Button>
-            <Hint label="Guardar este versículo nos favoritos">
-              <Button
-                size="iconSm"
-                variant="ghost"
-                aria-label="Favoritar versículo"
-                onClick={() => {
-                  const meta = BOOKS.find((b) => b.id === cursor.bookId);
-                  if (meta) toggleFavorite(`${meta.name} ${cursor.chapter}:${cursor.verse}`);
-                }}
-              >
-                <Star />
-              </Button>
-            </Hint>
-          </div>
-
-          {favorites.length > 0 && (
-            <div className="flex flex-wrap gap-1 pt-1">
-              {favorites.map((f) => (
-                <FilterChip key={f} active={false} onClick={() => jumpRef(f, true)}>
-                  {f}
-                </FilterChip>
-              ))}
-            </div>
-          )}
-
-          {hits.length > 0 && (
-            <ul className="animate-swap-in overflow-hidden rounded-md shadow-[var(--shadow-border)]">
-              {hits.map((h) => (
-                <li key={h.ref + h.text.slice(0, 12)} className="border-b border-border last:border-0">
-                  <button
-                    type="button"
-                    className={cn(
-                      "w-full px-2 py-1.5 text-left",
-                      "transition-colors duration-[var(--motion-fast)] ease-[var(--ease-out)]",
-                      "hover:bg-elevated focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring",
-                    )}
-                    onClick={() => go(h.bookId, h.chapter, h.verse, true)}
-                  >
-                    <p className="text-caption font-medium text-fg">{h.ref}</p>
-                    <p className="line-clamp-2 text-secondary text-muted">{h.text}</p>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </>
-      )}
-    </div>
   );
 }
 

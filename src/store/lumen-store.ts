@@ -1,11 +1,15 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { toast } from "sonner";
 import { durableStorage } from "@/lib/durable-storage";
 import {
+  carregarVersao,
   chapterCount,
   chapterSlides,
   chapterVerseCount,
+  listVersions,
   parseBibleRef,
+  versaoTemLivro,
 } from "@/lib/bible";
 import { bookById } from "@/lib/bible-books";
 import { FONT_SCALE_PASSO, fontScaleDe, limitarFontScale } from "@/lib/font-scale";
@@ -1118,24 +1122,40 @@ export const useLumenStore = create<LumenState>()(
       loadBibleChapter: (bookId, chapter, verse, present) => {
         const s = get();
         const slides = chapterSlides(s.bibleVersionId, bookId, chapter, s.settings.maxLines);
-        if (!slides.length) return;
+        if (!slides.length) {
+          // Livro que a versão não traz (a BLT só tem o Novo Testamento): o
+          // cursor vai assim mesmo, para a tela da Bíblia mostrar onde o
+          // operador pediu e por que não há texto. O telão fica como está.
+          if (!versaoTemLivro(s.bibleVersionId, bookId)) set({ bibleCursor: { bookId, chapter, verse } });
+          return;
+        }
         const meta = bookById(bookId);
-        const idx = Math.max(
-          0,
-          slides.findIndex((sl) => sl.reference === formatRef(meta?.name ?? "", chapter, verse)),
-        );
+        // Versículo que a tradução omite não tem slide: cai no seguinte que
+        // existe, em vez de voltar ao versículo 1 do capítulo.
+        let alvo = verse;
+        let idx = -1;
+        const ultimo = Math.max(verse, chapterVerseCount(s.bibleVersionId, bookId, chapter));
+        for (; alvo <= ultimo && idx < 0; alvo += 1) {
+          const ref = formatRef(meta?.name ?? "", chapter, alvo);
+          idx = slides.findIndex((sl) => sl.reference === ref);
+        }
+        if (idx < 0) {
+          idx = 0;
+          alvo = verse;
+        } else {
+          alvo -= 1;
+        }
         const deck: Deck = {
           kind: "bible",
-          refId: `${bookId}:${chapter}:${verse}`,
-          title: formatRef(meta?.name ?? "Livro", chapter, verse),
+          refId: `${bookId}:${chapter}:${alvo}`,
+          title: formatRef(meta?.name ?? "Livro", chapter, alvo),
           subtitle: listVersionName(s.bibleVersionId),
           slides,
         };
         const patch = {
           preview: deck,
-          previewIndex: idx < 0 ? 0 : idx,
-          bibleCursor: { bookId, chapter, verse },
-          libraryTab: "bible" as const,
+          previewIndex: idx,
+          bibleCursor: { bookId, chapter, verse: alvo },
         };
         if (present) {
           broadcast(
@@ -1165,12 +1185,20 @@ export const useLumenStore = create<LumenState>()(
       },
 
       changeVersion: (bibleVersionId) => {
-        const s = get();
-        set({ bibleVersionId });
-        const { bookId, chapter, verse } = s.bibleCursor;
-        queueMicrotask(() =>
-          get().loadBibleChapter(bookId, chapter, verse, s.status !== "idle" && s.live?.kind === "bible"),
-        );
+        // Carrega antes de trocar: com a versão ainda fora da memória,
+        // `getBible` devolve a Almeida, e o capítulo recarregado sairia com
+        // o texto de uma e o nome da outra.
+        void carregarVersao(bibleVersionId)
+          .then((existe) => {
+            if (!existe) return;
+            set({ bibleVersionId });
+            const s = get();
+            const { bookId, chapter, verse } = s.bibleCursor;
+            s.loadBibleChapter(bookId, chapter, verse, s.status !== "idle" && s.live?.kind === "bible");
+          })
+          .catch(() => {
+            toast.error("Não consegui abrir essa versão da Bíblia. A anterior continua.");
+          });
       },
 
       toggleFavorite: (ref) =>
@@ -1595,8 +1623,8 @@ export const useLumenStore = create<LumenState>()(
 );
 
 function listVersionName(id: string): string {
-  if (id === "almeida-1819") return "Almeida 1819";
-  if (id === "blivre-2018") return "Bíblia Livre (BLIVRE)";
+  const conhecida = listVersions().find((v) => v.id === id);
+  if (conhecida) return conhecida.name;
   const extra = useLumenStore.getState().extraVersionIds.find((v) => v.id === id);
   return extra?.name ?? id;
 }

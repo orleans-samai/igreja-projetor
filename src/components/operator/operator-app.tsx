@@ -67,7 +67,6 @@ export function OperatorApp() {
   useEffect(() => {
     applyAccentPreset(store.settings.accentPreset);
   }, [store.settings.accentPreset]);
-  const bibleRef = useRef<HTMLInputElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const playlistRef = useRef<HTMLDivElement>(null);
   const [help, setHelp] = useState(false);
@@ -179,7 +178,6 @@ export function OperatorApp() {
         onWebLyrics={() => setWebOpen(true)}
         onOpenBible={() => setBibleOpen(true)}
         searchRef={searchRef}
-        bibleRef={bibleRef}
       />
     ),
     chat: <ChatPanel />,
@@ -508,7 +506,6 @@ export function OperatorApp() {
                 onWebLyrics={() => setWebOpen(true)}
                 onOpenBible={() => setBibleOpen(true)}
                 searchRef={searchRef}
-                bibleRef={bibleRef}
               />
             )}
             {mobileTab === "preview" && (

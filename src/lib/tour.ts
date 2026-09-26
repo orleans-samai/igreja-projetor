@@ -37,8 +37,9 @@ export const TOUR_STEPS: TourStep[] = [
     tab: "lib",
     title: "1. A biblioteca",
     body:
-      "Tudo que dá para projetar mora aqui: letras de música, avisos, mídia e a " +
-      "Bíblia inteira, que funciona sem internet. Clique num item para vê-lo no preview.",
+      "Tudo que dá para projetar mora aqui: letras de música, avisos e mídia. O botão " +
+      "dourado abre a Bíblia — cinco versões, todas sem internet. Clique num item para " +
+      "vê-lo no preview.",
     keys: "Ctrl+F",
   },
   {

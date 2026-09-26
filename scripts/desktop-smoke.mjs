@@ -76,6 +76,70 @@ try {
     return document.fonts.check('500 24px "Fraunces Variable"');
   });
   assert.ok(fonts);
+
+  // Bíblia: no repertório ela é um botão dourado que abre a tela da Bíblia
+  // direto. O painelzinho que ficava embaixo da aba (busca, seletores,
+  // Projetar capítulo) saiu — a tela grande já faz tudo aquilo.
+  const botaoBiblia = page.locator("[data-abrir-biblia]");
+  await botaoBiblia.waitFor();
+  assert.match(
+    await botaoBiblia.evaluate((b) => getComputedStyle(b).backgroundImage),
+    /linear-gradient/,
+    "o botão da Bíblia não está dourado",
+  );
+  assert.equal(await page.getByRole("tab", { name: "Bíblia" }).count(), 0, "a Bíblia ainda é aba");
+  await botaoBiblia.click();
+  const versaoBiblia = page.getByLabel("Versão da Bíblia");
+  await versaoBiblia.waitFor();
+  assert.equal(await page.getByLabel("Referência bíblica").count(), 0, "o painelzinho da Bíblia ainda está lá");
+  assert.deepEqual(await versaoBiblia.locator("option").allTextContents(), [
+    "Almeida 1819",
+    "Bíblia Livre (BLIVRE)",
+    "Nova Bíblia Viva",
+    "Bíblia Portuguesa Mundial",
+    "Bíblia Livre Para Todos (NT)",
+  ]);
+  const versiculoNaTela = (n) =>
+    page.evaluate((v) => document.querySelector(`[data-verse="${v}"]`)?.textContent ?? "", n);
+  const tituloDaBiblia = () => page.locator("h2").filter({ hasText: /\d+:\d+/ }).first().textContent();
+  const irPara = async (livro, capitulo) => {
+    await page.getByRole("button", { name: livro, exact: true }).click();
+    await page.getByRole("button", { name: `Capítulo ${capitulo}`, exact: true }).click();
+  };
+  // Versão que ainda não desceu do disco carrega antes de virar a escolhida:
+  // o texto que aparece é o dela, não o da Almeida com o nome dela.
+  await versaoBiblia.selectOption("nvb-2007");
+  await irPara("João", 3);
+  await esperarAsync(page, async () => (document.querySelector('[data-verse="16"]')?.textContent ?? "").includes("amou tanto o mundo"), undefined, {
+    oQue: "João 3:16 na Nova Bíblia Viva",
+  });
+  // A BLT só tem o Novo Testamento: Gênesis nela explica, em vez de mostrar
+  // uma lista vazia, e oferece voltar para a Almeida.
+  await versaoBiblia.selectOption("blt-2022");
+  await page.waitForFunction(() => document.querySelector('select[aria-label="Versão da Bíblia"]').value === "blt-2022");
+  await page.getByRole("button", { name: "Gênesis, não está nesta versão", exact: true }).click();
+  const avisoSoNt = page.getByRole("status").filter({ hasText: "só tem o Novo Testamento" });
+  await avisoSoNt.waitFor();
+  await page.screenshot({ animations: "disabled", path: path.join(evidence, "biblia-so-nt.png") });
+  await avisoSoNt.getByRole("button", { name: "Abrir na Almeida 1819" }).click();
+  await avisoSoNt.waitFor({ state: "hidden" });
+  assert.match(await versiculoNaTela(1), /No princípio criou Deus/);
+  // Versículo que a tradução omite: aparece marcado, e pedir por ele cai no
+  // seguinte em vez de voltar ao versículo 1.
+  await versaoBiblia.selectOption("blt-2022");
+  await page.waitForFunction(() => document.querySelector('select[aria-label="Versão da Bíblia"]').value === "blt-2022");
+  await irPara("Mateus", 17);
+  await page.waitForFunction(() => (document.querySelector('[data-verse="21"]')?.textContent ?? "").includes("não consta nesta tradução"));
+  await page.getByRole("button", { name: "Versículo 21", exact: true }).click();
+  await page.waitForFunction(() => [...document.querySelectorAll("h2")].some((h) => h.textContent.includes("Mateus 17:22")));
+  assert.match(await tituloDaBiblia(), /Mateus 17:22/);
+  await page.screenshot({ animations: "disabled", path: path.join(evidence, "biblia.png") });
+  // Volta como estava, para o resto do teste não depender desta parte.
+  await versaoBiblia.selectOption("almeida-1819");
+  await page.waitForFunction(() => document.querySelector('select[aria-label="Versão da Bíblia"]').value === "almeida-1819");
+  await page.getByRole("button", { name: "Voltar", exact: true }).click();
+  await versaoBiblia.waitFor({ state: "detached" });
+
   assert.equal(await page.evaluate(async () => (await fetch("/missing.js")).status), 404);
   // Exercise packaged media through the actual Electron protocol, including seeking.
   const bytes = Buffer.alloc(32044);
@@ -981,6 +1045,25 @@ try {
       assert.ok(desenho.colunas, `${onde} comporta as colunas e mesmo assim abriu em abas`);
     }
 
+    // As abas do repertório inteiras, com o botão dourado da Bíblia ao
+    // lado: na coluna estreita ele chegou a empurrar "Letras" e "Avisos"
+    // para reticências.
+    const abasCortadas = await page.evaluate(() => {
+      const cortadas = [...document.querySelectorAll('[role="tablist"][aria-label="Tipo de conteúdo"] [role="tab"] span')]
+        .filter((s) => s.scrollWidth > s.clientWidth)
+        .map((s) => `${s.textContent} (${s.clientWidth}px de ${s.scrollWidth})`);
+      if (!cortadas.length) return [];
+      // Onde o repertório está, para o erro dizer o que espremeu.
+      const cadeia = [];
+      let el = document.querySelector('[role="tablist"][aria-label="Tipo de conteúdo"]');
+      while (el && el !== document.body && cadeia.length < 8) {
+        cadeia.push(`${el.tagName.toLowerCase()}.${String(el.getAttribute("class") ?? "").slice(0, 40)}=${Math.round(el.getBoundingClientRect().width)}`);
+        el = el.parentElement;
+      }
+      return [...cortadas, `janela ${innerWidth}`, ...cadeia];
+    });
+    assert.deepEqual(abasCortadas, [], `abas do repertório cortadas em ${onde} (${JSON.stringify(desenho)})`);
+
     assert.equal(rolagem.sobraLado, 0, `a cabine rolou ${rolagem.sobraLado}px para o lado em ${onde}`);
     assert.equal(rolagem.sobraBaixo, 0, `a cabine rolou ${rolagem.sobraBaixo}px para baixo em ${onde}`);
     for (const v of rolagem.vivos) {
@@ -1232,8 +1315,30 @@ try {
   assert.deepEqual(errors, []);
   const disk = JSON.parse(await readFile(path.join(profile, "data", "library.json"), "utf8"));
   assert.ok(disk.values["lumen-v2"]);
-  console.log(`PASS: offline, fonts, Bible, restart persistence, projector, media ranges, preflight, Auto-Slide, remote control (LAN, entrada por nome, nome fixo na rede), update check, review before apply, 1366×768 at 100/125/150% and 800×600, no scroll and exactly one layout at ten sizes from 800×600 to 2560×1440, including every pixel around the 1280 cutover and the chat stays on screen, church logo and name reachable from the menu bar, art studio makes a design from a form, VFX has three modes and a dynamic video becomes a real file in the Vídeos tab, local AI off by default and the cabine independent of it, dirigente page signs in, sends a file, chats and files a notice, and its PowerPoint and PDF become slides in the service programme, video as a theme background, find a song by a lyric excerpt, right-click on lyrics edits or removes, double-click to project, fixed text only in the footer, YouTube collapses the lyrics strip, phone has one play/pause button and the screen volume, every new chat message pops up in gold on the phone, the cabine and the dirigente page (never for its own author), sees the media folder, projects from it, opens a song as a grid of slides and puts one on the screen, and searches lyrics through the cabine. Evidence: ${evidence}`);
+  console.log(`PASS: offline, fonts, Bible (gold button opens the Bible screen, five versions, New-Testament-only notice, omitted verse lands on the next), restart persistence, projector, media ranges, preflight, Auto-Slide, remote control (LAN, entrada por nome, nome fixo na rede), update check, review before apply, 1366×768 at 100/125/150% and 800×600, no scroll and exactly one layout at ten sizes from 800×600 to 2560×1440, including every pixel around the 1280 cutover and the chat stays on screen, church logo and name reachable from the menu bar, art studio makes a design from a form, VFX has three modes and a dynamic video becomes a real file in the Vídeos tab, local AI off by default and the cabine independent of it, dirigente page signs in, sends a file, chats and files a notice, and its PowerPoint and PDF become slides in the service programme, video as a theme background, find a song by a lyric excerpt, right-click on lyrics edits or removes, double-click to project, fixed text only in the footer, YouTube collapses the lyrics strip, phone has one play/pause button and the screen volume, every new chat message pops up in gold on the phone, the cabine and the dirigente page (never for its own author), sees the media folder, projects from it, opens a song as a grid of slides and puts one on the screen, and searches lyrics through the cabine. Evidence: ${evidence}`);
 } finally {
-  if (app) await app.close();
+  if (app) {
+    // O fim do teste deixa uma música no ar, e a cabine (de propósito)
+    // pergunta antes de fechar durante o culto. Parar a projeção antes é o
+    // que o operador faz no domingo; aqui evita a pergunta.
+    try {
+      const janelas = app.windows();
+      const cabine = janelas.find((w) => w.url() === "lumen://app/") ?? janelas[0];
+      for (let i = 0; i < 4 && cabine; i++) await cabine.keyboard.press("Escape");
+    } catch {
+      /* a janela pode já ter caído — o limite abaixo cuida */
+    }
+    // Fechar pode travar: o Electron espera uma janela que não responde, e
+    // o `await` nunca volta. Sem limite, um teste que falhou ficava horas
+    // aberto — e o erro, que só sai depois do finally, nunca aparecia.
+    const fechou = await Promise.race([
+      app.close().then(() => true, () => true),
+      new Promise((pronto) => setTimeout(() => pronto(false), 15000)),
+    ]);
+    if (!fechou) {
+      console.log("O app não fechou em 15 s; encerrando o processo.");
+      app.process().kill();
+    }
+  }
   console.log(`Isolated test profile: ${profile}`);
 }
