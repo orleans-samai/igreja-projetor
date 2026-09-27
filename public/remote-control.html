@@ -236,6 +236,14 @@
   .lista > li > .culto-item.no-ar { border-color: var(--live-borda); background: var(--live-fraco); }
   .culto-item.no-ar .etapa b { color: var(--live); }
   .culto-item .acoes { display: flex; gap: 6px; flex: none; }
+  /* O item é o botão: tocar projeta. Cobre também o respiro do cartão, para
+     o dedo não ter de mirar no meio dele. */
+  .culto-item .principal {
+    display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0;
+    margin: -12px 0 -12px -12px; padding: 12px 0 12px 12px;
+    border: 0; background: none; color: inherit; font: inherit; text-align: left;
+  }
+  .culto-item button.principal:active { opacity: .7; }
   .acao-item {
     padding: 9px 11px; border-radius: 10px; font-size: 13px; font-weight: 600;
     border: 1px solid var(--borda); background: var(--elevada); color: var(--fg);
@@ -1251,15 +1259,22 @@
       corpo.appendChild(nome);
       corpo.appendChild(etapa);
 
+      // O item inteiro é o botão: tocar projeta. O "Projetar" à parte era um
+      // alvo pequeno para acertar no meio do culto, e a igreja pediu que o
+      // toque no item bastasse. Sem o controle do telão, o item é só leitura.
+      var controla = permissao === "controle";
+      var principal = document.createElement(controla ? "button" : "span");
+      principal.className = "principal";
+      if (controla) {
+        principal.type = "button";
+        principal.setAttribute("aria-label", "Projetar " + it.titulo);
+        principal.addEventListener("click", function () { agirNoCulto("projetar", it); });
+      }
+      principal.appendChild(numero);
+      principal.appendChild(corpo);
+
       var acoes = document.createElement("span");
       acoes.className = "acoes";
-      var projetar = document.createElement("button");
-      projetar.type = "button";
-      projetar.className = "acao-item";
-      projetar.textContent = "Projetar";
-      projetar.setAttribute("aria-label", "Projetar " + it.titulo);
-      projetar.disabled = permissao !== "controle";
-      projetar.addEventListener("click", function () { agirNoCulto("projetar", it); });
       var tirar = document.createElement("button");
       var confirmando = armado === it.id;
       tirar.type = "button";
@@ -1278,11 +1293,9 @@
         clearTimeout(relogioDoArmado);
         agirNoCulto("remover", it);
       });
-      acoes.appendChild(projetar);
       acoes.appendChild(tirar);
 
-      linha.appendChild(numero);
-      linha.appendChild(corpo);
+      linha.appendChild(principal);
       linha.appendChild(acoes);
       li.appendChild(linha);
       lista.appendChild(li);

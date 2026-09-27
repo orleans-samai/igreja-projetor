@@ -15,6 +15,7 @@ const { alturaDaCabine, larguraDaCabine } = require("./janela.cjs");
 const apresentacoes = require("./apresentacoes.cjs");
 const artesImagens = require("./artes-imagens.cjs");
 const chatFotos = require("./chat-fotos.cjs");
+const { apagarRestos } = require("./limpeza.cjs");
 
 
 const ORIGIN = "lumen://app";
@@ -397,6 +398,11 @@ if (!gotLock) {
     apresentacoes.init(dataDir);
     artesImagens.init(dataDir);
     chatFotos.init(dataDir);
+    // O que o Auto-Slide baixou (~150 MB) sai em segundo plano: a abertura
+    // não espera por isso, e se algo estiver preso tenta de novo na próxima.
+    void apagarRestos(dataDir).then((apagadas) => {
+      if (apagadas.length) log(`Restos de recurso aposentado apagados: ${apagadas.join(", ")}`);
+    });
     // No teste, a exportação fica no perfil isolado — nunca na pasta de
     // Imagens de quem roda o teste.
     artesImagens.definirExportacao(smokeTest ? path.join(dataDir, "artes-exportadas") : path.join(app.getPath("pictures"), "Lúmen - Artes"));

@@ -1,5 +1,5 @@
 import { _electron as electron } from "playwright";
-import { mkdtemp, readFile, readdir, mkdir, writeFile } from "node:fs/promises";
+import { access, mkdtemp, readFile, readdir, mkdir, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import assert from "node:assert/strict";
@@ -76,8 +76,21 @@ try {
     });
     return page;
   };
+  // O Auto-Slide saiu, mas quem o usou tem ~150 MB dele na pasta de dados:
+  // a abertura do app apaga aquela pasta — e só aquela.
+  const restoDoAutoSlide = path.join(profile, "recognition");
+  await mkdir(restoDoAutoSlide, { recursive: true });
+  await writeFile(path.join(restoDoAutoSlide, "ggml-base.bin"), "modelo de voz antigo");
   let page = await launch();
   assert.equal(new URL(page.url()).protocol, "lumen:");
+  const restoSumiu = async () => {
+    for (let i = 0; i < 50; i += 1) {
+      if (!(await access(restoDoAutoSlide).then(() => true, () => false))) return true;
+      await new Promise((ok) => setTimeout(ok, 200));
+    }
+    return false;
+  };
+  assert.ok(await restoSumiu(), "a pasta que o Auto-Slide baixou continuou no disco");
   // Block all network URLs, including cached Google Fonts, while checking
   // assets. O servidor do controle remoto não é internet: ele roda nesta
   // máquina, e a página do celular precisa dele para ser testada de verdade.
@@ -1000,6 +1013,13 @@ try {
   assert.deepEqual(await titulosNoCelular(), await titulosDaCabine(), "a aba Culto não mostra a programação da cabine");
 
   const primeiroDoCulto = (await titulosNoCelular())[0];
+  // Tocar no item projeta: o botão "Projetar" à parte saiu, e o nome
+  // "Projetar …" agora é do item inteiro.
+  assert.equal(
+    await celular.locator("#cultoLista .acao-item", { hasText: "Projetar" }).count(),
+    0,
+    "o botão Projetar separado voltou à aba Culto",
+  );
   await celular.getByRole("button", { name: `Projetar ${primeiroDoCulto}`, exact: true }).click();
   await page.waitForFunction(
     (titulo) => JSON.parse(localStorage.getItem("lumen-live-frame") ?? "null")?.deck?.title === titulo,
@@ -1651,7 +1671,7 @@ try {
   assert.deepEqual(errors, []);
   const disk = JSON.parse(await readFile(path.join(profile, "data", "library.json"), "utf8"));
   assert.ok(disk.values["lumen-v2"]);
-  console.log(`PASS: offline, fonts, Bible (one click on a verse projects it, − and + resize the book, chapter and verse squares, gold buttons in and out of the Bible screen, five versions plus importing a licensed one, its three parts rearranged by dragging and swapping sides, New-Testament-only notice, omitted verse lands on the next), restart persistence, projector, media ranges, preflight, remote control (LAN, entrada por nome, nome fixo na rede, one click from the menu bar beside Permissões, accounts with username and password created in Permissões that sign in already holding their permission while the quick name-only access stays chat-only), update check, review before apply, 1366×768 at 100/125/150% and 800×600, no scroll and exactly one layout at ten sizes from 800×600 to 2560×1440, including every pixel around the 1280 cutover and the chat stays on screen, church logo and name reachable from the menu bar, art studio makes a batch of 8 distinct Konva designs from just a title and a Bible reference, opens one in the editor, saves it and exports PNG and JPEG at exactly 1920×1080 (Full HD is the default), VFX has three modes and a dynamic video becomes a real file in the Vídeos tab, no AI, no YouTube and no Auto-Slide anywhere in the app, dirigente page signs in, sends a file, chats and files a notice, and its PowerPoint and PDF become slides in the service programme, video as a theme background, find a song by a lyric excerpt, right-click on lyrics edits or removes, double-click to project, fixed text only in the footer and the verse always centred vertically, phone has one play/pause button, the screen volume and a Sair do vídeo that takes media off the screen but never a lyric, tapping a media item shows its controls right there in a mini-player, the team chat in bubbles with who is online and who each message is for on the phone and the dirigente page, kept per service in a searchable, exportable history in the cabine, every new chat message pops up in gold on the phone, the cabine and the dirigente page (never for its own author), sees the media folder, gets a file imported in the cabine or copied in by Explorer within 5 s, a library row dragged into the service programme, a right-click menu that deletes media, a Culto tab that mirrors the service programme and projects or deletes (two taps) from it, projects from it, opens a song as a grid of slides and puts one on the screen, and searches lyrics through the cabine. Evidence: ${evidence}`);
+  console.log(`PASS: offline, fonts, Bible (one click on a verse projects it, − and + resize the book, chapter and verse squares, gold buttons in and out of the Bible screen, five versions plus importing a licensed one, its three parts rearranged by dragging and swapping sides, New-Testament-only notice, omitted verse lands on the next), restart persistence, projector, media ranges, preflight, remote control (LAN, entrada por nome, nome fixo na rede, one click from the menu bar beside Permissões, accounts with username and password created in Permissões that sign in already holding their permission while the quick name-only access stays chat-only), update check, review before apply, 1366×768 at 100/125/150% and 800×600, no scroll and exactly one layout at ten sizes from 800×600 to 2560×1440, including every pixel around the 1280 cutover and the chat stays on screen, church logo and name reachable from the menu bar, art studio makes a batch of 8 distinct Konva designs from just a title and a Bible reference, opens one in the editor, saves it and exports PNG and JPEG at exactly 1920×1080 (Full HD is the default), VFX has three modes and a dynamic video becomes a real file in the Vídeos tab, no AI, no YouTube and no Auto-Slide anywhere in the app (and what Auto-Slide downloaded is deleted on start), dirigente page signs in, sends a file, chats and files a notice, and its PowerPoint and PDF become slides in the service programme, video as a theme background, find a song by a lyric excerpt, right-click on lyrics edits or removes, double-click to project, fixed text only in the footer and the verse always centred vertically, phone has one play/pause button, the screen volume and a Sair do vídeo that takes media off the screen but never a lyric, tapping a media item shows its controls right there in a mini-player, the team chat in bubbles with who is online and who each message is for on the phone and the dirigente page, kept per service in a searchable, exportable history in the cabine, every new chat message pops up in gold on the phone, the cabine and the dirigente page (never for its own author), sees the media folder, gets a file imported in the cabine or copied in by Explorer within 5 s, a library row dragged into the service programme, a right-click menu that deletes media, a Culto tab that mirrors the service programme, projects with a tap on the item and deletes (two taps) from it, projects from it, opens a song as a grid of slides and puts one on the screen, and searches lyrics through the cabine. Evidence: ${evidence}`);
 } finally {
   if (app) {
     // O fim do teste deixa uma música no ar, e a cabine (de propósito)
