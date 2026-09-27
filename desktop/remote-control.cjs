@@ -4,6 +4,7 @@ const nodeCrypto = require("node:crypto");
 const fsp = require("node:fs/promises");
 const { enderecosLan } = require("./mdns.cjs");
 const { senhaConfere, cozinharSenha } = require("./remote-store.cjs");
+const { EQUIPES_DE_APARELHO, paraValido, mencoesNoTexto, podeVer } = require("./chat-regras.cjs");
 
 /**
  * Controle remoto pelo celular.
@@ -33,7 +34,8 @@ const { senhaConfere, cozinharSenha } = require("./remote-store.cjs");
  *   /comando     transporte do telão                        (permissão: controle)
  *   /repertorio  lista de músicas                           (permissão: editor)
  *   /musica      ler e salvar uma letra                     (permissão: editor)
- *   /chat        recado para a cabine                       (permissão: chat)
+ *   /chat        recado para todos, uma equipe ou uma pessoa (permissão: chat)
+ *   /chat/foto   foto no chat; /chat/digitando; /chat/equipe  (permissão: chat)
  */
 
 const MAX_BODY = 4 * 1024;
@@ -51,6 +53,15 @@ const MAX_BODY_VOZ = 1536 * 1024;
 const AUDIOS_ACEITOS = /^data:audio\/(webm|ogg|mp4|mpeg|wav)(;[^,]*)?,/i;
 /** Recado mais comprido que isto é conversa, não recado. */
 const MAX_SEGUNDOS_VOZ = 120;
+/**
+ * Foto no chat: o celular já reduz para 1600 px antes de mandar, o que dá
+ * poucas centenas de KB. O teto (em base64) cobre foto de celular que não
+ * reduziu, sem virar porta para arquivo grande.
+ */
+const MAX_BODY_FOTO = 9 * 1024 * 1024;
+const FOTOS_ACEITAS = /^data:image\/(jpeg|png|webp);base64,/i;
+/** "Digitando…" não precisa chegar mais que uma vez por segundo. */
+const DIGITANDO_INTERVALO_MS = 1000;
 /** Teto do que a página do dirigente pode largar no computador da igreja. */
 const MAX_ARQUIVO_DIRIGENTE = 64 * 1024 * 1024;
 /** Uma sessão de envio dura um culto, não uma semana. */
@@ -70,7 +81,7 @@ const MAX_SLIDE = 5000;
 const TIPOS_PROJETAVEIS = ["song", "text", "media"];
 /** O que pode aparecer na programação do culto, e em que etapa. */
 const TIPOS_DO_CULTO = ["song", "bible", "media", "text", "apresentacao"];
-const ETAPAS_DO_CULTO = ["no-ar", "proximo", "concluido", "pendente"];
+const ETAPAS_DO_CULTO = ["no-ar", "proximo", "pendente"];
 const MAX_ITENS_DO_CULTO = 300;
 /**
  * Quanto o celular espera a cabine antes de desistir de um pedido.
@@ -186,6 +197,18 @@ class RemoteControl {
     this.midia = [];
     /** A programação do culto aberta na cabine. */
     this.culto = { nome: "", itens: [] };
+    /** O nome com que a cabine aparece no chat — o do operador, se houver. */
+    this.nomeCabine = "Cabine";
+    /** Página do dirigente aberta: token → quem é, para o chat saber a quem entregar. */
+    this.dirigentes = new Map();
+    /** Quem a cabine silenciou no chat: id → até quando (ms). Vale até reiniciar. */
+    this.silenciados = new Map();
+    /** Último "digitando…" de cada um, para não inundar a rede. */
+    this.digitandoEm = new Map();
+    /** Ligados pelo processo principal: é ele que sabe escrever e ler a foto no disco. */
+    this.aoGuardarFoto = null;
+    this.aoLerFoto = null;
+    this.aoApagarFoto = null;
     /**
      * Pedidos que só a cabine sabe responder — buscar letra na internet, abrir
      * uma letra achada. O celular fica esperando o HTTP; a cabine responde
@@ -560,30 +583,190 @@ class RemoteControl {
   }
 
   /** Recado escrito na cabine, para aparecer nos celulares. */
-  mensagemDaCabine(texto, autor) {
+  mensagemDaCabine(texto, autor, para) {
+    this._nomeDaCabine(autor);
     return this._registrarChat({
-      de: nomeLimpo(autor, "Cabine"),
+      de: this.nomeCabine,
+      deId: "cabine",
       texto: String(texto || "").slice(0, 500),
       daCabine: true,
+      para,
     });
   }
 
-  _registrarChat({ de, texto, daCabine, audio, segundos }) {
+  /** Foto mandada pela cabine; o arquivo já foi gravado pelo processo principal. */
+  fotoDaCabine(arquivo, texto, autor, para) {
+    this._nomeDaCabine(autor);
+    return this._registrarChat({
+      de: this.nomeCabine,
+      deId: "cabine",
+      texto: String(texto || "").slice(0, 500),
+      daCabine: true,
+      para,
+      foto: { arquivo: String(arquivo) },
+    });
+  }
+
+  _nomeDaCabine(autor) {
+    const nome = nomeLimpo(autor, "Cabine");
+    if (nome === this.nomeCabine) return;
+    this.nomeCabine = nome;
+    this._avisarPresenca();
+  }
+
+  _registrarChat({ de, deId = "", texto, daCabine, audio, segundos, para, foto }) {
     const limpo = semControle(texto, true).trim();
-    // Recado falado não precisa de texto escrito; recado escrito precisa.
-    if (!limpo && !audio) return null;
+    // Recado falado ou foto não precisam de texto escrito; recado escrito precisa.
+    if (!limpo && !audio && !foto) return null;
     const msg = {
       id: nodeCrypto.randomUUID(),
       de,
+      deId,
       texto: limpo.slice(0, 500),
       em: Date.now(),
       daCabine: !!daCabine,
+      para: paraValido(para),
+      mencoes: mencoesNoTexto(limpo, this.presenca()),
       ...(audio ? { audio, segundos } : {}),
+      ...(foto ? { foto } : {}),
     };
     this.chat.push(msg);
     if (this.chat.length > MAX_CHAT) this.chat.splice(0, this.chat.length - MAX_CHAT);
-    this._transmitir({ tipo: "chat", mensagem: msg });
+    this._transmitirChat(msg);
     return msg;
+  }
+
+  /**
+   * Entrega um recado só a quem pode lê-lo.
+   *
+   * O filtro é aqui, por conexão — esconder na tela de quem não devia ler
+   * não bastaria, porque o recado já teria chegado ao aparelho.
+   */
+  _transmitirChat(msg) {
+    const linha = `data: ${JSON.stringify({ tipo: "chat", mensagem: msg })}\n\n`;
+    for (const [res, token] of [...this.assinantes]) {
+      if (!podeVer(this._leitor(token), msg)) continue;
+      try {
+        res.write(linha);
+      } catch {
+        this.assinantes.delete(res);
+      }
+    }
+  }
+
+  /** O histórico que um leitor pode ver, ao conectar. */
+  _chatPara(leitor) {
+    return this.chat.filter((m) => podeVer(leitor, m)).slice(-40);
+  }
+
+  /** Quem é o dono de um token: um aparelho pareado ou a página do dirigente. */
+  _leitor(token) {
+    const chave = String(token || "");
+    const d = this.dispositivos.get(chave);
+    if (d) return { id: d.id, nome: d.nome, equipe: d.equipe || "" };
+    const dir = this.dirigentes.get(chave);
+    if (dir && this._sessaoDirigente(chave)) return { id: dir.id, nome: dir.nome, equipe: "pastor" };
+    return null;
+  }
+
+  _silenciado(id) {
+    const ate = this.silenciados.get(id);
+    if (!ate) return false;
+    if (ate > Date.now()) return true;
+    this.silenciados.delete(id);
+    return false;
+  }
+
+  /** Quem está com o chat aberto agora: a cabine e cada aparelho ou página conectada. */
+  presenca() {
+    const pessoas = new Map();
+    pessoas.set("cabine", { id: "cabine", nome: this.nomeCabine, equipe: "cabine", silenciado: false });
+    for (const token of this.assinantes.values()) {
+      const l = this._leitor(token);
+      if (l && !pessoas.has(l.id)) pessoas.set(l.id, { ...l, silenciado: this._silenciado(l.id) });
+    }
+    return [...pessoas.values()];
+  }
+
+  _avisarPresenca() {
+    const pessoas = this.presenca();
+    this._transmitir({ tipo: "presenca", pessoas });
+    this.onEvento?.({ tipo: "presenca", pessoas });
+  }
+
+  /** Um evento só para uma pessoa (todas as conexões dela). */
+  _paraLeitor(id, payload) {
+    const linha = `data: ${JSON.stringify(payload)}\n\n`;
+    for (const [res, token] of [...this.assinantes]) {
+      if (this._leitor(token)?.id !== id) continue;
+      try {
+        res.write(linha);
+      } catch {
+        this.assinantes.delete(res);
+      }
+    }
+  }
+
+  /**
+   * "Fulano está digitando…", só para quem vai poder ler o recado — quem
+   * escreve para o Som não mostra "digitando" para o Louvor.
+   */
+  _transmitirDigitando(autor, para) {
+    const agora = Date.now();
+    if ((this.digitandoEm.get(autor.id) || 0) > agora - DIGITANDO_INTERVALO_MS) return;
+    this.digitandoEm.set(autor.id, agora);
+    const destino = paraValido(para);
+    const evento = { tipo: "digitando", deId: autor.id, de: autor.nome, para: destino };
+    const linha = `data: ${JSON.stringify(evento)}\n\n`;
+    for (const [res, token] of [...this.assinantes]) {
+      const leitor = this._leitor(token);
+      if (!leitor || leitor.id === autor.id) continue;
+      if (!podeVer(leitor, { deId: autor.id, para: destino, mencoes: [] })) continue;
+      try {
+        res.write(linha);
+      } catch {
+        this.assinantes.delete(res);
+      }
+    }
+    if (autor.id !== "cabine") this.onEvento?.(evento);
+  }
+
+  /** A cabine está digitando. */
+  digitandoDaCabine(para) {
+    this._transmitirDigitando({ id: "cabine", nome: this.nomeCabine }, para);
+  }
+
+  /**
+   * A cabine apaga um recado. Some de todas as telas; a foto sai do disco.
+   * O aviso leva só o id — nada do que foi apagado viaja de novo.
+   */
+  apagarMensagem(id) {
+    const msg = this.chat.find((m) => m.id === String(id));
+    if (!msg) return { ok: false, erro: "Recado não encontrado." };
+    if (msg.foto) this.aoApagarFoto?.(msg.foto.arquivo);
+    msg.apagada = true;
+    msg.texto = "";
+    delete msg.audio;
+    delete msg.foto;
+    msg.mencoes = [];
+    this._transmitir({ tipo: "chat-apagada", id: msg.id });
+    this.onEvento?.({ tipo: "chat-apagada", id: msg.id });
+    return { ok: true };
+  }
+
+  /**
+   * A cabine silencia (ou devolve a voz a) um aparelho no chat.
+   * `minutos` 0 tira o silêncio. Quem foi silenciado continua lendo.
+   */
+  silenciar(id, minutos) {
+    const alvo = String(id || "");
+    if (!alvo || alvo === "cabine") return { ok: false, erro: "Aparelho inválido." };
+    const m = Number(minutos);
+    if (Number.isFinite(m) && m > 0) this.silenciados.set(alvo, Date.now() + Math.min(m, 24 * 60) * 60000);
+    else this.silenciados.delete(alvo);
+    this._paraLeitor(alvo, { tipo: "silenciado", ate: this.silenciados.get(alvo) || 0 });
+    this._avisarPresenca();
+    return { ok: true };
   }
 
   _transmitir(payload) {
@@ -686,6 +869,12 @@ class RemoteControl {
       if (m === "GET" && p === "/musica") return this._musica(res, url);
       if (m === "POST" && p === "/musica") return await this._salvarMusica(req, res);
       if (m === "POST" && p === "/chat") return await this._chat(req, res);
+      if (m === "POST" && p === "/chat/foto") return await this._fotoNoChat(req, res, false);
+      if (m === "GET" && p === "/chat/foto") return await this._servirFoto(res, url);
+      if (m === "POST" && p === "/chat/digitando") return await this._digitando(req, res, false);
+      if (m === "POST" && p === "/chat/equipe") return await this._minhaEquipe(req, res);
+      if (m === "POST" && p === "/dirigente/chat/foto") return await this._fotoNoChat(req, res, true);
+      if (m === "POST" && p === "/dirigente/digitando") return await this._digitando(req, res, true);
       if (m === "POST" && p === "/voz") return await this._voz(req, res);
       if (m === "GET" && p === "/dirigente") return await this._paginaDirigente(res);
       if (m === "GET" && p === "/dirigente/igreja") return this._igrejaDirigente(res);
@@ -758,10 +947,14 @@ class RemoteControl {
         // um link de verdade: se abrir neste celular, funciona neste celular
         // — melhor descobrir agora do que no domingo de manhã.
         enderecoFixo: this._enderecoFixo(),
-        chat: this.chat.slice(-30),
+        eu: { id: disp.id, equipe: disp.equipe || "" },
+        silenciadoAte: this._silenciado(disp.id) ? this.silenciados.get(disp.id) : 0,
+        chat: this._chatPara(this._leitor(token)),
+        presenca: this.presenca(),
       })}\n\n`,
     );
     this.assinantes.set(res, token);
+    this._avisarPresenca();
 
     // Um ping regular mantém a conexão de pé e mantém `ultimoVisto` fresco,
     // que é como a cabine sabe quem ainda está por perto.
@@ -779,6 +972,7 @@ class RemoteControl {
       clearInterval(ping);
       this.assinantes.delete(res);
       this.onEvento?.({ tipo: "dispositivos" });
+      this._avisarPresenca();
     };
     req.on("close", encerrar);
     req.on("error", encerrar);
@@ -1244,11 +1438,14 @@ class RemoteControl {
       this._json(res, 400, { ok: false, erro: "Recado longo demais. Grave um mais curto." });
       return;
     }
+    if (this._silenciado(disp.id)) return this._calado(res);
     const segundos = Number(corpo.segundos);
     const msg = this._registrarChat({
       de: disp.nome,
+      deId: disp.id,
       texto: "",
       daCabine: false,
+      para: corpo.para,
       audio,
       segundos:
         Number.isFinite(segundos) && segundos > 0 ? Math.min(MAX_SEGUNDOS_VOZ, Math.round(segundos)) : 0,
@@ -1273,13 +1470,159 @@ class RemoteControl {
       this._json(res, 401, { ok: false, erro: "Sessão expirada. Pareie novamente." });
       return;
     }
-    const msg = this._registrarChat({ de: disp.nome, texto: corpo.texto, daCabine: false });
+    if (this._silenciado(disp.id)) return this._calado(res);
+    const msg = this._registrarChat({
+      de: disp.nome,
+      deId: disp.id,
+      texto: corpo.texto,
+      daCabine: false,
+      para: corpo.para,
+    });
     if (!msg) {
       this._json(res, 400, { ok: false, erro: "Mensagem vazia." });
       return;
     }
     this.onEvento?.({ tipo: "chat", mensagem: msg });
     this._json(res, 200, { ok: true, mensagem: msg });
+  }
+
+  _calado(res) {
+    this._json(res, 403, { ok: false, erro: "A cabine silenciou este aparelho no chat por enquanto." });
+  }
+
+  /** Quem manda: o aparelho pelo token no corpo, ou a página do dirigente pelo cabeçalho. */
+  _autorDoPedido(req, corpo, dirigente) {
+    if (!dirigente) {
+      const disp = this._sessao(corpo.token);
+      return disp ? { id: disp.id, nome: disp.nome, equipe: disp.equipe || "" } : null;
+    }
+    const token = String(req.headers["x-lumen-dirigente"] || "");
+    if (!this._sessaoDirigente(token)) return null;
+    const dir = this._dirigente(token, corpo.de);
+    return { id: dir.id, nome: dir.nome, equipe: "pastor" };
+  }
+
+  /** A página do dirigente: o nome vem dela, a identidade fica presa ao token. */
+  _dirigente(token, nome) {
+    let dir = this.dirigentes.get(token);
+    if (!dir) {
+      dir = { id: `dirigente:${nodeCrypto.createHash("sha256").update(token).digest("hex").slice(0, 12)}`, nome: "Dirigente" };
+      this.dirigentes.set(token, dir);
+    }
+    if (nome) {
+      const limpo = nomeLimpo(nome, dir.nome);
+      if (limpo !== dir.nome) {
+        dir.nome = limpo;
+        this._avisarPresenca();
+      }
+    }
+    return dir;
+  }
+
+  /**
+   * Foto no chat. Chega como `data:image/…;base64,`, o processo principal
+   * confere pelos primeiros bytes e grava; o recado leva só o nome do arquivo.
+   */
+  async _fotoNoChat(req, res, dirigente) {
+    let corpo;
+    try {
+      corpo = JSON.parse(await this._lerCorpo(req, MAX_BODY_FOTO));
+    } catch {
+      this._json(res, 400, { ok: false, erro: "A foto é grande demais ou chegou incompleta." });
+      return;
+    }
+    const autor = this._autorDoPedido(req, corpo, dirigente);
+    if (!autor) {
+      this._json(res, 401, { ok: false, erro: "Sessão expirada. Entre novamente." });
+      return;
+    }
+    if (this._silenciado(autor.id)) return this._calado(res);
+    const dados = String(corpo.foto || "");
+    if (!FOTOS_ACEITAS.test(dados) || !this.aoGuardarFoto) {
+      this._json(res, 400, { ok: false, erro: "Mande uma foto (JPEG, PNG ou WebP)." });
+      return;
+    }
+    const guardada = await this.aoGuardarFoto(Buffer.from(dados.slice(dados.indexOf(",") + 1), "base64"));
+    if (!guardada?.ok) {
+      this._json(res, 400, { ok: false, erro: guardada?.error || "Não consegui guardar a foto." });
+      return;
+    }
+    const msg = this._registrarChat({
+      de: autor.nome,
+      deId: autor.id,
+      texto: corpo.texto || "",
+      daCabine: false,
+      para: corpo.para,
+      foto: { arquivo: guardada.arquivo },
+    });
+    this.onEvento?.({ tipo: "chat", mensagem: msg });
+    this._json(res, 200, { ok: true, mensagem: msg });
+  }
+
+  /** A foto de um recado, só para quem pode ler o recado. */
+  async _servirFoto(res, url) {
+    const leitor = this._leitor(url.searchParams.get("token"));
+    if (!leitor) {
+      this._json(res, 401, { ok: false, erro: "Sessão expirada." });
+      return;
+    }
+    const arquivo = String(url.searchParams.get("arquivo") || "");
+    const msg = this.chat.find((m) => m.foto?.arquivo === arquivo);
+    if (!msg || !podeVer(leitor, msg) || !this.aoLerFoto) {
+      this._json(res, 404, { ok: false, erro: "Foto não encontrada." });
+      return;
+    }
+    const foto = await this.aoLerFoto(arquivo);
+    if (!foto) {
+      this._json(res, 404, { ok: false, erro: "Foto não encontrada." });
+      return;
+    }
+    res.writeHead(200, {
+      "content-type": foto.tipo,
+      "cache-control": "private, max-age=3600",
+      "x-content-type-options": "nosniff",
+    });
+    res.end(foto.bytes);
+  }
+
+  async _digitando(req, res, dirigente) {
+    let corpo;
+    try {
+      corpo = JSON.parse(await this._lerCorpo(req));
+    } catch {
+      corpo = {};
+    }
+    const autor = this._autorDoPedido(req, corpo, dirigente);
+    if (!autor) {
+      this._json(res, 401, { ok: false, erro: "Sessão expirada." });
+      return;
+    }
+    if (!this._silenciado(autor.id)) this._transmitirDigitando(autor, corpo.para);
+    this._json(res, 200, { ok: true });
+  }
+
+  /** O aparelho diz de que equipe é (Som, Louvor, Pastor) — ou de nenhuma. */
+  async _minhaEquipe(req, res) {
+    let corpo;
+    try {
+      corpo = JSON.parse(await this._lerCorpo(req));
+    } catch {
+      corpo = {};
+    }
+    const disp = this._sessao(corpo.token);
+    if (!disp) {
+      this._json(res, 401, { ok: false, erro: "Sessão expirada. Pareie novamente." });
+      return;
+    }
+    const equipe = String(corpo.equipe || "");
+    if (equipe && !EQUIPES_DE_APARELHO.includes(equipe)) {
+      this._json(res, 400, { ok: false, erro: "Equipe desconhecida." });
+      return;
+    }
+    disp.equipe = equipe;
+    this._salvar();
+    this._avisarPresenca();
+    this._json(res, 200, { ok: true, equipe });
   }
 
   /**
@@ -1306,8 +1649,18 @@ class RemoteControl {
       "x-accel-buffering": "no",
     });
     res.write(":ok\n\n");
-    res.write(`data: ${JSON.stringify({ tipo: "inicio", chat: this.chat.slice(-30) })}\n\n`);
+    const eu = this._dirigente(token, url.searchParams.get("nome"));
+    res.write(
+      `data: ${JSON.stringify({
+        tipo: "inicio",
+        eu: { id: eu.id, equipe: "pastor" },
+        silenciadoAte: this._silenciado(eu.id) ? this.silenciados.get(eu.id) : 0,
+        chat: this._chatPara(this._leitor(token)),
+        presenca: this.presenca(),
+      })}\n\n`,
+    );
     this.assinantes.set(res, token);
+    this._avisarPresenca();
 
     const ping = setInterval(() => {
       try {
@@ -1319,6 +1672,7 @@ class RemoteControl {
     const encerrar = () => {
       clearInterval(ping);
       this.assinantes.delete(res);
+      this._avisarPresenca();
     };
     req.on("close", encerrar);
     req.on("error", encerrar);
@@ -1359,14 +1713,18 @@ class RemoteControl {
     } catch {
       corpo = {};
     }
-    if (!this._sessaoDirigente(req.headers["x-lumen-dirigente"])) {
+    const autor = this._autorDoPedido(req, corpo, true);
+    if (!autor) {
       this._json(res, 401, { ok: false, erro: "Sessão expirada. Entre novamente." });
       return;
     }
+    if (this._silenciado(autor.id)) return this._calado(res);
     const msg = this._registrarChat({
-      de: nomeLimpo(corpo.de, "Dirigente"),
+      de: autor.nome,
+      deId: autor.id,
       texto: corpo.texto,
       daCabine: false,
+      para: corpo.para,
     });
     if (!msg) {
       this._json(res, 400, { ok: false, erro: "Mensagem vazia." });

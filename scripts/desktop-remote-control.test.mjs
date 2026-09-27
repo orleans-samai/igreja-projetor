@@ -577,10 +577,25 @@ test("o dirigente conversa no mesmo mural do celular, e o aviso vira texto", asy
     // E a cabine é avisada, senão o operador só veria ao recarregar.
     assert.equal(vistos.filter((e) => e.tipo === "chat").length, 1);
 
-    // Recado sem nome ainda é recado, e aparece como "Dirigente".
+    // A página é uma pessoa só: recado sem nome, da mesma página, continua
+    // sendo de quem entrou — é o que faz "para o Pastor" e @nome chegarem.
     await fetch(`${ctx.base}/dirigente/chat`, {
       method: "POST",
       headers: chave,
+      body: JSON.stringify({ texto: "oi" }),
+    });
+    assert.equal(ctx.rc.chat.at(-1).de, "Pastor Elias");
+
+    // Página nova, que nunca disse o nome, aparece como "Dirigente".
+    const outra = await (
+      await fetch(`${ctx.base}/dirigente/entrar`, {
+        method: "POST",
+        body: JSON.stringify({ senha: "cordeiro-de-deus" }),
+      })
+    ).json();
+    await fetch(`${ctx.base}/dirigente/chat`, {
+      method: "POST",
+      headers: { "x-lumen-dirigente": outra.token },
       body: JSON.stringify({ texto: "oi" }),
     });
     assert.equal(ctx.rc.chat.at(-1).de, "Dirigente");
@@ -1140,7 +1155,7 @@ test("a mesma lista reenviada não avisa, e a capa que já veio não some", asyn
 const CULTO = {
   nome: "Domingo 19h",
   itens: [
-    { id: "i1", titulo: "Boas-vindas", tipo: "text", detalhe: "", etapa: "concluido" },
+    { id: "i1", titulo: "Boas-vindas", tipo: "text", detalhe: "", etapa: "pendente" },
     { id: "i2", titulo: "Cântico da alvorada", tipo: "song", detalhe: "Coletivo", etapa: "no-ar" },
     { id: "i3", titulo: "João 3:16", tipo: "bible", detalhe: "Almeida", etapa: "proximo" },
   ],
@@ -1162,7 +1177,7 @@ test("a programação do culto chega ao celular de editor, e não ao de só chat
     const { culto } = await (await fetch(`${ctx.base}/culto?token=${editor}`)).json();
     assert.equal(culto.nome, "Domingo 19h");
     assert.deepEqual(culto.itens.map((i) => [i.titulo, i.etapa]), [
-      ["Boas-vindas", "concluido"],
+      ["Boas-vindas", "pendente"],
       ["Cântico da alvorada", "no-ar"],
       ["João 3:16", "proximo"],
     ]);
@@ -1239,6 +1254,228 @@ test("projetar um item do culto pelo celular exige o controle do telão", async 
     );
     // Projetar não tira nada da programação.
     assert.equal(ctx.rc.culto.itens.length, 3);
+  } finally {
+    await derrubar(ctx);
+  }
+});
+
+/* ───────────────────────── chat da equipe: destino, presença, moderação, fotos */
+
+/** Abre o fluxo de eventos de um aparelho e junta o que chega. */
+async function fluxo(ctx, token) {
+  const controlador = new AbortController();
+  const resposta = await fetch(`${ctx.base}/estado?token=${token}`, { signal: controlador.signal });
+  const eventos = [];
+  const leitor = resposta.body.getReader();
+  let resto = "";
+  void (async () => {
+    try {
+      for (;;) {
+        const { value, done } = await leitor.read();
+        if (done) break;
+        resto += Buffer.from(value).toString("utf8");
+        let fim;
+        while ((fim = resto.indexOf("\n\n")) >= 0) {
+          const bloco = resto.slice(0, fim);
+          resto = resto.slice(fim + 2);
+          for (const linha of bloco.split("\n")) {
+            if (linha.startsWith("data: ")) eventos.push(JSON.parse(linha.slice(6)));
+          }
+        }
+      }
+    } catch {
+      /* fluxo fechado */
+    }
+  })();
+  const esperar = async (achar, ms = 2000) => {
+    const limite = Date.now() + ms;
+    while (Date.now() < limite) {
+      const e = eventos.find(achar);
+      if (e) return e;
+      await new Promise((ok) => setTimeout(ok, 20));
+    }
+    return null;
+  };
+  await esperar((e) => e.tipo === "inicio");
+  return { eventos, esperar, fechar: () => controlador.abort() };
+}
+
+/** Três aparelhos: Caio (Som), Bia (Louvor) e Zé (sem equipe), com o chat aberto. */
+async function equipeNoChat(ctx) {
+  const pessoas = {};
+  for (const [nome, equipe] of [["Caio", "som"], ["Bia", "louvor"], ["Zé", ""]]) {
+    const token = await parear(ctx.base, nome);
+    const id = ctx.rc.dispositivos.get(token).id;
+    if (equipe) {
+      const r = await fetch(`${ctx.base}/chat/equipe`, { method: "POST", body: JSON.stringify({ token, equipe }) });
+      assert.equal(r.status, 200);
+    }
+    pessoas[nome] = { token, id, fluxo: await fluxo(ctx, token) };
+  }
+  return pessoas;
+}
+
+const chatDe = (texto) => (e) => e.tipo === "chat" && e.mensagem.texto === texto;
+const escrever = (ctx, token, texto, para) =>
+  fetch(`${ctx.base}/chat`, { method: "POST", body: JSON.stringify({ token, texto, para }) });
+const semEsperar = (ms) => new Promise((ok) => setTimeout(ok, ms));
+
+test("recado para uma equipe chega só a ela; quem escreveu e a cabine também leem", async () => {
+  const ctx = await subir();
+  const cabine = [];
+  ctx.rc.onEvento = (e) => e.tipo === "chat" && cabine.push(e.mensagem);
+  const p = await equipeNoChat(ctx);
+  try {
+    const r = await escrever(ctx, p.Caio.token, "Sobe o retorno do teclado", { tipo: "equipe", equipe: "louvor" });
+    assert.equal(r.status, 200);
+    assert.ok(await p.Bia.fluxo.esperar(chatDe("Sobe o retorno do teclado")), "a equipe do Louvor não recebeu");
+    assert.ok(await p.Caio.fluxo.esperar(chatDe("Sobe o retorno do teclado")), "quem escreveu não viu o próprio recado");
+    await semEsperar(300);
+    assert.equal(p.Zé.fluxo.eventos.some(chatDe("Sobe o retorno do teclado")), false, "chegou a quem não era do Louvor");
+    assert.equal(cabine.length, 1);
+    assert.deepEqual(cabine[0].para, { tipo: "equipe", equipe: "louvor" });
+
+    // Recado direto da cabine: só a pessoa.
+    ctx.rc.mensagemDaCabine("Bia, pode entrar", "Operador", { tipo: "pessoa", id: p.Bia.id, nome: "Bia" });
+    assert.ok(await p.Bia.fluxo.esperar(chatDe("Bia, pode entrar")));
+    await semEsperar(300);
+    assert.equal(p.Caio.fluxo.eventos.some(chatDe("Bia, pode entrar")), false);
+    assert.equal(p.Zé.fluxo.eventos.some(chatDe("Bia, pode entrar")), false);
+  } finally {
+    Object.values(p).forEach((x) => x.fluxo.fechar());
+    await derrubar(ctx);
+  }
+});
+
+test("@nome chega a quem foi citado, mesmo fora da equipe do recado", async () => {
+  const ctx = await subir();
+  const p = await equipeNoChat(ctx);
+  try {
+    await escrever(ctx, p.Caio.token, "@Zé confere o cabo do púlpito", { tipo: "equipe", equipe: "som" });
+    const recebido = await p.Zé.fluxo.esperar(chatDe("@Zé confere o cabo do púlpito"));
+    assert.ok(recebido, "quem foi citado não recebeu");
+    assert.deepEqual(recebido.mensagem.mencoes.map((m) => m.nome), ["Zé"]);
+    await semEsperar(300);
+    assert.equal(p.Bia.fluxo.eventos.some(chatDe("@Zé confere o cabo do púlpito")), false);
+  } finally {
+    Object.values(p).forEach((x) => x.fluxo.fechar());
+    await derrubar(ctx);
+  }
+});
+
+test("quem está no chat e quem está digitando", async () => {
+  const ctx = await subir();
+  const p = await equipeNoChat(ctx);
+  try {
+    const nomes = (e) => e.pessoas.map((x) => x.nome).sort();
+    const todos = await p.Zé.fluxo.esperar((e) => e.tipo === "presenca" && e.pessoas.length === 4);
+    assert.deepEqual(nomes(todos), ["Bia", "Cabine", "Caio", "Zé"]);
+    assert.equal(todos.pessoas.find((x) => x.nome === "Bia").equipe, "louvor");
+
+    // Digitando para o Louvor: a Bia vê, o Zé não.
+    await fetch(`${ctx.base}/chat/digitando`, {
+      method: "POST",
+      body: JSON.stringify({ token: p.Caio.token, para: { tipo: "equipe", equipe: "louvor" } }),
+    });
+    assert.ok(await p.Bia.fluxo.esperar((e) => e.tipo === "digitando" && e.de === "Caio"));
+    await semEsperar(300);
+    assert.equal(p.Zé.fluxo.eventos.some((e) => e.tipo === "digitando"), false);
+
+    // Fechou o chat, saiu da lista.
+    p.Bia.fluxo.fechar();
+    const semBia = await p.Zé.fluxo.esperar((e) => e.tipo === "presenca" && !e.pessoas.some((x) => x.nome === "Bia"));
+    assert.ok(semBia, "a Bia continuou na lista depois de sair");
+  } finally {
+    Object.values(p).forEach((x) => x.fluxo.fechar());
+    await derrubar(ctx);
+  }
+});
+
+test("a cabine apaga um recado e silencia um aparelho", async () => {
+  const ctx = await subir();
+  const p = await equipeNoChat(ctx);
+  try {
+    await escrever(ctx, p.Zé.token, "recado errado", undefined);
+    const msg = ctx.rc.chat.at(-1);
+    assert.equal(ctx.rc.apagarMensagem(msg.id).ok, true);
+    assert.ok(await p.Bia.fluxo.esperar((e) => e.tipo === "chat-apagada" && e.id === msg.id));
+    assert.equal(ctx.rc.chat.at(-1).apagada, true);
+    assert.equal(ctx.rc.chat.at(-1).texto, "");
+
+    // Silenciado: continua lendo, não escreve.
+    assert.equal(ctx.rc.silenciar(p.Zé.id, 5).ok, true);
+    const aviso = await p.Zé.fluxo.esperar((e) => e.tipo === "silenciado");
+    assert.ok(aviso.ate > Date.now());
+    assert.equal((await escrever(ctx, p.Zé.token, "posso falar?")).status, 403);
+    const lista = await p.Bia.fluxo.esperar(
+      (e) => e.tipo === "presenca" && e.pessoas.some((x) => x.nome === "Zé" && x.silenciado),
+    );
+    assert.ok(lista, "a lista não mostrou o Zé silenciado");
+
+    ctx.rc.silenciar(p.Zé.id, 0);
+    assert.equal((await escrever(ctx, p.Zé.token, "agora posso")).status, 200);
+  } finally {
+    Object.values(p).forEach((x) => x.fluxo.fechar());
+    await derrubar(ctx);
+  }
+});
+
+test("foto no chat: só foto de verdade entra, e só quem lê o recado vê a foto", async () => {
+  const ctx = await subir();
+  const guardadas = new Map();
+  const apagadas = [];
+  ctx.rc.aoGuardarFoto = async (bytes) => {
+    const arquivo = `00000000-0000-0000-0000-00000000000${guardadas.size}.png`;
+    guardadas.set(arquivo, bytes);
+    return { ok: true, arquivo };
+  };
+  ctx.rc.aoLerFoto = async (arquivo) => (guardadas.has(arquivo) ? { bytes: guardadas.get(arquivo), tipo: "image/png" } : null);
+  ctx.rc.aoApagarFoto = (arquivo) => apagadas.push(arquivo);
+  const p = await equipeNoChat(ctx);
+  try {
+    const png = "data:image/png;base64," + Buffer.from("89504e470d0a1a0a0000000d49484452", "hex").toString("base64");
+    const enviada = await (
+      await fetch(`${ctx.base}/chat/foto`, {
+        method: "POST",
+        body: JSON.stringify({ token: p.Caio.token, foto: png, texto: "Setlist de hoje", para: { tipo: "pessoa", id: p.Zé.id, nome: "Zé" } }),
+      })
+    ).json();
+    assert.equal(enviada.ok, true);
+    const { arquivo } = enviada.mensagem.foto;
+
+    const doZe = await fetch(`${ctx.base}/chat/foto?arquivo=${arquivo}&token=${p.Zé.token}`);
+    assert.equal(doZe.status, 200);
+    assert.equal(doZe.headers.get("content-type"), "image/png");
+    // A Bia não recebeu o recado, então também não vê a foto dele.
+    assert.equal((await fetch(`${ctx.base}/chat/foto?arquivo=${arquivo}&token=${p.Bia.token}`)).status, 404);
+
+    const texto = await fetch(`${ctx.base}/chat/foto`, {
+      method: "POST",
+      body: JSON.stringify({ token: p.Caio.token, foto: "data:text/html;base64,PHNjcmlwdD4=" }),
+    });
+    assert.equal(texto.status, 400);
+
+    // Apagar o recado apaga a foto do disco.
+    ctx.rc.apagarMensagem(enviada.mensagem.id);
+    assert.deepEqual(apagadas, [arquivo]);
+  } finally {
+    Object.values(p).forEach((x) => x.fluxo.fechar());
+    await derrubar(ctx);
+  }
+});
+
+test("o aparelho escolhe a equipe dele, e equipe inventada não entra", async () => {
+  const ctx = await subir();
+  try {
+    const token = await parear(ctx.base, "Caio");
+    const mudar = (equipe) => fetch(`${ctx.base}/chat/equipe`, { method: "POST", body: JSON.stringify({ token, equipe }) });
+    assert.equal((await mudar("som")).status, 200);
+    assert.equal(ctx.rc.dispositivos.get(token).equipe, "som");
+    // "Cabine" é só da cabine.
+    assert.equal((await mudar("cabine")).status, 400);
+    assert.equal((await mudar("qualquer")).status, 400);
+    assert.equal((await mudar("")).status, 200);
+    assert.equal(ctx.rc.dispositivos.get(token).equipe, "");
   } finally {
     await derrubar(ctx);
   }

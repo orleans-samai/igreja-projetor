@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { durableStorage } from "@/lib/durable-storage";
 import { chatVisivel } from "@/lib/chat-visivel";
-import type { MensagemChat } from "@/lib/remote-control";
+import type { MensagemChat, ParaChat, PessoaNoChat } from "@/lib/remote-control";
 
 /**
  * O chat entre a cabine e quem está com o celular.
@@ -32,8 +32,19 @@ interface ChatState {
   naoLidas: number;
   /** Última mensagem recebida com o painel fechado, para o aviso discreto. */
   aviso: MensagemChat | null;
+  /** Quem está com o chat aberto agora (a cabine incluída). */
+  pessoas: PessoaNoChat[];
+  /** Quem está digitando, até quando (ms). */
+  digitando: { id: string; nome: string; ate: number }[];
+  /** Para quem a cabine está escrevendo. */
+  para: ParaChat;
 
   receber: (m: MensagemChat) => void;
+  /** A cabine apagou o recado: o lugar fica, o conteúdo sai. */
+  apagar: (id: string) => void;
+  setPessoas: (pessoas: PessoaNoChat[]) => void;
+  marcarDigitando: (id: string, nome: string) => void;
+  setPara: (para: ParaChat) => void;
   abrir: (v: boolean) => void;
   setPosicao: (p: PosicaoChat) => void;
   limparAviso: () => void;
@@ -53,6 +64,9 @@ export const useChatStore = create<ChatState>()(
       posicao: "coluna",
       naoLidas: 0,
       aviso: null,
+      pessoas: [],
+      digitando: [],
+      para: { tipo: "todos" },
 
       receber: (m) =>
         set((s) => {
@@ -65,6 +79,36 @@ export const useChatStore = create<ChatState>()(
           if (m.daCabine || chatVisivel(s.posicao, s.aberto)) return { ...s, mensagens };
           return { ...s, mensagens, naoLidas: s.naoLidas + 1, aviso: m };
         }),
+
+      apagar: (id) =>
+        set((s) => ({
+          ...s,
+          mensagens: s.mensagens.map((m) =>
+            m.id === id
+              ? { ...m, texto: "", audio: undefined, foto: undefined, mencoes: [], apagada: true }
+              : m,
+          ),
+          aviso: s.aviso?.id === id ? null : s.aviso,
+        })),
+      setPessoas: (pessoas) =>
+        set((s) => {
+          // Quem escrevia para uma pessoa que saiu volta a escrever para todos:
+          // mandar para quem não está mais aí seria recado perdido.
+          const para =
+            s.para.tipo === "pessoa" && !pessoas.some((p) => p.id === (s.para as { id: string }).id)
+              ? ({ tipo: "todos" } as ParaChat)
+              : s.para;
+          return { ...s, pessoas, para };
+        }),
+      marcarDigitando: (id, nome) =>
+        set((s) => ({
+          ...s,
+          digitando: [
+            ...s.digitando.filter((d) => d.id !== id && d.ate > Date.now()),
+            { id, nome, ate: Date.now() + 4000 },
+          ],
+        })),
+      setPara: (para) => set((s) => ({ ...s, para })),
 
       abrir: (v) => set((s) => ({ ...s, aberto: v, naoLidas: v ? 0 : s.naoLidas, aviso: null })),
       setPosicao: (posicao) =>

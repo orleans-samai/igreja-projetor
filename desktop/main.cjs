@@ -17,6 +17,7 @@ const { abortou } = require("./navegacao.cjs");
 const { alturaDaCabine, larguraDaCabine } = require("./janela.cjs");
 const apresentacoes = require("./apresentacoes.cjs");
 const artesImagens = require("./artes-imagens.cjs");
+const chatFotos = require("./chat-fotos.cjs");
 
 
 const ORIGIN = "lumen://app";
@@ -50,6 +51,10 @@ remoteControl.onComando = (acao) => {
 // repertório e quem decide o que fazer com cada pedido.
 // Quem escreve no disco é o processo principal; o servidor só entrega bytes.
 remoteControl.aoReceberArquivo = (nome, dados) => media.receber(nome, dados);
+// As fotos do chat moram no disco; o servidor do celular só guarda o nome.
+remoteControl.aoGuardarFoto = (bytes) => chatFotos.salvar(bytes);
+remoteControl.aoLerFoto = (arquivo) => chatFotos.ler(arquivo);
+remoteControl.aoApagarFoto = (arquivo) => chatFotos.apagar(arquivo);
 remoteControl.onEvento = (evento) => {
   if (cabine && !cabine.isDestroyed()) cabine.webContents.send("lumen:remote-event", evento);
 };
@@ -105,6 +110,8 @@ async function startServer() {
       if (pathname.startsWith("/__apresentacao/")) file = await apresentacoes.resolver(pathname);
       // Fotos e logos das artes: o endereço sobrevive ao app fechar.
       if (pathname.startsWith("/__artes/")) file = await artesImagens.resolver(pathname);
+      // Fotos do chat da equipe, para a cabine exibir.
+      if (pathname.startsWith("/__chat/")) file = await chatFotos.resolver(pathname);
       if (pathname.startsWith("/__pacotes/")) file = await packages.resolvePackage(request.url, packageRoot);
     } catch { /* url malformada cai no 404 */ }
     if (!file) file = await resolveAsset(wwwRoot(), request.url);
@@ -399,6 +406,7 @@ if (!gotLock) {
     media.init(dataDir);
     apresentacoes.init(dataDir);
     artesImagens.init(dataDir);
+    chatFotos.init(dataDir);
     // No teste, a exportação fica no perfil isolado — nunca na pasta de
     // Imagens de quem roda o teste.
     artesImagens.definirExportacao(smokeTest ? path.join(dataDir, "artes-exportadas") : path.join(app.getPath("pictures"), "Lúmen - Artes"));
@@ -595,7 +603,16 @@ handle("lumen:remote-control-devices", () => remoteControl.listarDispositivos())
 handle("lumen:remote-control-permission", (id, permissao) => remoteControl.definirPermissao(id, permissao));
 handle("lumen:remote-control-default-permission", (permissao) => remoteControl.definirPermissaoPadrao(permissao));
 handle("lumen:remote-control-disconnect", (id) => remoteControl.desconectar(id));
-handle("lumen:remote-control-chat", (texto, autor) => remoteControl.mensagemDaCabine(texto, autor));
+handle("lumen:remote-control-chat", (texto, autor, para) => remoteControl.mensagemDaCabine(texto, autor, para));
+handle("lumen:remote-control-chat-foto", async (dados, texto, autor, para) => {
+  const guardada = await chatFotos.salvar(Buffer.from(dados ?? []));
+  if (!guardada.ok) return { ok: false, erro: guardada.error };
+  return { ok: true, mensagem: remoteControl.fotoDaCabine(guardada.arquivo, texto, autor, para) };
+});
+handle("lumen:remote-control-chat-apagar", (id) => remoteControl.apagarMensagem(id));
+handle("lumen:remote-control-silenciar", (id, minutos) => remoteControl.silenciar(id, minutos));
+handle("lumen:remote-control-presenca", () => remoteControl.presenca());
+onEvent("lumen:remote-control-digitando", (para) => remoteControl.digitandoDaCabine(para));
 handle("lumen:auto-slide-status", () => recognition.status());
 handle("lumen:auto-slide-install", () => recognition.install());
 handle("lumen:auto-slide-transcribe", (wav) => recognition.transcribe(wav));

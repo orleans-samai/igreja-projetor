@@ -39,12 +39,47 @@ export interface DispositivoRemoto {
   online: boolean;
 }
 
+/** As equipes do culto no chat. "cabine" é só da cabine. */
+export type EquipeDoChat = "cabine" | "som" | "louvor" | "pastor";
+
+export const NOME_DA_EQUIPE: Record<EquipeDoChat, string> = {
+  cabine: "Cabine",
+  som: "Som",
+  louvor: "Louvor",
+  pastor: "Pastor",
+};
+
+/** Para quem vai um recado. Sem destino, é para todos. */
+export type ParaChat =
+  | { tipo: "todos" }
+  | { tipo: "equipe"; equipe: EquipeDoChat }
+  | { tipo: "pessoa"; id: string; nome: string };
+
+/** Quem está com o chat aberto agora. */
+export interface PessoaNoChat {
+  id: string;
+  nome: string;
+  /** "" quando o aparelho não escolheu equipe. */
+  equipe: EquipeDoChat | "";
+  silenciado: boolean;
+}
+
 export interface MensagemChat {
   id: string;
   de: string;
+  /** Quem escreveu: "cabine", o id do aparelho ou da página do dirigente. */
+  deId?: string;
   texto: string;
   em: number;
   daCabine: boolean;
+  /** Ausente em recado de versão antiga: vale como "todos". */
+  para?: ParaChat;
+  /** Quem foi citado com @nome — lê o recado mesmo fora do destino. */
+  mencoes?: { id: string; nome: string }[];
+  /** Foto no chat: o arquivo mora no disco da cabine. */
+  foto?: { arquivo: string };
+  /** A cabine apagou: o recado fica no lugar, sem conteúdo. */
+  apagada?: boolean;
   /**
    * Recado falado, como endereço `data:` de áudio.
    *
@@ -60,6 +95,10 @@ export interface MensagemChat {
 export type EventoRemoto =
   | { tipo: "dispositivos"; novo?: string }
   | { tipo: "chat"; mensagem: MensagemChat }
+  // O chat da equipe: quem está nele, quem está digitando, recado apagado.
+  | { tipo: "presenca"; pessoas: PessoaNoChat[] }
+  | { tipo: "digitando"; deId: string; de: string; para: ParaChat }
+  | { tipo: "chat-apagada"; id: string }
   // Tirar um item da programação, ou mandá-lo para o telão, pela aba Culto.
   | { tipo: "culto-remover" | "culto-projetar"; id: string; titulo: string; de: string }
   | {

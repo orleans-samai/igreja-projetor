@@ -47,7 +47,13 @@ contextBridge.exposeInMainWorld("lumenDesktop", {
   remoteControlSetDefaultPermission: (permissao) =>
     ipcRenderer.invoke("lumen:remote-control-default-permission", permissao),
   remoteControlDisconnect: (id) => ipcRenderer.invoke("lumen:remote-control-disconnect", id),
-  remoteControlChat: (texto, autor) => ipcRenderer.invoke("lumen:remote-control-chat", texto, autor),
+  remoteControlChat: (texto, autor, para) => ipcRenderer.invoke("lumen:remote-control-chat", texto, autor, para),
+  remoteControlChatFoto: (dados, texto, autor, para) =>
+    ipcRenderer.invoke("lumen:remote-control-chat-foto", dados, texto, autor, para),
+  remoteControlChatApagar: (id) => ipcRenderer.invoke("lumen:remote-control-chat-apagar", id),
+  remoteControlSilenciar: (id, minutos) => ipcRenderer.invoke("lumen:remote-control-silenciar", id, minutos),
+  remoteControlPresenca: () => ipcRenderer.invoke("lumen:remote-control-presenca"),
+  remoteControlDigitando: (para) => ipcRenderer.send("lumen:remote-control-digitando", para),
   onRemoteEvent: (cb) => {
     const listener = (_event, evento) => cb(evento);
     ipcRenderer.on("lumen:remote-event", listener);

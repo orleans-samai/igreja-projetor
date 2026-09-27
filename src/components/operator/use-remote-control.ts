@@ -17,6 +17,7 @@ import {
 import { temaDaMusica, temasUsados } from "@/lib/tema-remoto";
 import { etapaDoItem } from "@/lib/culto-etapas";
 import { useChatStore } from "@/store/chat-store";
+import { chegouRecado, recadoApagado } from "@/store/chat-historico-store";
 import { useLumenStore, type LumenState } from "@/store/lumen-store";
 import type { Theme } from "@/lib/types";
 
@@ -240,6 +241,14 @@ export function useRemoteControl() {
     d.remoteControlPushChurch({ nome: churchName, logo: logoUrl });
   }, [churchName, logoUrl]);
 
+  // Quem já estava no chat quando a cabine abriu: a lista chega pelo
+  // evento "presenca" só quando alguém entra ou sai.
+  useEffect(() => {
+    const d = window.lumenDesktop;
+    if (!d?.isDesktop || !d.remoteControlPresenca) return;
+    void d.remoteControlPresenca().then((pessoas) => useChatStore.getState().setPessoas(pessoas));
+  }, []);
+
   useEffect(() => {
     const d = window.lumenDesktop;
     if (!d?.isDesktop) return;
@@ -258,9 +267,21 @@ export function useRemoteControl() {
         // Nova de verdade: o celular que reconecta reenvia o histórico, e o
         // aviso dourado não pode repetir recado de meia hora atrás.
         const nova = !useChatStore.getState().mensagens.some((x) => x.id === m.id);
-        useChatStore.getState().receber(m);
+        chegouRecado(m);
         // O que a própria cabine escreveu não vira aviso para ela mesma.
         if (nova && !m.daCabine) avisarMensagem(m);
+        return;
+      }
+      if (evento.tipo === "presenca") {
+        useChatStore.getState().setPessoas(evento.pessoas);
+        return;
+      }
+      if (evento.tipo === "digitando") {
+        useChatStore.getState().marcarDigitando(evento.deId, evento.de);
+        return;
+      }
+      if (evento.tipo === "chat-apagada") {
+        recadoApagado(evento.id);
         return;
       }
       if (evento.tipo === "dispositivos") {

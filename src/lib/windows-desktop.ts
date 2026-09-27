@@ -350,7 +350,20 @@ declare global {
       remoteControlChat: (
         texto: string,
         autor: string,
+        para?: import("./remote-control").ParaChat,
       ) => Promise<import("./remote-control").MensagemChat | null>;
+      /** Foto no chat, mandada pela cabine; o processo principal confere e grava. */
+      remoteControlChatFoto: (
+        dados: Uint8Array,
+        texto: string,
+        autor: string,
+        para?: import("./remote-control").ParaChat,
+      ) => Promise<{ ok: boolean; erro?: string; mensagem?: import("./remote-control").MensagemChat | null }>;
+      remoteControlChatApagar: (id: string) => Promise<{ ok: boolean; erro?: string }>;
+      /** Silencia um aparelho no chat por `minutos`; 0 devolve a voz. */
+      remoteControlSilenciar: (id: string, minutos: number) => Promise<{ ok: boolean; erro?: string }>;
+      remoteControlPresenca: () => Promise<import("./remote-control").PessoaNoChat[]>;
+      remoteControlDigitando: (para: import("./remote-control").ParaChat) => void;
       onRemoteEvent: (cb: (evento: import("./remote-control").EventoRemoto) => void) => () => void;
       remoteControlPushState: (payload: import("./remote-control").RemoteStatePayload) => void;
       onRemoteCommand: (cb: (acao: string) => void) => () => void;
