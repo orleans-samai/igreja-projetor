@@ -16,16 +16,6 @@ export type OpsMessage =
   | { type: "ack"; id: string; status: "done" | "dismissed" }
   | { type: "takeover"; sessionId: string }
   | { type: "chat"; from: RequestFrom; text: string; at: number }
-  // O player do YouTube vive na janela de projeção; a cabine só sabe onde o
-  // vídeo está porque o projetor conta. Sem projetor aberto, a barra de
-  // progresso fica parada — e isso já é a resposta certa.
-  | {
-      type: "youtube-tempo";
-      tempo: number;
-      duracao: number;
-      estado: "tocando" | "pausado" | "parado" | "carregando" | "fim";
-      erro?: string;
-    }
   // O vídeo local toca no telão, então é de lá que vem tudo que a barra de
   // progresso da cabine mostra: onde está, quanto dura e quanto já carregou.
   // Sem isto o botão de Pausar ficaria aceso para sempre depois de um vídeo

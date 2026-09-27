@@ -6,7 +6,6 @@ import { useColunasCabem } from "@/lib/largura-da-cabine";
 import { LogoDialog } from "@/components/operator/logo-dialog";
 import { ArtesDialog } from "@/features/artes/componentes/artes-dialog";
 import { VfxDialog } from "@/features/vfx/componentes/vfx-dialog";
-import { IaDialog } from "@/components/operator/ia-dialog";
 import { PermissoesDialog } from "@/components/operator/permissoes-dialog";
 import { ControlBar } from "@/components/operator/control-bar";
 import {
@@ -34,7 +33,6 @@ import { PainelArrastavel, ReorganizeBar } from "@/components/operator/reorganiz
 import { chatEhColuna } from "@/lib/chat-visivel";
 import { TourBanner } from "@/components/operator/tour";
 import { UpdateBanner } from "@/components/operator/update-banner";
-import { YoutubePanel } from "@/components/operator/youtube-panel";
 import { WindowsRuntime } from "@/components/operator/windows-setup";
 import { toast } from "sonner";
 import { applyAccentPreset } from "@/lib/accent-presets";
@@ -48,9 +46,7 @@ import { TAMANHO_PAINEL, type PainelId } from "@/lib/paineis";
 import type { LiveFrame } from "@/lib/types";
 import { buildLiveFrame, useLumenStore } from "@/store/lumen-store";
 import { useAutoSlideStore } from "@/store/auto-slide-store";
-import { useYoutubeStore } from "@/store/youtube-store";
 import { useChatStore } from "@/store/chat-store";
-import { useIaStore } from "@/store/ia-store";
 import { useOpsStore } from "@/store/ops-store";
 
 function isTypingTarget(el: EventTarget | null) {
@@ -112,7 +108,6 @@ export function OperatorApp() {
     });
     void useLumenStore.persist.rehydrate();
     void useAutoSlideStore.persist.rehydrate();
-    void useYoutubeStore.persist.rehydrate();
     return unsub;
   }, []);
 
@@ -128,7 +123,6 @@ export function OperatorApp() {
     stageThemeId,
     themes,
     settings: outputSettings,
-    youtube,
   } = store;
   const outputFrame = useMemo(
     () =>
@@ -144,7 +138,6 @@ export function OperatorApp() {
         stageThemeId,
         themes,
         settings: outputSettings,
-        youtube,
       }),
     [
       status,
@@ -158,7 +151,6 @@ export function OperatorApp() {
       stageThemeId,
       themes,
       outputSettings,
-      youtube,
     ],
   );
 
@@ -401,7 +393,6 @@ export function OperatorApp() {
           onRemoteControl={() => setRemoteControl(true)}
           onLogo={() => setLogoAberto(true)}
           onPermissoes={() => setPermissoesAberto(true)}
-          onIa={() => useIaStore.getState().abrir(true)}
           onArtes={() => setArtesAberto(true)}
           onVfx={() => setVfxAberto(true)}
           onOptimize={() => void runOptimize()}
@@ -409,10 +400,6 @@ export function OperatorApp() {
         <WindowsRuntime />
         <UpdateBanner />
         <AutoSlidePanel onConfig={() => setAutoSlide(true)} />
-        {/* A Bíblia é espaço de trabalho de tela cheia. O que pertence ao fluxo
-            de músicas — vídeo e grade de letras — sai de cena enquanto ela está
-            aberta, senão ela fica com uma fresta e o rodapé vaza por cima. */}
-        {!bibleOpen && <YoutubePanel />}
         <ReorganizeBar biblia={bibleOpen} />
         <TourBanner />
 
@@ -544,7 +531,6 @@ export function OperatorApp() {
       <RemoteControlDialog open={remoteControl} onOpenChange={setRemoteControl} />
       <LogoDialog open={logoAberto} onOpenChange={setLogoAberto} />
       <PermissoesDialog open={permissoesAberto} onOpenChange={setPermissoesAberto} />
-      <IaDialog onConfiguracoes={() => setSettings(true)} />
       <ArtesDialog open={artesAberto} onOpenChange={setArtesAberto} />
       <VfxDialog open={vfxAberto} onOpenChange={setVfxAberto} />
       <DisplayDialog open={display} onOpenChange={setDisplay} />

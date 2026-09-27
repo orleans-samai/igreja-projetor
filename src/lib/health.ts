@@ -70,7 +70,7 @@ export function runCheckup(input: {
     label: "Internet",
     level: input.online ? "ok" : "warn",
     detail: input.online
-      ? "Online — copiloto IA e busca na web disponíveis"
+      ? "Online — busca de letras na internet disponível"
       : "Offline — comandos locais e Bíblia continuam funcionando",
   });
 

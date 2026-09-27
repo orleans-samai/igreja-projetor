@@ -41,7 +41,6 @@ export interface OptimizeResult {
   themePatch: Partial<Theme>;
   settingsPatch: Partial<Settings>;
   summary: string[];
-  usedAi: boolean;
 }
 
 const TARGET_CHARS = 34;
@@ -501,7 +500,6 @@ export function optimizeLocal(input: OptimizeInput): OptimizeResult {
     themePatch,
     settingsPatch,
     summary,
-    usedAi: false,
   };
 }
 
@@ -546,28 +544,3 @@ export function optimizeRawText(text: string, kind: SlideKind = "text"): Optimiz
   });
 }
 
-export function shouldRefineWithAi(issues: SlideIssue[], raw: string): boolean {
-  if (raw.length < 60) return false;
-  return issues.some((i) => i.kind === "wall" || i.kind === "tooManyLines" || i.kind === "orphan");
-}
-
-export function mergeAiSlides(
-  local: OptimizeResult,
-  aiTexts: { label?: string; text: string }[],
-): OptimizeResult {
-  if (!aiTexts.length) return local;
-  const slides = aiTexts.map((s, i) => ({
-    id: nid(),
-    label: s.label?.trim() || local.slides[i]?.label || `Verso ${i + 1}`,
-    text: s.text.replace(/\r/g, "").trim(),
-    reference: local.slides[i]?.reference,
-    sortOrder: i,
-  }));
-  return {
-    ...local,
-    slides,
-    raw: slidesToRaw("text", slides),
-    summary: [...local.summary.filter((x) => !x.startsWith("Parti")), "Afinei as quebras de frase"],
-    usedAi: true,
-  };
-}

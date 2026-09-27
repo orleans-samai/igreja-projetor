@@ -19,9 +19,7 @@ import { legendaDoRodape, margensCentradas } from "@/lib/slide-rodape";
 import { fadeDurationMs, slideKey } from "@/lib/transition";
 import type { ClockPosition, FitMode, LiveFrame, OutputStatus, Theme } from "@/lib/types";
 import { cn } from "@/lib/cn";
-import { YoutubeStage } from "@/components/projection/youtube-stage";
 import { publishOps } from "@/lib/ops-channel";
-import { capaDoVideo } from "@/lib/youtube";
 
 const VW = 1920;
 const VH = 1080;
@@ -601,27 +599,6 @@ function MediaStage({
   );
 }
 
-/**
- * O que a cabine e o palco veem no lugar do vídeo.
- *
- * Capa parada, sem player e sem som. O operador precisa saber o que está no
- * ar; o que ele não pode é ouvir o mesmo áudio uma segunda vez.
- */
-function CapaDoYoutube({ frame }: { frame: NonNullable<LiveFrame["youtube"]> }) {
-  return (
-    <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-4 bg-black">
-      <img
-        src={capaDoVideo(frame.videoId)}
-        alt=""
-        className="max-h-[70%] max-w-[80%] object-contain"
-      />
-      <p className="max-w-[80%] truncate text-[1.6rem] text-white/70">
-        {frame.titulo || "Vídeo do YouTube"}
-      </p>
-    </div>
-  );
-}
-
 export function SlideCanvas({
   frame,
   variant,
@@ -834,25 +811,6 @@ export function SlideStage({
   simulateOutput?: boolean;
 }) {
   const { ref, scale, bar } = useScale(variant === "preview" && !simulateOutput ? "contain" : frame.settings.fitMode);
-
-  // O vídeo do YouTube cobre o telão enquanto estiver projetado, e fica fora
-  // do canvas de 1920×1080: dentro dele o iframe seria rasterizado e depois
-  // escalado, e o vídeo chegaria à igreja mais mole do que precisa.
-  //
-  // Só a plateia recebe o player de verdade. O preview da cabine e cada
-  // miniatura da grade de letras também passam por aqui, e um player por
-  // miniatura significaria o mesmo áudio saindo dez vezes; esses veem a capa.
-  if (frame.youtube) {
-    return (
-      <div className={cn("relative overflow-hidden bg-black", className)}>
-        {variant === "audience" ? (
-          <YoutubeStage frame={frame.youtube} />
-        ) : (
-          <CapaDoYoutube frame={frame.youtube} />
-        )}
-      </div>
-    );
-  }
 
   return (
     <div ref={ref} className={cn("relative overflow-hidden bg-stage", className)}>

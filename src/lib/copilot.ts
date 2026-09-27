@@ -1,7 +1,7 @@
 /**
- * Local natural-language copilot for the cabine.
- * Parses Portuguese operator speech/typed commands instantly.
- * Ambiguous queries fall through to AI (copilot-ai.ts) only when asked.
+ * Comandos da cabine em português, por regras — sem IA.
+ * Entende na hora o que o operador digita ou fala ("João 3:16",
+ * "próximo", "tela preta"); o que não entende, não adivinha.
  */
 
 import { parseBibleRef } from "./bible-ref.ts";

@@ -50,10 +50,12 @@ npm run test:desktop:smoke
   `margensCentradas`). Não reintroduza alinhamento em cima/embaixo.
 - **Artes** (`src/features/artes/`, ver `LEIA-ME.md`): gerador procedural,
   **sem IA** em nenhuma etapa. O formulário pede só título e referência.
-- **IA local** (`src/lib/ia/`): só ferramentas do catálogo fechado, validadas
-  com Zod; nunca executar código, SQL ou comando vindo do modelo; nunca mandar
-  senha ou dado sensível ao modelo (prompt, conversa, log ou estado); modelo
-  só em `127.0.0.1`.
+- **Sem IA e sem YouTube:** o assistente de IA, o copiloto da busca (Ctrl+K),
+  o refino online do Otimizar e o player do YouTube saíram a pedido da
+  igreja. Não reintroduza. Os comandos por regras (`src/lib/copilot.ts`) e o
+  Auto-Slide continuam. A gaveta antiga do YouTube é aceita e descartada na
+  leitura (`APOSENTADAS` em `desktop/storage.cjs`) — recurso que sai deixa a
+  chave lá, nunca a recusa.
 
 ## Arquitetura e segurança
 

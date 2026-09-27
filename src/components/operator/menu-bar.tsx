@@ -4,7 +4,6 @@ import {
   GraduationCap,
   ImageUp,
   Smartphone,
-  Sparkles,
   Menu as MenuIcon,
   Palette,
   Play,
@@ -27,7 +26,6 @@ import { openProjectorWindow } from "@/lib/windows-desktop";
 import { useLumenStore } from "@/store/lumen-store";
 import { useOpsStore } from "@/store/ops-store";
 import { useAutoSlideStore } from "@/store/auto-slide-store";
-import { useYoutubeStore } from "@/store/youtube-store";
 import { exportService, importService } from "@/lib/service-package";
 
 interface Action {
@@ -55,7 +53,6 @@ export function MenuBar({
   onRemoteControl,
   onLogo,
   onPermissoes,
-  onIa,
   onArtes,
   onVfx,
   onOptimize,
@@ -72,7 +69,6 @@ export function MenuBar({
   onRemoteControl: () => void;
   onLogo: () => void;
   onPermissoes: () => void;
-  onIa: () => void;
   onArtes: () => void;
   onVfx: () => void;
   onOptimize: () => void;
@@ -95,8 +91,6 @@ export function MenuBar({
   const setTourOpen = useOpsStore((s) => s.setTourOpen);
   const reorganizando = useOpsStore((s) => s.reorganizando);
   const autoSlideLigado = useAutoSlideStore((s) => s.ligado);
-  const youtubeAberto = useYoutubeStore((s) => s.aberto);
-  const setYoutubeAberto = useYoutubeStore((s) => s.setAberto);
   const setReorganizando = useOpsStore((s) => s.setReorganizando);
   const setCommandOpen = useOpsStore((s) => s.setCommandOpen);
   const setCheckupOpen = useOpsStore((s) => s.setCheckupOpen);
@@ -514,21 +508,6 @@ export function MenuBar({
           <ImageUp className="size-3.5" aria-hidden /> Logo
         </button>
 
-        {/* O assistente fica à mão, mas não em destaque: ele ajuda, e a
-            cabine nunca depende dele para projetar. */}
-        <button
-          type="button"
-          onClick={onIa}
-          className={cn(
-            "flex items-center gap-1.5 rounded-md px-2 py-1 text-secondary text-muted",
-            "transition-colors duration-[var(--motion-fast)] ease-[var(--ease-out)]",
-            "hover:bg-elevated hover:text-fg",
-            "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring",
-          )}
-        >
-          <Sparkles className="size-3.5" aria-hidden /> IA
-        </button>
-
         <button
           type="button"
           onClick={onArtes}
@@ -542,10 +521,10 @@ export function MenuBar({
           <Palette className="size-3.5" aria-hidden /> Artes
         </button>
 
-        {/* Auto-Slide e YouTube são recursos extras, não um modo permanente
+        {/* Auto-Slide e VFX são recursos extras, não um modo permanente
             como Reorganizar — por isso ficam escondidos atrás de um clique
             em vez de ocupar a barra o tempo todo. O ponto aceso no gatilho
-            avisa quando um dos dois está ligado, mesmo fechado. */}
+            avisa quando o Auto-Slide está ligado, mesmo fechado. */}
         <Menu>
           <MenuTrigger asChild>
             <button
@@ -555,13 +534,13 @@ export function MenuBar({
                 "transition-colors duration-[var(--motion-fast)] ease-[var(--ease-out)]",
                 "data-[state=open]:bg-elevated data-[state=open]:text-fg",
                 "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring",
-                autoSlideLigado || youtubeAberto
+                autoSlideLigado
                   ? "text-accent"
                   : "text-muted hover:bg-elevated hover:text-fg",
               )}
             >
               Mais
-              {(autoSlideLigado || youtubeAberto) && (
+              {autoSlideLigado && (
                 <span aria-hidden className="size-1.5 rounded-full bg-accent" />
               )}
             </button>
@@ -575,16 +554,6 @@ export function MenuBar({
                   <span className="size-3.5 shrink-0" aria-hidden />
                 )}
                 Auto-Slide
-              </span>
-            </MenuItem>
-            <MenuItem onSelect={() => setYoutubeAberto(!youtubeAberto)}>
-              <span className="flex items-center gap-2">
-                {youtubeAberto ? (
-                  <Check className="size-3.5 shrink-0" aria-hidden />
-                ) : (
-                  <span className="size-3.5 shrink-0" aria-hidden />
-                )}
-                YouTube
               </span>
             </MenuItem>
             <MenuItem onSelect={onVfx}>
@@ -622,7 +591,6 @@ export function MenuBar({
           <Section first={false} label="Igreja">
             <MenuItem onSelect={onLogo}>Logo e nome da igreja</MenuItem>
             <MenuItem onSelect={onPermissoes}>Permissões do celular</MenuItem>
-            <MenuItem onSelect={onIa}>Assistente Lúmen</MenuItem>
             <MenuItem onSelect={onArtes}>Artes</MenuItem>
             <MenuItem onSelect={onVfx}>VFX</MenuItem>
           </Section>

@@ -1,18 +1,15 @@
 /**
  * Otimizar apresentação: quebra o texto do preview em slides que cabem no
- * telão, com um refino opcional pela IA. Fora de um componente para que
- * a barra, o copiloto e o atalho Ctrl+Shift+O chamem a mesma rotina.
+ * telão, por regras. Fora de um componente para que a barra, os comandos e
+ * o atalho Ctrl+Shift+O chamem a mesma rotina.
  */
 
 import { create } from "zustand";
 import { buildLiveFrame } from "@/store/lumen-store";
 import type { LiveFrame } from "@/lib/types";
 import { toast } from "sonner";
-import { refineProjectionSlides } from "@/lib/slide-optimize-ai";
 import {
-  mergeAiSlides,
   optimizeLocal,
-  shouldRefineWithAi,
   type OptimizeInput,
   type OptimizeResult,
 } from "@/lib/slide-optimize";
@@ -68,16 +65,6 @@ export function applyOptimization() {
   cancelOptimization();
   toast.success("Correções aplicadas", { action: { label: "Desfazer", onClick: () => store.undoOptimize() } });
 }
-export async function refineOptimization() {
-  const proposal = useOptimizationReview.getState().proposal;
-  if (!proposal || proposal.input.kind === "bible") return;
-  try {
-    const ai = await refineProjectionSlides({ data: { text: proposal.input.raw ?? "", kind: proposal.input.kind } });
-    if (useOptimizationReview.getState().proposal !== proposal) return;
-    if (!ai.ok || !ai.slides.length) { toast("O refino online não está disponível. A sugestão local continua pronta."); return; }
-    useOptimizationReview.setState({ proposal: { ...proposal, result: mergeAiSlides(proposal.result, ai.slides) } });
-  } catch { toast("Não foi possível refinar agora. A sugestão local continua pronta."); }
-}
 export async function runOptimize(): Promise<boolean> {
   const input = inputFromStore(), s = useLumenStore.getState();
   if (!input || !s.preview) { toast.error("Selecione uma letra, aviso ou versículo."); return false; }
@@ -85,7 +72,4 @@ export async function runOptimize(): Promise<boolean> {
   const frame = { ...buildLiveFrame(s), deck: s.preview, index: s.previewIndex, status: "presenting" as const };
   useOptimizationReview.setState({ proposal: { input, result, frame, signature: signature() } });
   return true;
-}
-export function canRefine(proposal: OptimizationProposal) {
-  return proposal.input.kind !== "bible" && shouldRefineWithAi(proposal.result.issues, proposal.input.raw ?? "");
 }

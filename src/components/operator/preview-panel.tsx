@@ -1,6 +1,6 @@
 import { toast } from "sonner";
 import * as Popover from "@radix-ui/react-popover";
-import { Monitor, Pause, Pencil, Play, Square, Volume2, VolumeX, Youtube } from "lucide-react";
+import { Monitor, Pencil, Play } from "lucide-react";
 import { SlideStage } from "@/components/slide/slide-renderer";
 import { FontSizeBar } from "@/components/operator/font-size-bar";
 import { MediaPlayer } from "@/components/operator/media-player";
@@ -15,8 +15,6 @@ import { cn } from "@/lib/cn";
 import type { LiveFrame } from "@/lib/types";
 import { useLumenStore } from "@/store/lumen-store";
 import { useOpsStore } from "@/store/ops-store";
-import { useYoutubeStore } from "@/store/youtube-store";
-import { relogio } from "@/lib/youtube";
 
 export function PreviewPanel({
   previewFrame,
@@ -129,8 +127,6 @@ export function PreviewPanel({
         </button>
       </div>
 
-      <YoutubeTransporte />
-
       <div className="flex flex-wrap items-center gap-3 border-t border-border px-3 py-2">
         <label className="flex select-none items-center gap-2 text-secondary text-muted">
           <button
@@ -202,68 +198,5 @@ export function PreviewPanel({
   );
 }
 
-/**
- * Transporte do vídeo do YouTube, junto ao preview.
- *
- * O telão fica preto até o vídeo começar, para a capa do YouTube — título,
- * canal, logo — não chegar à igreja. O preço disso é que o operador precisa
- * comandar de algum lugar, e o lugar é aqui: onde ele já está olhando quando
- * o vídeo está no ar.
- *
- * As mesmas ações existem na seção YouTube, com fila e volume. Aqui fica só o
- * que se aperta no meio do culto.
- */
-function YoutubeTransporte() {
-  const youtube = useLumenStore((s) => s.youtube);
-  const comandar = useLumenStore((s) => s.comandarYoutube);
-  const tirar = useLumenStore((s) => s.removerYoutube);
-  const estado = useYoutubeStore((s) => s.estado);
-  const tempo = useYoutubeStore((s) => s.tempo);
-  const duracao = useYoutubeStore((s) => s.duracao);
-  if (!youtube) return null;
-  const tocando = estado === "tocando";
-
-  return (
-    <div className="animate-swap-in flex flex-wrap items-center gap-2 border-t border-border bg-elevated px-3 py-1.5">
-      <Youtube className="size-3.5 shrink-0 text-danger" aria-hidden />
-      <Hint label={tocando ? "Pausar no telão" : "Tocar no telão"}>
-        <Button
-          size="sm"
-          variant={tocando ? "secondary" : "default"}
-          onClick={() => comandar({ acao: tocando ? "pausar" : "tocar" })}
-        >
-          {tocando ? <Pause /> : <Play />}
-          {tocando ? "Pausar" : "Tocar"}
-        </Button>
-      </Hint>
-      <Hint label="Parar e voltar ao início">
-        <Button size="iconSm" variant="ghost" aria-label="Parar vídeo" onClick={() => comandar({ acao: "parar" })}>
-          <Square />
-        </Button>
-      </Hint>
-      <Hint label={youtube.mudo ? "Tirar do mudo" : "Mudo"}>
-        <Button
-          size="iconSm"
-          variant="ghost"
-          aria-label={youtube.mudo ? "Tirar do mudo" : "Mudo"}
-          onClick={() => comandar({ mudo: !youtube.mudo })}
-        >
-          {youtube.mudo ? <VolumeX /> : <Volume2 />}
-        </Button>
-      </Hint>
-      <span className="tnum text-caption text-subtle">
-        {relogio(tempo)} / {relogio(duracao)}
-      </span>
-      <span className="ml-auto flex items-center gap-2">
-        {!tocando && (
-          <span className="text-caption text-subtle">Telão preto até você tocar</span>
-        )}
-        <Button size="sm" variant="ghost" onClick={tirar}>
-          Tirar do telão
-        </Button>
-      </span>
-    </div>
-  );
-}
 
 

@@ -6,7 +6,6 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Segmented } from "@/components/ui/segmented";
 import { Input, Label, Textarea } from "@/components/ui/input";
 import { FundoDeVideo } from "@/components/operator/fundo-video";
-import { IaConfiguracoes } from "@/components/operator/ia-configuracoes";
 import { IdentidadeDaIgreja } from "@/components/operator/logo-dialog";
 import { MediaFoldersSection } from "@/components/operator/media-folders-section";
 import { ACCENT_PRESETS } from "@/lib/accent-presets";
@@ -193,7 +192,7 @@ export function HelpDialog({ open, onOpenChange }: { open: boolean; onOpenChange
     ["Ctrl+1…9", "Item N da playlist"],
     ["Ctrl+Shift+F", "Buscar letra na internet"],
     ["Ctrl+Shift+O", "Otimizar apresentação"],
-    ["Ctrl+K", "Busca universal / copiloto"],
+    ["Ctrl+K", "Busca universal e comandos"],
     ["Ctrl+Z", "Desfazer o culto"],
     ["Ctrl+Shift+H", "Check-up pré-culto"],
     ["F8", "Modo operador"],
@@ -304,7 +303,7 @@ export function SettingsDialog({
           Modo leve — sem transições ou fundos de imagem e vídeo
         </label>
         {typeof window !== "undefined" && window.lumenDesktop?.isDesktop && (
-          <p className="text-secondary text-muted">Bíblia, repertório e projeção funcionam sem internet. A busca de letras no Letras e Vagalume precisa de internet. IA não está disponível neste aplicativo. Backups completos e compatibilidade gráfica estão no menu Lúmen.</p>
+          <p className="text-secondary text-muted">Bíblia, repertório e projeção funcionam sem internet. A busca de letras no Letras e Vagalume precisa de internet. Backups completos e compatibilidade gráfica estão no menu Lúmen.</p>
         )}
         <div className="grid gap-4 md:grid-cols-2">
           <section className="space-y-2">
@@ -460,12 +459,6 @@ export function SettingsDialog({
         <div className="mt-4 space-y-2 border-t border-border pt-4">
           <p className="text-secondary font-medium text-subtle">Pasta de armazenamento de mídias</p>
           <MediaFoldersSection />
-        </div>
-
-        {/* O assistente vem por último e desativado: é o que menos importa
-            para projetar um culto, e o que mais custa numa máquina fraca. */}
-        <div className="mt-4 border-t border-border pt-4">
-          <IaConfiguracoes />
         </div>
 
         <div className="mt-4 space-y-2 border-t border-border pt-4">

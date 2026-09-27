@@ -11,7 +11,6 @@ const KEYS = new Set([
   "lumen-ops-v1",
   "lumen-bibles-v1",
   "lumen-auto-slide-v1",
-  "lumen-youtube-v1",
   "lumen-chat-v1",
   "lumen-chat-historico-v1",
   "lumen-artes-v1",
@@ -19,11 +18,23 @@ const KEYS = new Set([
 ]);
 const LIMIT = 100 * 1024 * 1024;
 
+/**
+ * Gavetas de recursos que saíram do app (a fila do YouTube). O arquivo de
+ * quem já usava o Lúmen ainda as tem: são aceitas e descartadas na leitura.
+ * Recusá-las faria a biblioteca inteira parecer corrompida na abertura — e
+ * o repertório da igreja cair para a cópia de segurança ou sumir.
+ */
+const APOSENTADAS = new Set(["lumen-youtube-v1"]);
+
 function validate(data) {
   if (!data || data.format !== "lumen-backup-v1" || !data.values || typeof data.values !== "object" || Array.isArray(data.values)) {
     throw new Error("Backup Lúmen inválido.");
   }
   for (const [key, value] of Object.entries(data.values)) {
+    if (APOSENTADAS.has(key)) {
+      delete data.values[key];
+      continue;
+    }
     if (!KEYS.has(key) || typeof value !== "string" || Buffer.byteLength(value) > LIMIT) throw new Error("Conteúdo de backup inválido.");
     const parsed = JSON.parse(value);
     if (key === "lumen-bibles-v1") {

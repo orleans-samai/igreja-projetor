@@ -2,7 +2,6 @@ const { contextBridge, ipcRenderer, webUtils } = require("electron");
 
 contextBridge.exposeInMainWorld("lumenDesktop", {
   isDesktop: true,
-  youtubeHost: () => ipcRenderer.invoke("lumen:youtube-host"),
   updateCheck: () => ipcRenderer.invoke("lumen:update-check"),
   updateDownload: () => ipcRenderer.invoke("lumen:update-download"),
   updateInstall: () => ipcRenderer.invoke("lumen:update-install"),
@@ -31,16 +30,6 @@ contextBridge.exposeInMainWorld("lumenDesktop", {
     ipcRenderer.invoke("lumen:remote-control-dirigente-password", senha),
   remoteControlAnswer: (pedido, resposta) =>
     ipcRenderer.send("lumen:remote-control-answer", pedido, resposta),
-  iaEstado: () => ipcRenderer.invoke("lumen:ia-estado"),
-  iaConfigurar: (patch) => ipcRenderer.invoke("lumen:ia-configurar", patch),
-  iaModelos: () => ipcRenderer.invoke("lumen:ia-modelos"),
-  iaEscolherModelo: (caminho) => ipcRenderer.invoke("lumen:ia-escolher-modelo", caminho),
-  iaLigar: () => ipcRenderer.invoke("lumen:ia-ligar"),
-  iaDesligar: () => ipcRenderer.invoke("lumen:ia-desligar"),
-  iaPerguntar: (mensagens) => ipcRenderer.invoke("lumen:ia-perguntar", mensagens),
-  iaCancelar: () => ipcRenderer.invoke("lumen:ia-cancelar"),
-  iaImportarModelo: () => ipcRenderer.invoke("lumen:ia-importar-modelo"),
-  iaAbrirPasta: () => ipcRenderer.invoke("lumen:ia-abrir-pasta"),
   remoteControlDevices: () => ipcRenderer.invoke("lumen:remote-control-devices"),
   remoteControlSetPermission: (id, permissao) =>
     ipcRenderer.invoke("lumen:remote-control-permission", id, permissao),

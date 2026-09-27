@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { SlideStage } from "@/components/slide/slide-renderer";
-import { applyOptimization, cancelOptimization, canRefine, refineOptimization, useOptimizationReview } from "@/lib/run-optimize";
+import { applyOptimization, cancelOptimization, useOptimizationReview } from "@/lib/run-optimize";
 import { projectionReadability } from "@/lib/projection-readability";
 import type { FitMode } from "@/lib/types";
 
@@ -11,7 +11,6 @@ export function OptimizationReview() {
   const [index, setIndex] = useState(0);
   const [size, setSize] = useState("1920x1080");
   const [outputLabel, setOutputLabel] = useState("Simulação");
-  const [busy, setBusy] = useState(false);
   const [clipped, setClipped] = useState<string[]>([]);
   const beforeRef = useRef<HTMLDivElement>(null), afterRef = useRef<HTMLDivElement>(null);
   const proposalKey = proposal?.signature;
@@ -83,7 +82,6 @@ export function OptimizationReview() {
       <div className="my-3 flex items-center justify-between gap-2"><Button size="sm" variant="secondary" disabled={index === 0} onClick={() => setIndex(index - 1)}>Slide anterior</Button><span className="text-caption">{index + 1} de {count} · letra na saída: ≈{diagnostics.fontPixels}px</span><Button size="sm" variant="secondary" disabled={index >= count - 1} onClick={() => setIndex(index + 1)}>Próximo slide</Button></div>
       <ul className="space-y-1 text-secondary text-muted">{[...result.summary, ...diagnostics.issues, ...clipped].map((label, i) => <li key={`${i}-${label}`}>{label}</li>)}</ul>
       {frame.status !== "idle" && <p className="mt-2 text-caption text-muted">Se esta apresentação estiver no ar, aplicar também atualizará o telão.</p>}
-      {canRefine(proposal) && <Button className="mt-3" size="sm" variant="secondary" loading={busy} disabled={busy} onClick={async () => { setBusy(true); try { await refineOptimization(); } finally { setBusy(false); } }}>Refinar quebras com IA · online</Button>}
     </DialogContent>
   </Dialog>;
 }

@@ -241,8 +241,8 @@ try {
   const preflight = await page.evaluate((url) => window.lumenDesktop.preflight([url, "/missing.mp4"]), mediaUrl);
   assert.deepEqual(preflight.missing, ["/missing.mp4"]);
   assert.equal((await page.evaluate(() => window.lumenDesktop.autoSlideStatus())).pronto, false);
-  // Auto-Slide e YouTube não são mais botões soltos na barra — moraram para
-  // dentro de "Mais", que só os revela com um clique.
+  // Auto-Slide não é mais botão solto na barra — mora dentro de "Mais",
+  // que só o revela com um clique.
   await page.getByRole("button", { name: "Mais", exact: true }).click();
   await page.getByRole("menuitem", { name: "Auto-Slide", exact: true }).click();
   const autoDialog = page.getByRole("dialog", { name: "Reconhecimento de canto" });
@@ -565,28 +565,7 @@ try {
   await cdpVfx.send("Emulation.clearDeviceMetricsOverride");
   await page.waitForTimeout(400);
 
-  // ---- O assistente existe, nasce desligado, e não é pré-requisito de nada ----
-  const iaInicial = await page.evaluate(() => window.lumenDesktop.iaEstado());
-  assert.equal(iaInicial.modo, "desativado", "a IA devia nascer desativada num PC de igreja");
-  assert.equal(iaInicial.situacao, "desativada");
-  assert.equal(iaInicial.modelo, null);
-
-  await page.getByRole("button", { name: "IA", exact: true }).click();
-  const dialogoIa = page.getByRole("dialog", { name: "Assistente Lúmen" });
-  await dialogoIa.waitFor({ state: "visible", timeout: 10000 });
-  // Diz o que falta, em vez de rodar uma barra sem explicação.
-  await dialogoIa.getByText(/desativado|llama-server/i).first().waitFor({ timeout: 10000 });
-  // E promete o que o código cumpre.
-  await dialogoIa.getByText(/nenhum dado é enviado para a internet/i).waitFor({ timeout: 10000 });
-  await page.keyboard.press("Escape");
-  await dialogoIa.waitFor({ state: "hidden", timeout: 10000 });
-
-  // Com a IA desligada, a projeção continua inteira: é a regra que não se
-  // negocia — o culto nunca depende do modelo.
-  const semModelo = await page.evaluate(() =>
-    window.lumenDesktop.iaPerguntar([{ role: "user", content: "oi" }]),
-  );
-  assert.equal(semModelo.ok, false);
+  // O telão obedece ao celular: preto e de volta.
   await fetch(`${remoteBase}/comando`, {
     method: "POST",
     body: JSON.stringify({ token: pareado.token, acao: "preto" }),
@@ -1528,40 +1507,21 @@ try {
     `texto fixo a ${noTelao.alturas[0]}% e a letra a ${noTelao.letra}%: o fixo tem que ficar abaixo`,
   );
 
-  // ---- Vídeo do YouTube recolhe a faixa de letras ----
-  // Cartão de letra não tem o que dizer enquanto um vídeo toca, e come a
-  // altura que o operador quer para acompanhar o próprio vídeo.
-  const faixaDeLetras = () =>
-    page.locator('button[aria-expanded]').filter({ hasText: /^Letras / }).first();
-  if ((await faixaDeLetras().getAttribute("aria-expanded")) !== "true") {
-    await faixaDeLetras().click();
-  }
-  assert.equal(await faixaDeLetras().getAttribute("aria-expanded"), "true");
+  // ---- Sem IA e sem YouTube: nada disso existe mais na cabine ----
+  // A igreja pediu para tirar. Nem botão, nem item de menu, nem ponte.
+  assert.equal(await page.getByRole("button", { name: "IA", exact: true }).count(), 0, "o botão de IA voltou");
   await page.getByRole("button", { name: "Mais", exact: true }).click();
-  await page.getByRole("menuitem", { name: "YouTube", exact: true }).click();
-  await page.getByPlaceholder("Cole o link do YouTube").fill("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
-  await page.getByPlaceholder("Cole o link do YouTube").press("Enter");
-  // O nome do vídeo depende de haver internet nesta máquina: com rede vem o
-  // título do YouTube, sem rede vem "Vídeo do YouTube". O teste não depende
-  // de qual dos dois — só de haver um item na fila para projetar.
-  const projetarVideo = page.getByRole("button", { name: /^Projetar / }).first();
-  await projetarVideo.waitFor({ state: "visible", timeout: 15000 });
-  await projetarVideo.click();
-  await page.waitForFunction(
-    () =>
-      [...document.querySelectorAll("button[aria-expanded]")]
-        .find((b) => /^Letras /.test((b.textContent || "").trim()))
-        ?.getAttribute("aria-expanded") === "false",
-    null,
-    { timeout: 10000 },
-  );
+  assert.equal(await page.getByRole("menuitem", { name: "YouTube", exact: true }).count(), 0, "o YouTube voltou ao menu");
+  await page.keyboard.press("Escape");
+  const pontes = await page.evaluate(() => Object.keys(window.lumenDesktop).filter((k) => /^ia[A-Z]|youtube/i.test(k)));
+  assert.deepEqual(pontes, [], `sobrou ponte de IA ou YouTube: ${pontes.join(", ")}`);
   await page.screenshot({ animations: "disabled", path: path.join(evidence, "operator.png") });
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => w.webContents.getURL() === "lumen://app/")?.setSize(800, 600));
   await page.screenshot({ animations: "disabled", path: path.join(evidence, "operator-800x600.png") });
   assert.deepEqual(errors, []);
   const disk = JSON.parse(await readFile(path.join(profile, "data", "library.json"), "utf8"));
   assert.ok(disk.values["lumen-v2"]);
-  console.log(`PASS: offline, fonts, Bible (gold buttons in and out of the Bible screen, five versions plus importing a licensed one, its three parts rearranged by dragging and swapping sides, New-Testament-only notice, omitted verse lands on the next), restart persistence, projector, media ranges, preflight, Auto-Slide, remote control (LAN, entrada por nome, nome fixo na rede), update check, review before apply, 1366×768 at 100/125/150% and 800×600, no scroll and exactly one layout at ten sizes from 800×600 to 2560×1440, including every pixel around the 1280 cutover and the chat stays on screen, church logo and name reachable from the menu bar, art studio makes a batch of 8 distinct Konva designs from just a title and a Bible reference, opens one in the editor, saves it and exports PNG and JPEG at exactly 1920×1080 (Full HD is the default), VFX has three modes and a dynamic video becomes a real file in the Vídeos tab, local AI off by default and the cabine independent of it, dirigente page signs in, sends a file, chats and files a notice, and its PowerPoint and PDF become slides in the service programme, video as a theme background, find a song by a lyric excerpt, right-click on lyrics edits or removes, double-click to project, fixed text only in the footer and the verse always centred vertically, YouTube collapses the lyrics strip, phone has one play/pause button, the screen volume and a Sair do vídeo that takes media off the screen but never a lyric, every new chat message pops up in gold on the phone, the cabine and the dirigente page (never for its own author), sees the media folder, gets a file imported in the cabine or copied in by Explorer within 5 s, a library row dragged into the service programme, a right-click menu that deletes media, a Culto tab that mirrors the service programme and projects or deletes (two taps) from it, projects from it, opens a song as a grid of slides and puts one on the screen, and searches lyrics through the cabine. Evidence: ${evidence}`);
+  console.log(`PASS: offline, fonts, Bible (gold buttons in and out of the Bible screen, five versions plus importing a licensed one, its three parts rearranged by dragging and swapping sides, New-Testament-only notice, omitted verse lands on the next), restart persistence, projector, media ranges, preflight, Auto-Slide, remote control (LAN, entrada por nome, nome fixo na rede), update check, review before apply, 1366×768 at 100/125/150% and 800×600, no scroll and exactly one layout at ten sizes from 800×600 to 2560×1440, including every pixel around the 1280 cutover and the chat stays on screen, church logo and name reachable from the menu bar, art studio makes a batch of 8 distinct Konva designs from just a title and a Bible reference, opens one in the editor, saves it and exports PNG and JPEG at exactly 1920×1080 (Full HD is the default), VFX has three modes and a dynamic video becomes a real file in the Vídeos tab, no AI and no YouTube anywhere in the app, dirigente page signs in, sends a file, chats and files a notice, and its PowerPoint and PDF become slides in the service programme, video as a theme background, find a song by a lyric excerpt, right-click on lyrics edits or removes, double-click to project, fixed text only in the footer and the verse always centred vertically, phone has one play/pause button, the screen volume and a Sair do vídeo that takes media off the screen but never a lyric, every new chat message pops up in gold on the phone, the cabine and the dirigente page (never for its own author), sees the media folder, gets a file imported in the cabine or copied in by Explorer within 5 s, a library row dragged into the service programme, a right-click menu that deletes media, a Culto tab that mirrors the service programme and projects or deletes (two taps) from it, projects from it, opens a song as a grid of slides and puts one on the screen, and searches lyrics through the cabine. Evidence: ${evidence}`);
 } finally {
   if (app) {
     // O fim do teste deixa uma música no ar, e a cabine (de propósito)

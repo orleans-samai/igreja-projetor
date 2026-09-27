@@ -16,7 +16,6 @@ import { FONT_SCALE_PASSO, fontScaleDe, limitarFontScale } from "@/lib/font-scal
 import { indiceNaProgramacao } from "@/lib/culto-etapas";
 import { COPYRIGHT_DE_EXEMPLO } from "@/lib/seed";
 import { letraContem } from "@/lib/busca-trecho";
-import { DIAS_DA_SEMANA as DIAS_RECORRENCIA } from "@/lib/ia/ferramentas";
 import { fold, nid } from "@/lib/fold";
 import { parseLyrics } from "@/lib/lyrics";
 import { publishLiveFrame } from "@/lib/live-channel";
@@ -53,7 +52,6 @@ import type {
   Song,
   SongGroup,
   Theme,
-  YoutubeFrame,
 } from "@/lib/types";
 
 const DEFAULT_SETTINGS: Settings = {
@@ -152,8 +150,6 @@ export interface LumenState {
   selectedGroupId: string | "all";
   preview: Deck | null;
   previewIndex: number;
-  /** Vídeo do YouTube na projeção, ou null quando não há nenhum. */
-  youtube: YoutubeFrame | null;
   live: Deck | null;
   liveIndex: number;
   status: OutputStatus;
@@ -179,10 +175,6 @@ export interface LumenState {
   setPreviewIndex: (i: number) => void;
   presentPreview: () => void;
   presentSlide: (i: number) => void;
-  projetarYoutube: (videoId: string, titulo: string) => void;
-  comandarYoutube: (patch: Partial<Omit<YoutubeFrame, "videoId">>) => void;
-  buscarYoutube: (tempo: number) => void;
-  removerYoutube: () => void;
   stop: () => void;
   goBlack: () => void;
   goLogo: () => void;
@@ -193,7 +185,6 @@ export interface LumenState {
   presentPlaylistItem: (index: number) => void;
   projetarDaBiblioteca: (type: SlideKind, refId: string) => void;
   /** Cria um culto que se repete toda semana. Recusa nome repetido. */
-  criarServicoRecorrente: (nome: string, diaDaSemana: number) => { ok: boolean; motivo?: string };
   previewPlaylistItem: (index: number) => void;
   nextPlaylistItem: () => void;
   setThemeForKind: (kind: "songs" | "bible" | "stage", themeId: string) => void;
@@ -274,7 +265,6 @@ export type LiveFrameInput = Pick<
   | "stageThemeId"
   | "themes"
   | "settings"
-  | "youtube"
 >;
 
 export function buildLiveFrame(s: LiveFrameInput): LiveFrame {
@@ -285,7 +275,6 @@ export function buildLiveFrame(s: LiveFrameInput): LiveFrame {
     status: s.status,
     theme: themeById(s.themes, themeId),
     stageTheme: themeById(s.themes, s.stageThemeId),
-    youtube: s.youtube,
     deck: s.live,
     index: s.liveIndex,
     alert: s.alert,
@@ -412,10 +401,6 @@ const empty = (): Omit<
   | "setPreviewIndex"
   | "presentPreview"
   | "presentSlide"
-  | "projetarYoutube"
-  | "comandarYoutube"
-  | "buscarYoutube"
-  | "removerYoutube"
   | "stop"
   | "goBlack"
   | "goLogo"
@@ -425,7 +410,6 @@ const empty = (): Omit<
   | "goLiveIndex"
   | "presentPlaylistItem"
   | "projetarDaBiblioteca"
-  | "criarServicoRecorrente"
   | "previewPlaylistItem"
   | "nextPlaylistItem"
   | "setThemeForKind"
@@ -503,7 +487,6 @@ const empty = (): Omit<
   selectedGroupId: "all",
   preview: textToDeck(SEED_TEXTS.find((t) => t.id === "txt-bemvindo") ?? SEED_TEXTS[0]),
   previewIndex: 0,
-  youtube: null,
   live: null,
   liveIndex: 0,
   status: "idle",
@@ -649,56 +632,6 @@ export const useLumenStore = create<LumenState>()(
         );
       },
 
-      /**
-       * Põe um vídeo do YouTube na projeção.
-       *
-       * Entra pausado. "Projetar" prepara o vídeo no telão; "Tocar" é que o
-       * começa — num culto, a distância entre as duas coisas é quem decide a
-       * hora, e não dá para desfazer um vídeo que já começou na frente de
-       * todo mundo.
-       */
-      projetarYoutube: (videoId, titulo) => {
-        broadcast(
-          {
-            youtube: {
-              videoId,
-              titulo,
-              acao: "pausar",
-              tempo: 0,
-              busca: 0,
-              volume: get().youtube?.volume ?? 85,
-              mudo: get().youtube?.mudo ?? false,
-            },
-          },
-          set,
-        );
-      },
-
-      comandarYoutube: (patch) => {
-        const atual = get().youtube;
-        if (!atual) return;
-        broadcast({ youtube: { ...atual, ...patch } }, set);
-      },
-
-      /**
-       * Ir para um ponto do vídeo.
-       *
-       * O contador sobe a cada pedido: voltar duas vezes para o mesmo segundo
-       * geraria dois quadros idênticos, e o projetor não teria como distinguir
-       * o segundo pedido de um quadro repetido.
-       */
-      buscarYoutube: (tempo) => {
-        const atual = get().youtube;
-        if (!atual) return;
-        broadcast(
-          { youtube: { ...atual, tempo: Math.max(0, tempo), busca: atual.busca + 1 } },
-          set,
-        );
-      },
-
-      /** Tira o vídeo da projeção e devolve o telão ao conteúdo de sempre. */
-      removerYoutube: () => broadcast({ youtube: null }, set),
-
       stop: () => broadcast({ status: "idle", fillMode: "console" }, set),
       goBlack: () =>
         broadcast((s) => ({
@@ -788,32 +721,6 @@ export const useLumenStore = create<LumenState>()(
       presentPlaylistItem: (index) => {
         if (!loadPlaylistItem(get, index)) return;
         queueMicrotask(() => get().presentPreview());
-      },
-
-      /**
-       * Um culto que se repete toda semana.
-       *
-       * Ação de domínio, e não a IA escrevendo na store: quem decide o que é
-       * um culto válido — nome que não repete, dia que existe — é a cabine,
-       * mesmo quando o pedido veio de um modelo.
-       */
-      criarServicoRecorrente: (nome, diaDaSemana) => {
-        const limpo = String(nome ?? "").trim().slice(0, 60);
-        if (limpo.length < 2) return { ok: false, motivo: "O culto precisa de um nome." };
-        if (!Number.isInteger(diaDaSemana) || diaDaSemana < 0 || diaDaSemana > 6) {
-          return { ok: false, motivo: "Dia da semana inválido." };
-        }
-        const s = get();
-        const igual = s.services.find((x) => fold(x.name) === fold(limpo));
-        if (igual) return { ok: false, motivo: `Já existe um culto chamado “${igual.name}”.` };
-        const dia = DIAS_RECORRENCIA[diaDaSemana];
-        set({
-          services: [
-            ...s.services,
-            { id: nid(), name: limpo, recurrence: `Toda ${dia}` },
-          ],
-        });
-        return { ok: true };
       },
 
       /**
@@ -1300,10 +1207,9 @@ export const useLumenStore = create<LumenState>()(
             mediaType: item.type === "announcement" ? undefined : item.type,
             // Vídeo começa a tocar ao ser apresentado, como sempre foi.
             //
-            // Cheguei a fazer entrar pausado, por analogia com o YouTube — lá
-            // a capa do vídeo apareceria para a igreja antes da hora. Mas
-            // arquivo local não tem capa nenhuma: pausado, ele só parece
-            // travado, e quem opera aperta Apresentar esperando que toque.
+            // Cheguei a fazer entrar pausado. Mas arquivo local não tem
+            // capa nenhuma: pausado, ele só parece travado, e quem opera
+            // aperta Apresentar esperando que toque.
             // Pausar e parar continuam a um clique, no transporte.
             mediaAcao: item.type === "video" ? "tocar" : undefined,
             mediaLoop: false,
@@ -1322,10 +1228,6 @@ export const useLumenStore = create<LumenState>()(
           favoriteMedia: s.favoriteMedia.filter((x) => x !== id),
         })),
 
-      /**
-       * Comanda o vídeo local que está no telão — mesmo desenho do YouTube:
-       * a cabine descreve o que quer, quem toca de verdade é o telão.
-       */
       /**
        * Comanda o vídeo local que está no telão.
        *

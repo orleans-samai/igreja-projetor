@@ -212,15 +212,14 @@ export interface Deck {
    *  ou o vídeo chegarem ao telão, em vez de só o nome do arquivo. */
   mediaSrc?: string;
   mediaType?: "image" | "video" | "audio";
-  /** Vídeo toca no telão, com som — a cabine só descreve o que quer, do
-   *  mesmo jeito que o vídeo do YouTube (ver YoutubeFrame). */
+  /** Vídeo toca no telão, com som — a cabine só descreve o que quer, e
+   *  quem toca de verdade é o telão. */
   mediaAcao?: "tocar" | "pausar" | "parar";
   mediaLoop?: boolean;
   /** Para onde ir, em segundos. Só vale quando `mediaBusca` muda. */
   mediaTempo?: number;
   /** Contador de buscas: sem ele, pedir o mesmo segundo duas vezes seria um
-   *  quadro idêntico, e o telão não saberia que houve um segundo pedido
-   *  (mesmo desenho de YoutubeFrame.busca). */
+   *  quadro idêntico, e o telão não saberia que houve um segundo pedido. */
   mediaBusca?: number;
   /** 1, 1.25, 1.5 ou 2 — vira playbackRate no elemento que toca. */
   mediaVelocidade?: number;
@@ -235,38 +234,14 @@ export interface Deck {
   mediaMudo?: boolean;
   /** Sobe a cada comando: sem isto, pedir "tocar" de novo depois do vídeo
    *  terminar sozinho seria um quadro idêntico ao anterior, e o telão não
-   *  teria como distinguir do primeiro pedido (ver YoutubeFrame.busca). */
+   *  teria como distinguir do primeiro pedido. */
   mediaSeq?: number;
 }
 
 /** Snapshot sent from the operator to projection/stage windows. */
-/**
- * O vídeo do YouTube que está na projeção.
- *
- * Viaja dentro do quadro, pelo mesmo canal de sempre: a cabine descreve o
- * estado desejado e o projetor, que é quem tem o player de verdade, aplica.
- * A cabine nunca toca no player — se tocasse, o áudio sairia duas vezes.
- *
- * `busca` é um contador, não um tempo: sem ele, mandar voltar duas vezes para
- * o mesmo segundo seria um quadro idêntico ao anterior, e o projetor não teria
- * como saber que houve um segundo pedido.
- */
-export interface YoutubeFrame {
-  videoId: string;
-  titulo: string;
-  acao: "tocar" | "pausar" | "parar";
-  tempo: number;
-  busca: number;
-  /** De 0 a 100, como a IFrame Player API espera. */
-  volume: number;
-  mudo: boolean;
-}
-
 export interface LiveFrame {
   v: 1;
   status: OutputStatus;
-  /** Player do YouTube na projeção, quando há um. */
-  youtube?: YoutubeFrame | null;
   theme: Theme;
   stageTheme: Theme;
   deck: Deck | null;

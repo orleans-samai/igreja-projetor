@@ -1,8 +1,6 @@
 import { BookOpen, Mic, Music, Search, Sparkles, Type } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
-import { interpretCopilot } from "@/lib/copilot-ai";
 import { describeIntent, intentIsImmediate, parseCommand, type CopilotIntent } from "@/lib/copilot";
 import { executeIntent } from "@/lib/copilot-exec";
 import { universalSearch } from "@/lib/universal-search";
@@ -74,7 +72,6 @@ export function CommandPalette() {
 
   const [q, setQ] = useState("");
   const [cursor, setCursor] = useState(0);
-  const [aiBusy, setAiBusy] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const intent = useMemo(() => (q.trim() ? parseCommand(q) : null), [q]);
@@ -134,27 +131,6 @@ export function CommandPalette() {
 
   useEffect(() => setCursor(0), [q]);
 
-  const askAi = async () => {
-    if (!q.trim()) return;
-    setAiBusy(true);
-    try {
-      const catalog = songs
-        .slice(0, 24)
-        .map((s) => `${s.title} — ${s.artist}`)
-        .join("\n");
-      const res = await interpretCopilot({ data: { query: q.trim(), catalog } });
-      if (!res.ok) {
-        toast.error(res.error);
-        return;
-      }
-      if (!applyIntent(res.intent)) {
-        toast(describeIntent(res.intent));
-      }
-    } finally {
-      setAiBusy(false);
-    }
-  };
-
   if (!open) return null;
 
   return (
@@ -190,31 +166,17 @@ export function CommandPalette() {
                 setCursor((c) => Math.max(0, c - 1));
               } else if (e.key === "Enter") {
                 e.preventDefault();
-                if (e.metaKey || e.ctrlKey) {
-                  void askAi();
-                  return;
-                }
                 const row = rows[cursor] ?? rows[0];
                 row?.run();
               }
             }}
           />
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => void askAi()}
-            disabled={!q.trim()}
-            loading={aiBusy}
-          >
-            {!aiBusy && <Sparkles />}
-            Copiloto
-          </Button>
         </div>
         <ul role="listbox" aria-label="Resultados" className="lumen-scroll max-h-80 overflow-auto py-1">
           {rows.length === 0 && (
             <li className="px-4 py-6 text-body text-muted">
               {q.trim()
-                ? "Nada encontrado. Peça ao copiloto (Ctrl+Enter) ou tente um versículo."
+                ? "Nada encontrado. Tente um versículo, um trecho da letra ou um comando."
                 : "Comandos, Bíblia, músicas, avisos e o histórico do culto."}
             </li>
           )}
@@ -250,7 +212,6 @@ export function CommandPalette() {
         <p className="flex items-center justify-between gap-3 border-t border-border px-3 py-1.5 text-caption text-subtle">
           <span className="inline-flex items-center gap-1.5">
             <Key>Enter</Key> executa
-            <Key>Ctrl+Enter</Key> pergunta ao copiloto
           </span>
           <span className="inline-flex items-center gap-1">
             <Mic className="size-3" aria-hidden /> voz no modo operador

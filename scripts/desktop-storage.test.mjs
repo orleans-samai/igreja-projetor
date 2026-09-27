@@ -99,3 +99,30 @@ test("fails closed if both files are corrupt", async () => {
     assert.equal(await readFile(path.join(dir, "library.json"), "utf8"), "bad");
   } finally { await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 }); }
 });
+
+test("a biblioteca de quem já usava o YouTube abre inteira, sem a gaveta do YouTube", async () => {
+  // O YouTube saiu do app, mas o library.json de quem já usava ainda tem a
+  // gaveta dele. Recusar a chave faria a biblioteca inteira parecer
+  // corrompida na abertura — e o repertório da igreja sumir.
+  const dir = await mkdtemp(path.join(os.tmpdir(), "lumen-storage-"));
+  try {
+    const antigo = {
+      format: "lumen-backup-v1",
+      values: {
+        "lumen-v2": state("repertório da igreja"),
+        "lumen-youtube-v1": state("fila de vídeos"),
+      },
+    };
+    await writeFile(path.join(dir, "library.json"), JSON.stringify(antigo));
+    const messages = [];
+    const store = new Storage(dir, (m) => messages.push(m));
+    await store.init();
+    assert.equal(await store.get("lumen-v2"), state("repertório da igreja"));
+    assert.deepEqual(messages, [], "a abertura tratou a biblioteca como corrompida");
+    // E um backup antigo, com a mesma gaveta, ainda restaura.
+    await store.restore(JSON.stringify(antigo));
+    assert.equal(await store.get("lumen-v2"), state("repertório da igreja"));
+    const exportado = JSON.parse(await store.export());
+    assert.equal("lumen-youtube-v1" in exportado.values, false);
+  } finally { await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 }); }
+});

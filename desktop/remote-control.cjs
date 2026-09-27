@@ -9,7 +9,7 @@ const { EQUIPES_DE_APARELHO, paraValido, mencoesNoTexto, podeVer } = require("./
 /**
  * Controle remoto pelo celular.
  *
- * Um servidor HTTP na rede local — não só em 127.0.0.1, como o do YouTube,
+ * Um servidor HTTP na rede local — não só em 127.0.0.1 —,
  * porque aqui quem precisa entrar é um aparelho de verdade, na mesma Wi-Fi da
  * igreja.
  *
