@@ -23,7 +23,6 @@ Thumbs.db
 
 # plataforma / rascunho
 .grok/
-AGENTS.md
 AGENTS.project.md
 startup.sh
 screenshots/
