@@ -430,7 +430,8 @@ try {
   // Exportar: PNG e JPEG com as dimensões do formato, lidas do arquivo.
   const pastaArtes = path.join(profile, "artes-exportadas");
   const arquivosDaPasta = async () => (await readdir(pastaArtes).catch(() => [])).sort();
-  for (const [menu, ext] of [[/^PNG · 1080×1080/, ".png"], [/^JPEG · 1080×1080/, ".jpg"]]) {
+  // O formato padrão das artes é Projeção Full HD.
+  for (const [menu, ext] of [[/^PNG · 1920×1080/, ".png"], [/^JPEG · 1920×1080/, ".jpg"]]) {
     const antes = (await arquivosDaPasta()).length;
     await page.getByRole("button", { name: "Exportar", exact: true }).click();
     await page.getByRole("menuitem", { name: menu }).click();
@@ -447,7 +448,7 @@ try {
       while (i < bytes.length && !(bytes[i] === 0xff && bytes[i + 1] >= 0xc0 && bytes[i + 1] <= 0xc2)) i += 2 + bytes.readUInt16BE(i + 2);
       dims = [bytes.readUInt16BE(i + 7), bytes.readUInt16BE(i + 5)];
     }
-    assert.deepEqual(dims, [1080, 1080], `${novo} saiu com ${dims.join("×")}`);
+    assert.deepEqual(dims, [1920, 1080], `${novo} saiu com ${dims.join("×")}`);
   }
 
   await page.getByRole("button", { name: "Fechar a arte" }).click();
@@ -789,6 +790,42 @@ try {
     null,
     { timeout: 10000 },
   );
+
+  // ---- "Sair do vídeo": a mídia sai do telão; com letra no ar, nada muda ----
+  const quadroNoTelao = () => page.evaluate(() => JSON.parse(localStorage.getItem("lumen-live-frame") ?? "null"));
+  const projetarPeloCelular = (tipo, refId) =>
+    fetch(`${remoteBase}/projetar`, {
+      method: "POST",
+      body: JSON.stringify({ token: pareado.token, tipo, refId }),
+    }).then((r) => r.json());
+  assert.equal(await celular.locator('[data-acao="parar-midia"]').textContent(), "■ Sair do vídeo");
+  assert.equal((await projetarPeloCelular("media", "midia:audio:Hino de abertura.wav")).ok, true);
+  await page.waitForFunction(
+    () => {
+      const q = JSON.parse(localStorage.getItem("lumen-live-frame") ?? "null");
+      return q?.deck?.kind === "media" && q.status === "presenting";
+    },
+    null,
+    { timeout: 10000 },
+  );
+  await celular.click('[data-acao="parar-midia"]');
+  await page.waitForFunction(
+    () => JSON.parse(localStorage.getItem("lumen-live-frame") ?? "null")?.status === "clear",
+    null,
+    { timeout: 10000 },
+  );
+  assert.equal((await projetarPeloCelular("song", escolhida.id)).ok, true);
+  await page.waitForFunction(
+    (titulo) => {
+      const q = JSON.parse(localStorage.getItem("lumen-live-frame") ?? "null");
+      return q?.deck?.title === titulo && q.status === "presenting";
+    },
+    escolhida.titulo,
+    { timeout: 10000 },
+  );
+  await celular.click('[data-acao="parar-midia"]');
+  await page.waitForTimeout(800);
+  assert.equal((await quadroNoTelao()).status, "presenting", "Sair do vídeo apagou a letra do telão");
 
   // ---- A grade de slides: tocar numa estrofe põe ela no telão ----
   // É o caminho inteiro num teste só: a cabine manda os slides prontos, a
@@ -1524,7 +1561,7 @@ try {
   assert.deepEqual(errors, []);
   const disk = JSON.parse(await readFile(path.join(profile, "data", "library.json"), "utf8"));
   assert.ok(disk.values["lumen-v2"]);
-  console.log(`PASS: offline, fonts, Bible (gold buttons in and out of the Bible screen, five versions plus importing a licensed one, its three parts rearranged by dragging and swapping sides, New-Testament-only notice, omitted verse lands on the next), restart persistence, projector, media ranges, preflight, Auto-Slide, remote control (LAN, entrada por nome, nome fixo na rede), update check, review before apply, 1366×768 at 100/125/150% and 800×600, no scroll and exactly one layout at ten sizes from 800×600 to 2560×1440, including every pixel around the 1280 cutover and the chat stays on screen, church logo and name reachable from the menu bar, art studio makes a batch of 8 distinct Konva designs from just a title and a Bible reference, opens one in the editor, saves it and exports PNG and JPEG at exactly 1080×1080, VFX has three modes and a dynamic video becomes a real file in the Vídeos tab, local AI off by default and the cabine independent of it, dirigente page signs in, sends a file, chats and files a notice, and its PowerPoint and PDF become slides in the service programme, video as a theme background, find a song by a lyric excerpt, right-click on lyrics edits or removes, double-click to project, fixed text only in the footer and the verse always centred vertically, YouTube collapses the lyrics strip, phone has one play/pause button and the screen volume, every new chat message pops up in gold on the phone, the cabine and the dirigente page (never for its own author), sees the media folder, gets a file imported in the cabine or copied in by Explorer within 5 s, a library row dragged into the service programme, a right-click menu that deletes media, a Culto tab that mirrors the service programme and projects or deletes (two taps) from it, projects from it, opens a song as a grid of slides and puts one on the screen, and searches lyrics through the cabine. Evidence: ${evidence}`);
+  console.log(`PASS: offline, fonts, Bible (gold buttons in and out of the Bible screen, five versions plus importing a licensed one, its three parts rearranged by dragging and swapping sides, New-Testament-only notice, omitted verse lands on the next), restart persistence, projector, media ranges, preflight, Auto-Slide, remote control (LAN, entrada por nome, nome fixo na rede), update check, review before apply, 1366×768 at 100/125/150% and 800×600, no scroll and exactly one layout at ten sizes from 800×600 to 2560×1440, including every pixel around the 1280 cutover and the chat stays on screen, church logo and name reachable from the menu bar, art studio makes a batch of 8 distinct Konva designs from just a title and a Bible reference, opens one in the editor, saves it and exports PNG and JPEG at exactly 1920×1080 (Full HD is the default), VFX has three modes and a dynamic video becomes a real file in the Vídeos tab, local AI off by default and the cabine independent of it, dirigente page signs in, sends a file, chats and files a notice, and its PowerPoint and PDF become slides in the service programme, video as a theme background, find a song by a lyric excerpt, right-click on lyrics edits or removes, double-click to project, fixed text only in the footer and the verse always centred vertically, YouTube collapses the lyrics strip, phone has one play/pause button, the screen volume and a Sair do vídeo that takes media off the screen but never a lyric, every new chat message pops up in gold on the phone, the cabine and the dirigente page (never for its own author), sees the media folder, gets a file imported in the cabine or copied in by Explorer within 5 s, a library row dragged into the service programme, a right-click menu that deletes media, a Culto tab that mirrors the service programme and projects or deletes (two taps) from it, projects from it, opens a song as a grid of slides and puts one on the screen, and searches lyrics through the cabine. Evidence: ${evidence}`);
 } finally {
   if (app) {
     // O fim do teste deixa uma música no ar, e a cabine (de propósito)

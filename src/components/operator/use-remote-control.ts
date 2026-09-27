@@ -45,7 +45,15 @@ const ACOES: Record<AcaoRemota, (s: LumenState) => void> = {
   // O vídeo local no telão: os mesmos três botões da cabine.
   tocar: (s) => s.comandarMedia({ mediaAcao: "tocar" }),
   pausar: (s) => s.comandarMedia({ mediaAcao: "pausar" }),
-  "parar-midia": (s) => s.comandarMedia({ mediaAcao: "parar" }),
+  // "Sair do vídeo": para e tira o vídeo do telão, que fica só com o fundo.
+  // Antes só parava — o primeiro quadro continuava na tela. Com outra coisa
+  // no ar (uma letra, um versículo), não faz nada: o botão mora sempre na
+  // tela do celular, e um toque sem querer não pode apagar a letra do culto.
+  "parar-midia": (s) => {
+    if (s.status === "idle" || s.live?.kind !== "media") return;
+    s.comandarMedia({ mediaAcao: "parar" });
+    if (s.status !== "clear") s.goClear();
+  },
 };
 
 /**
@@ -398,9 +406,16 @@ export function useRemoteControl() {
       }
       if (evento.tipo === "letra-musica") {
         void (async () => {
-          const r = await loadSong(evento.fonte);
-          const d2 = window.lumenDesktop;
-          d2?.remoteControlAnswer(evento.pedido, { letra: r.lyrics ?? "", erro: r.error ?? null });
+          // O celular fica em "Trazendo a letra…" até a cabine responder:
+          // qualquer falha vira resposta, nunca silêncio.
+          let resposta: { letra: string; erro: string | null };
+          try {
+            const r = await loadSong(evento.fonte);
+            resposta = { letra: r.lyrics ?? "", erro: r.error ?? null };
+          } catch {
+            resposta = { letra: "", erro: "A cabine não conseguiu trazer essa letra. Tente outra opção ou cole a letra." };
+          }
+          window.lumenDesktop?.remoteControlAnswer(evento.pedido, resposta);
         })();
         return;
       }

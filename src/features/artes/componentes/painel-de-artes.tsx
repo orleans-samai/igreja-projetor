@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Hint } from "@/components/ui/tooltip";
 import { nid } from "@/lib/fold";
 import { useLumenStore } from "@/store/lumen-store";
-import { briefingVazio, chaveDoProjeto, normalizar, soOQueOFormularioPede, type Briefing } from "../briefing.ts";
+import { FORMATO_PADRAO, briefingVazio, chaveDoProjeto, normalizar, soOQueOFormularioPede, type Briefing } from "../briefing.ts";
 import { CONJUNTOS } from "../catalogo/tipografia.ts";
 import type { DocumentoDeArte } from "../documento.ts";
 import { useEditorDeArte } from "../editor-store.ts";
@@ -152,7 +152,7 @@ export function PainelDeArtes({ registrarGuarda }: { registrarGuarda: (guarda: (
   const [limitacoes, setLimitacoes] = useState<string[]>([]);
   const [gerando, setGerando] = useState(false);
   const [progresso, setProgresso] = useState({ prontas: 0, total: 0 });
-  const [formato, setFormato] = useState("quadrado");
+  const [formato, setFormato] = useState(FORMATO_PADRAO);
   const [favoritas, setFavoritas] = useState<Set<string>>(new Set());
   const [origemDoEditor, setOrigemDoEditor] = useState<Tela>("inicio");
   const parar = useRef(false);
@@ -176,7 +176,7 @@ export function PainelDeArtes({ registrarGuarda }: { registrarGuarda: (guarda: (
     setLimitacoes([]);
     setFavoritas(new Set());
     setEmVariacoes(null);
-    setFormato(b.formatos[0] ?? "quadrado");
+    setFormato(b.formatos[0] ?? FORMATO_PADRAO);
     setProgresso({ prontas: 0, total: b.quantidade });
     setGerando(true);
     setTela("galeria");
@@ -185,7 +185,7 @@ export function PainelDeArtes({ registrarGuarda }: { registrarGuarda: (guarda: (
       const r = await gerarLoteAos(
         {
           briefing: b,
-          formatoId: b.formatos[0] ?? "quadrado",
+          formatoId: b.formatos[0] ?? FORMATO_PADRAO,
           semente: semente.current,
           historico: useArtesStore.getState().historico[chave] ?? [],
           ajustes,

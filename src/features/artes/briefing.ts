@@ -151,6 +151,12 @@ export function soOQueOFormularioPede(b: Briefing): Briefing {
 }
 
 export const QUANTIDADE_PADRAO = 8;
+
+/**
+ * Projeção Full HD (1920×1080) por padrão: a arte da igreja nasce para o
+ * telão, e é assim que ela pediu. Os outros formatos continuam a um clique.
+ */
+export const FORMATO_PADRAO = "projecao";
 export const QUANTIDADE_MAXIMA = 16;
 
 export function briefingVazio(): Briefing {
@@ -176,7 +182,7 @@ export function briefingVazio(): Briefing {
     redes: "",
     logo: null,
     fotos: [],
-    formatos: ["quadrado"],
+    formatos: [FORMATO_PADRAO],
     quantidade: QUANTIDADE_PADRAO,
     preferencias: { luz: "misto", linguagem: "misto", intensidade: "equilibrado", identidade: "explorar" },
     coresObrigatorias: [],
@@ -217,7 +223,7 @@ export function normalizar(b: Briefing): Briefing {
   saida.categoria = String(b.categoria || "culto").trim();
   saida.quantidade = Math.max(1, Math.min(QUANTIDADE_MAXIMA, Math.round(Number(b.quantidade) || QUANTIDADE_PADRAO)));
   saida.formatos = [...new Set((b.formatos ?? []).filter(Boolean))];
-  if (saida.formatos.length === 0) saida.formatos = ["quadrado"];
+  if (saida.formatos.length === 0) saida.formatos = [FORMATO_PADRAO];
   saida.coresObrigatorias = [...new Set((b.coresObrigatorias ?? []).map(hexValido).filter((c): c is string => !!c))];
   saida.coresProibidas = [...new Set((b.coresProibidas ?? []).map(hexValido).filter((c): c is string => !!c))];
   saida.fotos = (b.fotos ?? []).filter((f) => f && f.src && f.largura > 0 && f.altura > 0);

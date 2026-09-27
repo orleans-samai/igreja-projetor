@@ -280,8 +280,8 @@ export function PlaylistPanel({ showThemes = false }: { showThemes?: boolean }) 
                 "transition-colors duration-[var(--motion-fast)] ease-[var(--ease-out)]",
                 selected && "bg-elevated",
                 onAir && "bg-live/10",
-                // O que já passou recua um pouco, para o olho cair no que falta.
-                etapa === "concluido" && "opacity-55",
+                // O que já passou não esmaece: a igreja pediu a lista inteira
+                // legível. A marca "Concluído" basta para dizer o que passou.
                 dragFrom === i && "opacity-40",
                 dragOver === i &&
                   dragFrom !== i &&

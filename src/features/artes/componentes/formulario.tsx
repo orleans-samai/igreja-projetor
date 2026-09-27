@@ -26,7 +26,14 @@ const CAMPOS: Record<(typeof CAMPOS_DO_FORMULARIO)[number], { rotulo: string; di
   referencia: { rotulo: "Referência bíblica", dica: "Ex.: Salmos 23:1" },
 };
 
-const PRINCIPAIS = ["quadrado", "retrato", "story", "projecao"];
+// O padrão (Projeção Full HD) vem primeiro, depois os de rede social.
+const PRINCIPAIS = ["projecao", "quadrado", "retrato", "story"];
+
+/** Principais na ordem acima; o resto depois, na ordem do catálogo. */
+function ordemDoFormato(id: string): number {
+  const i = PRINCIPAIS.indexOf(id);
+  return i < 0 ? PRINCIPAIS.length : i;
+}
 
 const NOMES_DE_ASSUNTO = [...new Set(ILUSTRACOES.flatMap((i) => i.assuntos))].sort();
 
@@ -238,7 +245,7 @@ export function Formulario({
 
       <Secao titulo="Formatos e quantidade">
         <div className="flex flex-wrap gap-1.5">
-          {[...FORMATOS].sort((a, z) => (PRINCIPAIS.includes(z.id) ? 1 : 0) - (PRINCIPAIS.includes(a.id) ? 1 : 0)).map((f) => {
+          {[...FORMATOS].sort((a, z) => ordemDoFormato(a.id) - ordemDoFormato(z.id)).map((f) => {
             const on = b.formatos.includes(f.id);
             return (
               <button

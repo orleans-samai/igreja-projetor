@@ -1,8 +1,22 @@
 const cache = new Map();
+/**
+ * Cabeçalhos de um navegador comum. Sem eles o pedido sai como "node", e os
+ * sites de letra passaram a recusar (403) quem não parece navegador — no
+ * culto isso virava "Fonte indisponível" ao trazer a letra pelo celular.
+ */
+const NAVEGADOR = {
+  'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36',
+  'accept-language': 'pt-BR,pt;q=0.9,en;q=0.6',
+  accept: 'text/html,application/json;q=0.9,*/*;q=0.8',
+};
 /** @param {string} url */
 async function request(url) {
-  const res = await fetch(url, { signal: AbortSignal.timeout(6000), redirect: 'error' });
-  if (!res.ok) throw new Error(`Fonte indisponível (${res.status})`);
+  const res = await fetch(url, { headers: NAVEGADOR, signal: AbortSignal.timeout(6000), redirect: 'error' });
+  if (!res.ok) {
+    const erro = /** @type {Error & { status?: number }} */ (new Error(`Fonte indisponível (${res.status})`));
+    erro.status = res.status;
+    throw erro;
+  }
   return res.text();
 }
 /** Parse JSONP as data, never executable JavaScript. @param {string} text */
@@ -47,15 +61,72 @@ function decode(text) {
     .replace(/&#(x[0-9a-f]+|\d+);/gi, (_, n) => { const code = n[0].toLowerCase() === 'x' ? parseInt(n.slice(1), 16) : Number(n); return code <= 0x10ffff ? String.fromCodePoint(code) : ''; })
     .replace(/&(amp|quot|apos|lt|gt|nbsp);/g, (_, name) => (/** @type {Record<string, string>} */ ({ amp: '&', quot: '"', apos: "'", lt: '<', gt: '>', nbsp: ' ' })[name] || '')).trim();
 }
-/** @param {string} sourceUrl */
+const FONTES = { 'www.letras.mus.br': 'Letras', 'www.vagalume.com.br': 'Vagalume' };
+/** @param {URL} url */
+function fonteValida(url) {
+  return url.protocol === 'https:' && !url.port && !url.username && !url.password && Object.hasOwn(FONTES, url.hostname);
+}
+/**
+ * A letra dentro da página. O Vagalume passou a escrever o HTML sem aspas
+ * (`id=lyrics`), e a procura por `id="lyrics"` não achava nada.
+ * @param {URL} url @param {string} html
+ */
+function extrair(url, html) {
+  return url.hostname === 'www.letras.mus.br'
+    ? html.match(/<div\b[^>]*\bclass=["']?lyric-original\b[^>]*>([\s\S]*?)<\/div>/i)?.[1]
+    : html.match(/<div\b[^>]*\bid=["']?lyrics\b[^>]*>([\s\S]*?)<\/div>/i)?.[1];
+}
+/**
+ * A mesma música na outra fonte. Letras e Vagalume usam o mesmo
+ * "artista/musica" no endereço, então quando uma recusa ou não traz a letra,
+ * vale tentar a outra antes de desistir.
+ * @param {URL} url
+ */
+function naOutraFonte(url) {
+  const [artista, musica] = url.pathname.split('/').filter(Boolean);
+  if (!artista || !musica) return null;
+  return url.hostname === 'www.letras.mus.br'
+    ? `https://www.vagalume.com.br/${artista}/${musica}.html`
+    : `https://www.letras.mus.br/${artista}/${musica.replace(/\.html$/i, '')}/`;
+}
+/**
+ * Traz a letra de uma página do Letras ou do Vagalume.
+ *
+ * Nunca estoura: site fora do ar, recusa (403), tempo esgotado ou página sem
+ * letra voltam como `{ ok: false, error }`. Antes, o erro subia até o
+ * processo principal, que abria uma janela de "Lúmen — atenção" no meio do
+ * culto por uma falha de um site de terceiros — e o celular ficava parado
+ * em "Trazendo a letra…".
+ * @param {string} sourceUrl
+ */
 async function load(sourceUrl) {
-  const url = new URL(sourceUrl);
-  if (url.protocol !== 'https:' || url.port || url.username || url.password || !['www.letras.mus.br', 'www.vagalume.com.br'].includes(url.hostname)) throw new Error('Fonte inválida.');
-  const html = await request(url.href);
-  const block = url.hostname === 'www.letras.mus.br'
-    ? html.match(/<div\b[^>]*class="lyric-original"[^>]*>([\s\S]*?)<\/div>/i)?.[1]
-    : html.match(/<div\b[^>]*id="lyrics"[^>]*>([\s\S]*?)<\/div>/i)?.[1];
-  if (!block) return { ok: false, error: 'A fonte não disponibilizou a letra. Abra o link ou cole o texto abaixo.' };
-  return { ok: true, lyrics: decode(block) };
+  /** @type {URL} */
+  let url;
+  try {
+    url = new URL(sourceUrl);
+  } catch {
+    return { ok: false, error: 'Fonte inválida.' };
+  }
+  if (!fonteValida(url)) return { ok: false, error: 'Fonte inválida.' };
+  const outra = naOutraFonte(url);
+  const tentativas = [url.href, ...(outra ? [outra] : [])];
+  let motivo = '';
+  for (const alvo of tentativas) {
+    const onde = new URL(alvo);
+    const nome = FONTES[/** @type {keyof typeof FONTES} */ (onde.hostname)];
+    try {
+      const block = extrair(onde, await request(alvo));
+      if (block) return { ok: true, lyrics: decode(block) };
+      motivo ||= `O ${nome} não trouxe a letra dessa música.`;
+    } catch (error) {
+      const status = /** @type {{ status?: number }} */ (error).status;
+      motivo ||= status === 403
+        ? `O ${nome} recusou o pedido agora (403).`
+        : status
+          ? `O ${nome} está indisponível (${status}).`
+          : `Sem resposta do ${nome}. Verifique a internet do computador.`;
+    }
+  }
+  return { ok: false, error: `${motivo} Tente outra opção da lista ou cole a letra.` };
 }
 module.exports = { suggest, load, parseJson, decode };

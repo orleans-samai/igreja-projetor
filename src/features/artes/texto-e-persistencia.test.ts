@@ -129,3 +129,12 @@ describe("persistência", () => {
     assert.equal((um as Record<string, unknown[]>).p.length, HISTORICO_POR_PROJETO);
   });
 });
+
+describe("formato padrão", () => {
+  test("arte nova e briefing sem formato saem em Projeção Full HD", () => {
+    assert.deepEqual(briefingVazio().formatos, ["projecao"]);
+    assert.deepEqual(normalizar({ ...briefingVazio(), titulo: "Culto", formatos: [] }).formatos, ["projecao"]);
+    // O que a igreja escolheu continua valendo.
+    assert.deepEqual(normalizar({ ...briefingVazio(), titulo: "Culto", formatos: ["quadrado"] }).formatos, ["quadrado"]);
+  });
+});
