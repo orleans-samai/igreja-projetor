@@ -45,6 +45,11 @@ npm run test:desktop:smoke
   (`BUILTIN_BIBLES` em `src/lib/bible.ts`, licenças em
   `public/bible/LICENCAS.txt`). NVI, NAA, ARA e outras com direitos autorais
   **não** entram; a igreja importa as que tem licença.
+- **Apresentações:** .pptx, .ppsx, .ppt, .pps e .odp são desenhados pelo
+  PowerPoint (se houver) ou pelo LibreOffice (`desktop/conversor-office.cjs`)
+  em PDF, e dali seguem o caminho do PDF (pdf.js, 1920 px) — sai como no
+  PowerPoint, sem animações. Sem nenhum dos dois, .pptx/.ppsx caem no leitor
+  simplificado (`desktop/pptx.cjs`, texto e imagem) e a cabine avisa.
 - **Telão:** a letra fica sempre centralizada na vertical
   (`SlideBody` em `src/components/slide/slide-renderer.tsx`,
   `margensCentradas`). Não reintroduza alinhamento em cima/embaixo.

@@ -3,16 +3,16 @@ import type { Apresentacao } from "./types";
 /**
  * Transformar o arquivo que o dirigente mandou em slides do Lúmen.
  *
- * Dois caminhos, porque são dois formatos de natureza diferente:
- *
- * - **PowerPoint** é lido no processo principal, sem Office: texto e
- *   imagem de cada slide. Perde animação, transição e posição exata.
  * - **PDF** é desenhado aqui, página por página, pelo pdf.js — o mesmo
- *   motor do Firefox. Sai idêntico ao original. É o caminho a recomendar
- *   a quem precisa do slide perfeito: no PowerPoint, "Salvar como → PDF".
- *
- * O que não dá, diz por quê. `.ppt` antigo e `.odp` são formatos que só
- * um Office abre, e fingir que abriu seria pior que avisar.
+ *   motor do Firefox. Sai idêntico ao original.
+ * - **PowerPoint** (.pptx, .ppsx, .ppt, .pps) e **OpenDocument** (.odp) são
+ *   desenhados pelo PowerPoint ou pelo LibreOffice do computador, que
+ *   devolvem um PDF — e dali é o caminho do PDF: o slide sai como no
+ *   PowerPoint, com posição, fonte, cor e fundo. A igreja via o .pptx
+ *   "totalmente desconfigurado" quando só o leitor próprio o lia.
+ * - Sem PowerPoint nem LibreOffice, o .pptx/.ppsx cai no leitor próprio
+ *   (texto e imagem de cada slide), e a cabine avisa como deixar igual.
+ *   .ppt e .odp não têm leitor próprio: sem conversor, diz o que fazer.
  */
 
 /** Largura em que cada página de PDF é desenhada: Full HD, a do telão. */
@@ -21,8 +21,14 @@ const LARGURA_DA_PAGINA = 1920;
 const MAX_PAGINAS = 300;
 
 export type ResultadoDaImportacao =
-  | { ok: true; apresentacao: Apresentacao }
+  /** `aviso`: entrou, mas com uma ressalva que o operador precisa ler. */
+  | { ok: true; apresentacao: Apresentacao; aviso?: string }
   | { ok: false; erro: string };
+
+/** O que o PowerPoint ou o LibreOffice desenham para o Lúmen. */
+const DE_APRESENTACAO = [".pptx", ".ppsx", ".ppt", ".pps", ".odp"];
+/** O que o leitor próprio abre quando não há quem desenhe. */
+const LEITOR_PROPRIO = [".pptx", ".ppsx"];
 
 export function extensao(nome: string): string {
   const i = nome.lastIndexOf(".");
@@ -32,19 +38,23 @@ export function extensao(nome: string): string {
 /** Se é um formato que o Lúmen sabe transformar em slides. */
 export function sabeImportar(nome: string): boolean {
   const ext = extensao(nome);
-  return ext === ".pptx" || ext === ".pdf";
+  return ext === ".pdf" || DE_APRESENTACAO.includes(ext);
 }
 
 /** A frase para o formato que não dá, dizendo o que fazer em vez disso. */
 export function motivoDeNaoImportar(nome: string): string {
   const ext = extensao(nome);
-  if (ext === ".ppt") {
-    return "É o formato antigo do PowerPoint (.ppt). Abra no PowerPoint e salve como .pptx ou PDF.";
+  if (ext === ".ppt" || ext === ".pps" || ext === ".odp") {
+    return "Para abrir .ppt e .odp, instale o LibreOffice (gratuito) ou o PowerPoint neste computador.";
   }
-  if (ext === ".odp") {
-    return "É uma apresentação do LibreOffice (.odp). Exporte como PDF para projetar.";
-  }
-  return "O Lúmen projeta PowerPoint (.pptx) e PDF.";
+  return "O Lúmen projeta PowerPoint (.pptx, .ppsx, .ppt), OpenDocument (.odp) e PDF.";
+}
+
+/** O aviso de quando a apresentação entrou pelo leitor simplificado. */
+export function avisoDoLeitorProprio(motivo: { semConversor?: boolean; error: string }): string {
+  return motivo.semConversor
+    ? "Entrou simplificada (texto e imagem de cada slide): este computador não tem PowerPoint nem LibreOffice. Instale o LibreOffice, gratuito, para ficar igual ao PowerPoint."
+    : `Entrou simplificada (texto e imagem de cada slide): ${motivo.error}`;
 }
 
 /**
@@ -105,7 +115,13 @@ export async function importarRecebido(nome: string, de?: string): Promise<Resul
   if (!sabeImportar(nome)) return { ok: false, erro: motivoDeNaoImportar(nome) };
 
   const base = nome.replace(/\.[^.]+$/, "");
-  if (extensao(nome) === ".pptx") {
+  const ext = extensao(nome);
+  if (DE_APRESENTACAO.includes(ext)) {
+    const convertido = await d.apresentacaoConverter(nome);
+    if (convertido.ok) return apresentacaoDoPdf(convertido.bytes, base, de, "pptx");
+    if (!LEITOR_PROPRIO.includes(ext)) {
+      return { ok: false, erro: convertido.semConversor ? motivoDeNaoImportar(nome) : convertido.error };
+    }
     const r = await d.apresentacaoPptx(nome);
     if (!r.ok) return { ok: false, erro: r.error };
     return {
@@ -118,14 +134,27 @@ export async function importarRecebido(nome: string, de?: string): Promise<Resul
         de,
         criadoEm: Date.now(),
       },
+      aviso: avisoDoLeitorProprio(convertido),
     };
   }
 
   const lido = await d.apresentacaoPdf(nome);
   if (!lido.ok) return { ok: false, erro: lido.error };
+  return apresentacaoDoPdf(lido.bytes, base, de, "pdf");
+}
+
+/** As páginas de um PDF viram os slides da apresentação, uma imagem por página. */
+async function apresentacaoDoPdf(
+  bytes: Uint8Array,
+  titulo: string,
+  de: string | undefined,
+  origem: Apresentacao["origem"],
+): Promise<ResultadoDaImportacao> {
+  const d = window.lumenDesktop;
+  if (!d) return { ok: false, erro: "Importar apresentação é do app do Windows." };
   let paginas: Uint8Array[];
   try {
-    paginas = await paginasDoPdf(lido.bytes);
+    paginas = await paginasDoPdf(bytes);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     return { ok: false, erro: /password/i.test(msg) ? "O PDF tem senha. Envie uma cópia sem senha." : `Não consegui abrir o PDF: ${msg}` };
@@ -137,8 +166,8 @@ export async function importarRecebido(nome: string, de?: string): Promise<Resul
     ok: true,
     apresentacao: {
       id: salvo.id,
-      titulo: base,
-      origem: "pdf",
+      titulo,
+      origem,
       slides: salvo.urls.map((imagem) => ({ texto: "", imagem })),
       de,
       criadoEm: Date.now(),

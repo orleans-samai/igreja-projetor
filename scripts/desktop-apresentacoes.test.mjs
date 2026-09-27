@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { createRequire } from "node:module";
 import { zip } from "./zip-de-teste.mjs";
+import { pptxDeVerdade } from "./pptx-de-teste.mjs";
 
 const require = createRequire(import.meta.url);
 const ap = require("../desktop/apresentacoes.cjs");
@@ -175,5 +176,37 @@ test("a rota que o módulo escreve é a mesma que o processo principal atende", 
     assert.equal(escrita, atendida);
   } finally {
     await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("a conversão para PDF só pega apresentação de dentro dos recebidos", async () => {
+  const dir = await ambiente();
+  try {
+    await writeFile(path.join(dir, "recebidos", "carta.docx"), "não é apresentação");
+    for (const ruim of ["../segredo.pptx", "..\\segredo.pptx", "a/b.pptx", "", "carta.docx"]) {
+      const r = await ap.converterParaPdf(ruim);
+      assert.equal(r.ok, false, ruim);
+    }
+    // Nenhuma pasta de conversão fica para trás quando nem começou.
+    assert.equal((await readdir(dir)).includes("conversoes"), false);
+  } finally {
+    await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  }
+});
+
+test("um .ppsx recebido vira PDF pelo conversor do computador, e o trabalho não fica no disco", async (t) => {
+  if ((await ap.conversor()) === null) return t.skip("sem PowerPoint nem LibreOffice neste computador");
+  const dir = await ambiente();
+  try {
+    await writeFile(
+      path.join(dir, "recebidos", "Culto.ppsx"),
+      pptxDeVerdade([{ texto: "Bem-vindos", fundo: "1F3B73" }, { texto: "Oferta", fundo: "1F6B3B" }], { exibicao: true }),
+    );
+    const r = await ap.converterParaPdf("Culto.ppsx");
+    assert.equal(r.ok, true, r.error);
+    assert.equal(Buffer.from(r.bytes).subarray(0, 5).toString("latin1"), "%PDF-");
+    assert.deepEqual(await readdir(path.join(dir, "conversoes")), [], "sobrou pasta de conversão");
+  } finally {
+    await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
   }
 });

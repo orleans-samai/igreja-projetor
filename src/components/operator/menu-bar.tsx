@@ -263,6 +263,7 @@ export function MenuBar({
     toast.success(`“${r.apresentacao.titulo}” entrou na programação — ${n} slides.`, {
       id: "apres-cabine",
     });
+    if (r.aviso) toast.warning(r.aviso, { duration: 15000 });
   };
 
   const exportRepertoire = () => {

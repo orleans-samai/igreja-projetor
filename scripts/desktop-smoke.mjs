@@ -5,6 +5,7 @@ import path from "node:path";
 import assert from "node:assert/strict";
 import { exportPackage, importPackage } from "../desktop/service-package.cjs";
 import { zip } from "./zip-de-teste.mjs";
+import { pptxDeVerdade } from "./pptx-de-teste.mjs";
 const root = path.resolve(import.meta.dirname, "..");
 const profile = await mkdtemp(path.join(os.tmpdir(), "lumen-smoke-"));
 const evidence = path.join(root, "artifacts", "desktop-smoke");
@@ -1384,6 +1385,65 @@ try {
   assert.ok(respostas.length >= 3, `só ${respostas.length} imagens de slide`);
   assert.ok(respostas.every((c) => c === 200), `imagem de slide não abriu: ${respostas.join(",")}`);
 
+  // ---- PowerPoint igual ao PowerPoint: um .ppsx de verdade, desenhado ----
+  // O leitor próprio tirava só texto e imagem, e a igreja via o slide
+  // "totalmente desconfigurado". Com LibreOffice ou PowerPoint no computador,
+  // a apresentação vira páginas desenhadas por eles: o fundo azul do slide
+  // chega azul, em Full HD. O .ppsx (salvo para abrir em exibição) também entra.
+  const conversorDaCabine = await page.evaluate(() => window.lumenDesktop.apresentacaoConversor());
+  const envioPpsx = await fetch(`${remoteBase}/dirigente/enviar`, {
+    method: "POST",
+    headers: {
+      "x-lumen-dirigente": tokenDirigente,
+      "x-lumen-arquivo": encodeURIComponent("Culto de Domingo.ppsx"),
+      "x-lumen-de": encodeURIComponent("Pastor Elias"),
+    },
+    body: pptxDeVerdade(
+      [
+        { texto: "Bem-vindos", fundo: "1F3B73" },
+        { texto: "Santa Ceia", fundo: "7A1F1F" },
+        { texto: "Oferta", fundo: "1F6B3B" },
+      ],
+      { exibicao: true },
+    ),
+  });
+  assert.equal(envioPpsx.status, 200, "o .ppsx foi recusado");
+  await esperarAsync(
+    page,
+    async () =>
+      (JSON.parse(await window.lumenDesktop.storageGet("lumen-v2")).state.apresentacoes ?? []).some(
+        (a) => a.titulo === "Culto de Domingo",
+      ),
+    undefined,
+    { timeout: 90000, oQue: "o .ppsx do dirigente virar slides" },
+  );
+  const doPpsx = await page.evaluate(async () =>
+    JSON.parse(await window.lumenDesktop.storageGet("lumen-v2")).state.apresentacoes.find(
+      (a) => a.titulo === "Culto de Domingo",
+    ),
+  );
+  assert.equal(doPpsx.slides.length, 3, "o .ppsx não virou três slides");
+  if (conversorDaCabine) {
+    assert.ok(
+      doPpsx.slides.every((sl) => sl.texto === "" && sl.imagem),
+      `o .ppsx não veio desenhado pelo ${conversorDaCabine}`,
+    );
+    const pixel = await page.evaluate(async (endereco) => {
+      const img = await createImageBitmap(await (await fetch(endereco)).blob());
+      const tela = new OffscreenCanvas(img.width, img.height);
+      const ctx = tela.getContext("2d");
+      ctx.drawImage(img, 0, 0);
+      const [r, g, b] = ctx.getImageData(Math.round(img.width * 0.05), Math.round(img.height * 0.05), 1, 1).data;
+      return { r, g, b, largura: img.width };
+    }, doPpsx.slides[0].imagem);
+    // #1F3B73 = (31, 59, 115): o fundo do primeiro slide.
+    assert.ok(
+      Math.abs(pixel.r - 31) < 14 && Math.abs(pixel.g - 59) < 14 && Math.abs(pixel.b - 115) < 14,
+      `o fundo do slide não veio azul: ${JSON.stringify(pixel)}`,
+    );
+    assert.equal(pixel.largura, 1920, "o slide não veio em Full HD");
+  }
+
   // ---- A cabine não rola, nem para o lado nem para baixo ----
   // Controle que saiu da tela é controle que não existe: no meio do culto
   // ninguém procura barra de rolagem para achar o botão de parar. Um vídeo
@@ -1754,7 +1814,7 @@ try {
   assert.deepEqual(errors, []);
   const disk = JSON.parse(await readFile(path.join(profile, "data", "library.json"), "utf8"));
   assert.ok(disk.values["lumen-v2"]);
-  console.log(`PASS: offline, fonts, Bible (one click on a verse projects it, − and + resize the book, chapter and verse squares, gold buttons in and out of the Bible screen, five versions plus importing a licensed one, its three parts rearranged by dragging and swapping sides, New-Testament-only notice, omitted verse lands on the next), restart persistence, projector, media ranges, preflight, remote control (LAN, entrada por nome, nome fixo na rede, one click from the menu bar beside Permissões, accounts with username and password created in Permissões that sign in already holding their permission while the quick name-only access stays chat-only), update check, review before apply, 1366×768 at 100/125/150% and 800×600, no scroll and exactly one layout at ten sizes from 800×600 to 2560×1440, including every pixel around the 1280 cutover and the chat stays on screen, church logo and name reachable from the menu bar, art studio makes a batch of 8 distinct Konva designs from just a title and a Bible reference, opens one in the editor, saves it and exports PNG and JPEG at exactly 1920×1080 (Full HD is the default), VFX has three modes and a dynamic video becomes a real file in the Vídeos tab, no AI, no YouTube and no Auto-Slide anywhere in the app (and what Auto-Slide downloaded is deleted on start), dirigente page signs in, sends a file, chats and files a notice, and its PowerPoint and PDF become slides in the service programme, video as a theme background, find a song by a lyric excerpt, right-click on lyrics edits or removes, double-click to project, fixed text only in the footer and the verse always centred vertically, phone has one play/pause button, the screen volume and a Sair do vídeo that takes media off the screen but never a lyric, tapping a media item shows its controls right there in a mini-player, a chat keyboard with a wide text field, a small send arrow and one attach button for photo or voice, voice messages converted to WAV on the phone and arriving with their length, the team chat in bubbles with who is online and who each message is for on the phone and the dirigente page, kept per service in a searchable, exportable history in the cabine, every new chat message pops up in gold on the phone, the cabine and the dirigente page (never for its own author), sees the media folder, gets a file imported in the cabine or copied in by Explorer within 5 s, a library row dragged into the service programme, a right-click menu that deletes media, a Culto tab that mirrors the service programme, projects with a tap on the item and deletes (two taps) from it, a + beside songs, media and web results that puts them in the service programme, lyrics search results that appear while typing and mark songs already in the library, projects from it, opens a song as a grid of slides and puts one on the screen, and searches lyrics through the cabine. Evidence: ${evidence}`);
+  console.log(`PASS: offline, fonts, Bible (one click on a verse projects it, − and + resize the book, chapter and verse squares, gold buttons in and out of the Bible screen, five versions plus importing a licensed one, its three parts rearranged by dragging and swapping sides, New-Testament-only notice, omitted verse lands on the next), restart persistence, projector, media ranges, preflight, remote control (LAN, entrada por nome, nome fixo na rede, one click from the menu bar beside Permissões, accounts with username and password created in Permissões that sign in already holding their permission while the quick name-only access stays chat-only), update check, review before apply, 1366×768 at 100/125/150% and 800×600, no scroll and exactly one layout at ten sizes from 800×600 to 2560×1440, including every pixel around the 1280 cutover and the chat stays on screen, church logo and name reachable from the menu bar, art studio makes a batch of 8 distinct Konva designs from just a title and a Bible reference, opens one in the editor, saves it and exports PNG and JPEG at exactly 1920×1080 (Full HD is the default), VFX has three modes and a dynamic video becomes a real file in the Vídeos tab, no AI, no YouTube and no Auto-Slide anywhere in the app (and what Auto-Slide downloaded is deleted on start), dirigente page signs in, sends a file, chats and files a notice, and its PowerPoint and PDF become slides in the service programme, a real .ppsx drawn by LibreOffice or PowerPoint into Full HD slides with its own background colour (the simplified reader only when neither is installed), video as a theme background, find a song by a lyric excerpt, right-click on lyrics edits or removes, double-click to project, fixed text only in the footer and the verse always centred vertically, phone has one play/pause button, the screen volume and a Sair do vídeo that takes media off the screen but never a lyric, tapping a media item shows its controls right there in a mini-player, a chat keyboard with a wide text field, a small send arrow and one attach button for photo or voice, voice messages converted to WAV on the phone and arriving with their length, the team chat in bubbles with who is online and who each message is for on the phone and the dirigente page, kept per service in a searchable, exportable history in the cabine, every new chat message pops up in gold on the phone, the cabine and the dirigente page (never for its own author), sees the media folder, gets a file imported in the cabine or copied in by Explorer within 5 s, a library row dragged into the service programme, a right-click menu that deletes media, a Culto tab that mirrors the service programme, projects with a tap on the item and deletes (two taps) from it, a + beside songs, media and web results that puts them in the service programme, lyrics search results that appear while typing and mark songs already in the library, projects from it, opens a song as a grid of slides and puts one on the screen, and searches lyrics through the cabine. Evidence: ${evidence}`);
 } finally {
   if (app) {
     // O fim do teste deixa uma música no ar, e a cabine (de propósito)

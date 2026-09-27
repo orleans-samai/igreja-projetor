@@ -14,6 +14,7 @@ const path = require("node:path");
 const fsp = require("node:fs/promises");
 const { randomUUID } = require("node:crypto");
 const { lerPptx } = require("./pptx.cjs");
+const { paraPdf, conversorDisponivel, EXTENSOES: EXTENSOES_DO_OFFICE } = require("./conversor-office.cjs");
 
 const PASTA = "apresentacoes";
 /**
@@ -29,6 +30,8 @@ const MAX_ARQUIVO = 64 * 1024 * 1024;
 const MAX_PAGINAS = 300;
 /** Teto para cada página renderizada que chega da janela. */
 const MAX_PAGINA = 12 * 1024 * 1024;
+/** Teto do PDF que o PowerPoint ou o LibreOffice devolve: foto grande vira PDF grande. */
+const MAX_PDF_CONVERTIDO = 160 * 1024 * 1024;
 
 const ID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 const ARQUIVO = /^(slide|pagina)-\d{1,4}\.(png|jpg|gif|bmp|webp)$/;
@@ -105,6 +108,54 @@ async function importarPptx(nome) {
   };
 }
 
+/**
+ * Uma conversão de cada vez: o LibreOffice usa um perfil só, e duas
+ * apresentações chegando juntas do dirigente fariam a segunda falhar.
+ */
+let fila = Promise.resolve();
+function umaDeCadaVez(tarefa) {
+  const vez = fila.then(tarefa, tarefa);
+  fila = vez.catch(() => {});
+  return vez;
+}
+
+/**
+ * Um PowerPoint recebido (.pptx, .ppsx, .ppt, .pps) ou OpenDocument (.odp),
+ * desenhado pelo PowerPoint ou pelo LibreOffice e devolvido como PDF: a
+ * janela desenha as páginas pelo mesmo caminho do PDF, idêntico ao
+ * original. Sem nenhum dos dois, `semConversor` — e a janela cai no leitor
+ * simplificado, avisando.
+ */
+async function converterParaPdf(nome) {
+  const caminho = recebido(nome);
+  if (!caminho || !EXTENSOES_DO_OFFICE.has(path.extname(caminho).toLowerCase())) {
+    return { ok: false, error: "Apresentação fora da pasta de recebidos." };
+  }
+  return umaDeCadaVez(async () => {
+    const trabalho = path.join(dataDir, "conversoes", randomUUID());
+    try {
+      const st = await fsp.stat(caminho);
+      if (!st.isFile()) return { ok: false, error: "Não é um arquivo." };
+      if (st.size > MAX_ARQUIVO) return { ok: false, error: "Arquivo grande demais (máximo 64 MB)." };
+      const r = await paraPdf(caminho, trabalho, path.join(dataDir, "libreoffice-perfil"));
+      if (!r.ok) return r;
+      if ((await fsp.stat(r.pdf)).size > MAX_PDF_CONVERTIDO) {
+        return { ok: false, error: "A apresentação desenhada ficou grande demais para o telão." };
+      }
+      return { ok: true, bytes: await fsp.readFile(r.pdf), com: r.com };
+    } catch (erro) {
+      return { ok: false, error: erro?.message || "Não consegui desenhar a apresentação." };
+    } finally {
+      await fsp.rm(trabalho, { recursive: true, force: true }).catch(() => {});
+    }
+  });
+}
+
+/** "PowerPoint", "LibreOffice" ou null: quem desenha as apresentações aqui. */
+function conversor() {
+  return conversorDisponivel();
+}
+
 /** Os bytes de um PDF recebido, para a janela desenhar as páginas. */
 async function lerPdf(nome) {
   const caminho = recebido(nome);
@@ -173,6 +224,8 @@ async function remover(id) {
 module.exports = {
   init,
   importarPptx,
+  converterParaPdf,
+  conversor,
   lerPdf,
   salvarPaginas,
   resolver,

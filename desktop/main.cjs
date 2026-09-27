@@ -526,6 +526,8 @@ handle("lumen:media-delete", (kind, nome) => media.excluir(kind, nome));
 // Apresentações: PowerPoint é lido aqui, sem Office; PDF é desenhado na
 // janela pelo pdf.js e só as páginas prontas voltam para cá.
 handle("lumen:apresentacao-pptx", (nome) => apresentacoes.importarPptx(nome));
+handle("lumen:apresentacao-converter", (nome) => apresentacoes.converterParaPdf(nome));
+handle("lumen:apresentacao-conversor", () => apresentacoes.conversor());
 handle("lumen:apresentacao-pdf", (nome) => apresentacoes.lerPdf(nome));
 handle("lumen:apresentacao-paginas", (paginas) => apresentacoes.salvarPaginas(paginas));
 handle("lumen:apresentacao-remover", (id) => apresentacoes.remover(id));
@@ -543,7 +545,7 @@ handle("lumen:apresentacao-escolher", async () => {
   const { canceled, filePaths } = await dialog.showOpenDialog(cabine, {
     title: "Importar apresentação",
     properties: ["openFile"],
-    filters: [{ name: "PowerPoint ou PDF", extensions: ["pptx", "pdf"] }],
+    filters: [{ name: "PowerPoint, OpenDocument ou PDF", extensions: ["pptx", "ppsx", "ppt", "pps", "odp", "pdf"] }],
   });
   if (canceled || !filePaths[0]) return { ok: false, cancelado: true };
   const st = await fs.promises.stat(filePaths[0]);

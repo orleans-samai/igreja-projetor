@@ -7,8 +7,9 @@
  * cada um e a imagem principal. É isso que sai daqui.
  *
  * O que NÃO sai, e é bom ser dito: animação, transição, posição exata das
- * caixas, fontes do autor. Quem precisa do slide idêntico salva como PDF,
- * que o Lúmen desenha pixel a pixel.
+ * caixas, fontes do autor. Por isso este leitor é a reserva: com PowerPoint
+ * ou LibreOffice no computador, conversor-office.cjs desenha o slide igual
+ * ao PowerPoint, e este só entra quando não há nenhum dos dois.
  *
  * O arquivo vem da rede, da página do dirigente. Todo tamanho e todo
  * deslocamento é conferido antes de ser usado, e há teto para o que se

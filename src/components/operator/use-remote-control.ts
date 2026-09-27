@@ -394,6 +394,7 @@ export function useRemoteControl() {
               `“${r.apresentacao.titulo}”${quem} entrou na programação do culto — ${r.apresentacao.slides.length} slides.`,
               { id: `apres-${evento.nome}` },
             );
+            if (r.aviso) toast.warning(r.aviso, { duration: 15000 });
           });
         }
         return;

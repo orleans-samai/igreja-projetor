@@ -25,7 +25,7 @@ const PASTA_PADRAO = { video: "video", audio: "audio", image: "imagem" };
  * Apresentação e documento: o Lúmen ainda não projeta estes arquivos, mas
  * recebe e guarda, para o operador achá-los na hora do culto. Ver `receber`.
  */
-const DOCUMENTOS = [".pptx", ".ppt", ".odp", ".pdf"];
+const DOCUMENTOS = [".pptx", ".ppsx", ".ppt", ".pps", ".odp", ".pdf"];
 const PASTA_RECEBIDOS = "recebidos";
 /** Teto do que a rede pode largar no computador da igreja de uma vez. */
 const MAX_ARQUIVO = 64 * 1024 * 1024;

@@ -427,15 +427,15 @@
           <strong id="arraste">Arraste sua apresentação aqui</strong>
           <div class="ou">ou <span>escolha um arquivo no computador</span></div>
           <div class="escolher">Selecionar arquivos</div>
-          <div class="formatos" id="formatos">PowerPoint .pptx e .ppt • PDF • imagens • vídeos</div>
+          <div class="formatos" id="formatos">PowerPoint .pptx, .ppsx e .ppt • PDF • imagens • vídeos</div>
           <div class="nota">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
               <circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 7.6v.1"/>
             </svg>
-            Vídeo, áudio e imagem entram na programação; apresentação e PDF ficam guardados.
+            Tudo entra na programação do culto — a apresentação, do jeito que foi feita no PowerPoint.
           </div>
           <input id="arquivo" type="file" multiple hidden
-                 accept=".pptx,.ppt,.odp,.pdf,video/*,audio/*,image/*">
+                 accept=".pptx,.ppsx,.ppt,.pps,.odp,.pdf,video/*,audio/*,image/*">
         </label>
 
         <div id="blocoFila" hidden style="display:flex;flex-direction:column;gap:8px">
@@ -691,7 +691,7 @@
    * de verdade, e sai instantâneo mesmo num arquivo de 60 MB.
    */
   function contarSlides(file) {
-    if (!/\.pptx$/i.test(file.name)) return Promise.resolve(0);
+    if (!/\.(pptx|ppsx)$/i.test(file.name)) return Promise.resolve(0);
     var rabo = file.slice(Math.max(0, file.size - 2 * 1024 * 1024));
     return rabo
       .arrayBuffer()
@@ -707,7 +707,7 @@
   }
 
   function glifoDoArquivo(nome) {
-    var doc = /\.(pptx|ppt|odp|pdf)$/i.test(nome);
+    var doc = /\.(pptx|ppsx|ppt|pps|odp|pdf)$/i.test(nome);
     var cor = doc ? "#e07a3c" : "#5b8fc7";
     return (
       '<svg class="glifo-min" width="34" height="38" viewBox="0 0 34 38" fill="none" aria-hidden="true">' +
@@ -928,12 +928,12 @@
    * abrisse Texto ou Chat não tinha como voltar para a tela de arquivos.
    */
   var FILTROS = {
-    apresentacao: ".pptx,.ppt,.odp,.pdf",
+    apresentacao: ".pptx,.ppsx,.ppt,.pps,.odp,.pdf",
     imagem: "image/*",
     video: "video/*,audio/*",
   };
   var FORMATOS = {
-    apresentacao: "PowerPoint .pptx e .ppt • PDF • OpenDocument .odp",
+    apresentacao: "PowerPoint .pptx, .ppsx e .ppt • PDF • OpenDocument .odp",
     imagem: "JPG, PNG, WebP, AVIF e GIF",
     video: "MP4, WebM, MOV • MP3, M4A, WAV",
   };
