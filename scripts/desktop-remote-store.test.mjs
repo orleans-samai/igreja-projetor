@@ -17,6 +17,7 @@ test("arquivo ausente ou ilegível não derruba a abertura do app", async () => 
       porta: PORTA_PADRAO,
       dispositivos: [],
       senhaDirigente: null,
+      contas: [],
     });
     writeFileSync(path.join(dir, "remote.json"), "{ isto não é json");
     assert.equal(cofre.ler().porta, PORTA_PADRAO);
@@ -127,4 +128,39 @@ test("senha estranha no arquivo não vira senha válida", () => {
     sal: "aa",
     chave: "bb",
   });
+});
+
+test("conta guardada leva a senha cozida; sem senha cozida ou repetida, não entra", () => {
+  const { cozinharSenha, senhaConfere } = cofreModule;
+  const cozida = cozinharSenha("louvor-2026");
+  const r = saneia({
+    contas: [
+      { id: "a", usuario: "Bia", senha: cozida, permissao: "editor", equipe: "louvor" },
+      // A mesma pessoa duas vezes teria duas senhas.
+      { id: "b", usuario: " BIA ", senha: cozida },
+      // Senha em claro que alguém escreveu no arquivo não vira senha.
+      { id: "c", usuario: "Zé", senha: "louvor-2026" },
+      { id: "d", usuario: "Caio", senha: cozida, permissao: "dono", equipe: "cozinha" },
+    ],
+  });
+  assert.deepEqual(
+    r.contas.map((c) => [c.id, c.usuario, c.permissao, c.equipe]),
+    [["a", "Bia", "editor", "louvor"], ["d", "Caio", "chat", ""]],
+  );
+  assert.ok(senhaConfere(r.contas[0].senha, "louvor-2026"));
+});
+
+test("a equipe do aparelho volta do arquivo, e equipe inventada não", () => {
+  const agora = Date.now();
+  const base = { id: "d", nome: "Zé", permissao: "chat", criadoEm: agora, ultimoVisto: agora };
+  const r = saneia({
+    dispositivos: [
+      { ...base, token: "t".repeat(20), equipe: "pastor", contaId: "conta-1" },
+      { ...base, token: "u".repeat(20), id: "e", equipe: "cozinha" },
+    ],
+  });
+  assert.deepEqual(
+    r.dispositivos.map((d) => [d.id, d.equipe, d.contaId]).sort(),
+    [["d", "pastor", "conta-1"], ["e", "", ""]],
+  );
 });

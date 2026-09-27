@@ -67,8 +67,15 @@ npm run test:desktop:smoke
 - Chave nova de armazenamento precisa entrar em `KEYS` (`desktop/storage.cjs`).
 - **Páginas do celular** (`public/remote-control.html`, `public/dirigente.html`):
   HTML solto, sem build, JavaScript em estilo ES5 (`var`, `function`).
-  Não fazem requisição para fora da rede da igreja. A paleta do chat é
-  duplicada nelas e em `src/lib/cor-do-chat.ts` — o teste confere as três.
+  Não fazem requisição para fora da rede da igreja. O chat das duas é um
+  arquivo só, `public/chat-equipe.js` (servido em `/chat-equipe.js`); a
+  paleta, a conta da cor e a janela de grupo dele são as de
+  `src/lib/cor-do-chat.ts` e `src/lib/chat-grupos.ts` — os testes conferem.
+  Nada de `\p{…}` nem sintaxe nova ali: celular velho não abriria a página.
+- **Entrar pelo celular:** acesso rápido (só o nome, entra no chat) ou
+  usuário e senha (conta criada em Permissões, já com permissão e equipe).
+  A senha da conta só existe cozida (scrypt) em `remote.json`; o `status`
+  que vai para a janela nunca leva nem a cozida.
 - O servidor do celular (`desktop/remote-control.cjs`) confere permissão em
   toda rota (`chat` < `editor` < `controle`) e avisa mudanças pelo fluxo SSE
   sem carregar dados que exijam permissão.
@@ -87,7 +94,7 @@ npm run test:desktop:smoke
 | `src/components/operator/` | Cabine (Repertório, Programação, Bíblia, chat, menus) |
 | `src/components/slide/` | Desenho do telão, prévia e retorno de palco |
 | `src/features/artes/`, `src/features/vfx/` | Estúdio de artes e vídeos |
-| `src/lib/` | Regras puras e testáveis (Bíblia, mídia, IA, telão) |
+| `src/lib/` | Regras puras e testáveis (Bíblia, mídia, chat, telão) |
 | `src/store/` | Zustand: `lumen-store` (conteúdo), `ops-store` (cabine), `chat-store` |
 | `desktop/` | Electron: janelas, disco, servidor do celular, atualizador |
 | `public/` | Páginas do celular e do dirigente, Bíblias embutidas, temas |

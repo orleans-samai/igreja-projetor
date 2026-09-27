@@ -1,5 +1,6 @@
 import { Smartphone } from "lucide-react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { ContasDaEquipe } from "@/components/operator/contas-da-equipe";
 import { Dispositivos } from "@/components/operator/remote-control-dialog";
 import { useStatusRemoto } from "@/components/operator/use-status-remoto";
 import { AJUDA_PERMISSAO, ROTULO_PERMISSAO } from "@/lib/remote-control";
@@ -34,7 +35,8 @@ export function PermissoesDialog({
         ) : !status.ligado ? (
           <p className="flex items-center gap-1.5 text-secondary text-muted">
             <Smartphone className="size-3.5 shrink-0" aria-hidden />
-            O controle pelo celular está desligado. Ligue em Tela → Controle remoto pelo celular.
+            O controle pelo celular está desligado. Ligue em Controle pelo celular, ao lado de
+            Permissões.
           </p>
         ) : (
           <div className="space-y-4">
@@ -48,9 +50,10 @@ export function PermissoesDialog({
             </div>
             <Dispositivos status={status} aoMudar={setStatus} />
             <p className="text-caption text-subtle">
-              Todo aparelho entra podendo só conversar. O resto é você quem libera, com o nome da
-              pessoa na frente.
+              Pelo acesso rápido, todo aparelho entra podendo só conversar. O resto é você quem
+              libera, com o nome da pessoa na frente — ou cria uma conta para ela.
             </p>
+            <ContasDaEquipe status={status} aoMudar={setStatus} />
           </div>
         )}
       </DialogContent>

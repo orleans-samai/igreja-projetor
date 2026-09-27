@@ -1,12 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  MAX_CULTOS,
   apagarRecado,
+  arquivoDoCulto,
   buscarNoHistorico,
   diaDe,
   exportarCulto,
   guardarRecado,
+  MAX_CULTOS,
   type HistoricoDoChat,
 } from "./chat-historico.ts";
 import type { MensagemChat } from "./remote-control.ts";
@@ -85,4 +86,9 @@ test("a exportação diz a hora, quem, para quem e o que foi dito", () => {
   assert.match(texto, /\[19:05\] Caio → Louvor: Sobe o retorno/);
   assert.match(texto, /\[19:05\] Cabine → Todos: \(foto\)/);
   assert.match(texto, /\(recado apagado pela cabine\)/);
+});
+
+test("o arquivo exportado leva o nome do culto e o dia, sem acento nem espaço", () => {
+  assert.equal(arquivoDoCulto({ nome: "Domingo 19h — Santa Ceia", dia: "2026-09-27" }), "chat-domingo-19h-santa-ceia-2026-09-27.txt");
+  assert.equal(arquivoDoCulto({ nome: "  ", dia: "2026-09-27" }), "chat-culto-2026-09-27.txt");
 });

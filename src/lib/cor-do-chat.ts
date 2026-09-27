@@ -11,9 +11,9 @@
  *
  * Quem lê a própria mensagem não precisa de cor: ela aparece como "Você".
  *
- * A mesma paleta e a mesma conta moram em `public/remote-control.html` e
- * `public/dirigente.html`, que são páginas soltas, sem build. O teste
- * (`cor-do-chat.test.ts`) confere que as três continuam iguais.
+ * A mesma paleta e a mesma conta moram em `public/chat-equipe.js`, o chat
+ * das páginas do celular e do dirigente, que é JavaScript sem build. O teste
+ * (`cor-do-chat.test.ts`) confere que os dois continuam iguais.
  */
 
 /** Legíveis sobre o grafite das três telas; nenhuma é o dourado dos avisos. */

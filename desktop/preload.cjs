@@ -36,6 +36,8 @@ contextBridge.exposeInMainWorld("lumenDesktop", {
   remoteControlSetDefaultPermission: (permissao) =>
     ipcRenderer.invoke("lumen:remote-control-default-permission", permissao),
   remoteControlDisconnect: (id) => ipcRenderer.invoke("lumen:remote-control-disconnect", id),
+  remoteControlSalvarConta: (dados) => ipcRenderer.invoke("lumen:remote-control-conta-salvar", dados),
+  remoteControlApagarConta: (id) => ipcRenderer.invoke("lumen:remote-control-conta-apagar", id),
   remoteControlChat: (texto, autor, para) => ipcRenderer.invoke("lumen:remote-control-chat", texto, autor, para),
   remoteControlChatFoto: (dados, texto, autor, para) =>
     ipcRenderer.invoke("lumen:remote-control-chat-foto", dados, texto, autor, para),

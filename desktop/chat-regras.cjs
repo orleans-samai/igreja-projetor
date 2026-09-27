@@ -93,7 +93,7 @@ function mencoesNoTexto(texto, pessoas) {
 function dobrar(s) {
   return String(s || "")
     .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
+    .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase();
 }
 
@@ -114,4 +114,4 @@ function podeVer(leitor, msg) {
   return false;
 }
 
-module.exports = { EQUIPES, EQUIPES_DE_APARELHO, paraValido, mencoesNoTexto, podeVer };
+module.exports = { EQUIPES, EQUIPES_DE_APARELHO, paraValido, mencoesNoTexto, podeVer, dobrar };

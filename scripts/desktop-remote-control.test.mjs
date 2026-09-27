@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { mkdtemp, writeFile, readFile, rm } from "node:fs/promises";
+import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import remoteControlModule from "../desktop/remote-control.cjs";
@@ -37,6 +38,25 @@ test("liga, escuta na rede (0.0.0.0) e desliga", async () => {
   }
   assert.equal(ctx.rc.status().ligado, false);
   await assert.rejects(fetch(ctx.base + "/"));
+});
+
+test("o chat da equipe é servido junto com as páginas, e só ele", async () => {
+  // O celular e o dirigente carregam o mesmo chat (chat-equipe.js): sem a
+  // rota, as duas páginas abririam sem chat nenhum.
+  const ctx = await subir();
+  try {
+    await writeFile(path.join(ctx.dir, "chat-equipe.js"), "window.LumenChat = {};");
+    await writeFile(path.join(ctx.dir, "outro.js"), "nao");
+    const r = await fetch(ctx.base + "/chat-equipe.js");
+    assert.equal(r.status, 200);
+    assert.match(r.headers.get("content-type"), /^text\/javascript/);
+    assert.equal(r.headers.get("x-content-type-options"), "nosniff");
+    assert.equal(await r.text(), "window.LumenChat = {};");
+    // Nome fixo: o resto da pasta não sai por aqui.
+    assert.equal((await fetch(ctx.base + "/outro.js")).status, 404);
+  } finally {
+    await derrubar(ctx);
+  }
 });
 
 test("entrar exige um nome, e o nome é o que a cabine lê", async () => {
@@ -1478,5 +1498,178 @@ test("o aparelho escolhe a equipe dele, e equipe inventada não entra", async ()
     assert.equal(ctx.rc.dispositivos.get(token).equipe, "");
   } finally {
     await derrubar(ctx);
+  }
+});
+
+/**
+ * POST numa conexão nova. Depois de fechar e reabrir o servidor na mesma
+ * porta, a conexão que o fetch guardou ainda aponta para o que fechou, e um
+ * POST nela cai em ECONNRESET de vez em quando.
+ */
+function postarNumaConexaoNova(url, corpo) {
+  return new Promise((ok, falha) => {
+    const req = http.request(url, { method: "POST", agent: false }, (res) => {
+      let texto = "";
+      res.setEncoding("utf8");
+      res.on("data", (parte) => (texto += parte));
+      res.on("end", () => ok({ status: res.statusCode, corpo: JSON.parse(texto || "null") }));
+    });
+    req.on("error", falha);
+    req.end(JSON.stringify(corpo));
+  });
+}
+
+/** Entrar com usuário e senha, como a página do celular faz. */
+function entrar(base, usuario, senha) {
+  return fetch(base + "/entrar", { method: "POST", body: JSON.stringify({ usuario, senha }) });
+}
+
+test("conta com senha entra já com a permissão e a equipe dela", async () => {
+  const ctx = await subir();
+  try {
+    const criada = ctx.rc.salvarConta({ usuario: "Caio", senha: "som-2026", permissao: "controle", equipe: "som" });
+    assert.equal(criada.ok, true, criada.erro);
+    // Senha errada e usuário que não existe recebem a mesma resposta: dizer
+    // qual dos dois errou ensinaria quem são os usuários.
+    const errada = await entrar(ctx.base, "Caio", "outra");
+    const ninguem = await entrar(ctx.base, "Ninguém", "som-2026");
+    assert.equal(errada.status, 401);
+    assert.equal(ninguem.status, 401);
+    assert.equal((await errada.json()).erro, (await ninguem.json()).erro);
+    // Maiúscula, acento e espaço sobrando não viram outro usuário.
+    const r = await entrar(ctx.base, "  CÁIO ", "som-2026");
+    assert.equal(r.status, 200);
+    const { token, permissao, nome } = await r.json();
+    assert.equal(permissao, "controle");
+    assert.equal(nome, "Caio");
+    // Já comanda o telão: ninguém precisou promover o aparelho.
+    const comando = await fetch(ctx.base + "/comando", {
+      method: "POST",
+      body: JSON.stringify({ token, acao: "preto" }),
+    });
+    assert.equal(comando.status, 200);
+    const f = await fluxo(ctx, token);
+    try {
+      assert.equal(f.eventos.find((e) => e.tipo === "inicio").eu.equipe, "som");
+    } finally {
+      f.fechar();
+    }
+    // O acesso rápido continua existindo, e entrando só no chat.
+    const rapido = await fetch(ctx.base + "/parear", {
+      method: "POST",
+      body: JSON.stringify({ nome: "Visitante" }),
+    }).then((x) => x.json());
+    assert.equal(rapido.permissao, "chat");
+  } finally {
+    await derrubar(ctx);
+  }
+});
+
+test("a senha da conta não sai do servidor, nem cozida", async () => {
+  const ctx = await subir();
+  try {
+    ctx.rc.salvarConta({ usuario: "Bia", senha: "louvor-2026", permissao: "editor", equipe: "louvor" });
+    const texto = JSON.stringify(ctx.rc.status());
+    assert.equal(texto.includes("louvor-2026"), false);
+    assert.equal(/"sal"|"chave"|"senha"/.test(texto), false, "o status levou a senha cozida");
+    assert.deepEqual(
+      ctx.rc.status().contas.map((c) => [c.usuario, c.permissao, c.equipe, c.aparelhos]),
+      [["Bia", "editor", "louvor", 0]],
+    );
+  } finally {
+    await derrubar(ctx);
+  }
+});
+
+test("conta repetida, senha curta, usuário vazio e conta nova sem senha são recusados", async () => {
+  const ctx = await subir();
+  try {
+    assert.equal(ctx.rc.salvarConta({ usuario: "Caio", senha: "1234" }).ok, true);
+    assert.equal(ctx.rc.salvarConta({ usuario: "caio", senha: "5678" }).ok, false);
+    assert.equal(ctx.rc.salvarConta({ usuario: "Zé", senha: "12" }).ok, false);
+    assert.equal(ctx.rc.salvarConta({ usuario: " ", senha: "1234" }).ok, false);
+    assert.equal(ctx.rc.salvarConta({ usuario: "Novo" }).ok, false);
+    assert.equal(ctx.rc.salvarConta({ id: "nao-existe", usuario: "Outro", senha: "1234" }).ok, false);
+    assert.equal(ctx.rc.status().contas.length, 1);
+  } finally {
+    await derrubar(ctx);
+  }
+});
+
+test("mudar a conta alcança quem já entrou; senha trocada ou conta apagada tiram o aparelho", async () => {
+  const ctx = await subir();
+  try {
+    ctx.rc.salvarConta({ usuario: "Caio", senha: "som-2026", permissao: "chat", equipe: "som" });
+    const conta = ctx.rc.status().contas[0];
+    const { token } = await entrar(ctx.base, "Caio", "som-2026").then((r) => r.json());
+    const f = await fluxo(ctx, token);
+    try {
+      // Promovida a conta, o aparelho sabe na hora.
+      ctx.rc.salvarConta({ id: conta.id, usuario: "Caio", permissao: "controle", equipe: "som" });
+      assert.ok(await f.esperar((e) => e.tipo === "permissao" && e.permissao === "controle"));
+      // Mudar sem mandar senha mantém a senha.
+      assert.equal((await entrar(ctx.base, "Caio", "som-2026")).status, 200);
+      // Senha trocada é senha que vazou: quem entrou com a antiga sai.
+      ctx.rc.salvarConta({ id: conta.id, usuario: "Caio", senha: "nova-senha", permissao: "controle", equipe: "som" });
+      assert.ok(await f.esperar((e) => e.tipo === "desconectado"));
+      assert.equal((await entrar(ctx.base, "Caio", "som-2026")).status, 401);
+      assert.equal((await entrar(ctx.base, "Caio", "nova-senha")).status, 200);
+    } finally {
+      f.fechar();
+    }
+    // Alguém saiu da equipe: a conta some, e os aparelhos dela saem junto.
+    ctx.rc.apagarConta(conta.id);
+    assert.equal(ctx.rc.status().contas.length, 0);
+    assert.equal(ctx.rc.status().dispositivos.filter((d) => d.porConta).length, 0);
+  } finally {
+    await derrubar(ctx);
+  }
+});
+
+test("cinco senhas erradas seguram o IP, mesmo que a sexta esteja certa", async () => {
+  const ctx = await subir();
+  try {
+    ctx.rc.salvarConta({ usuario: "Caio", senha: "som-2026" });
+    for (let i = 0; i < 5; i += 1) {
+      assert.equal((await entrar(ctx.base, "Caio", "chute-" + i)).status, 401);
+    }
+    assert.equal((await entrar(ctx.base, "Caio", "som-2026")).status, 429);
+  } finally {
+    await derrubar(ctx);
+  }
+});
+
+test("as contas e a equipe do aparelho sobrevivem a fechar e abrir o app", async () => {
+  const dir = await comPagina();
+  try {
+    const primeira = new RemoteControl(dir, await comCofre(dir));
+    const a = await primeira.ligar();
+    primeira.salvarConta({ usuario: "Bia", senha: "louvor-2026", permissao: "editor", equipe: "louvor" });
+    const rapido = await fetch(`http://127.0.0.1:${a.porta}/parear`, {
+      method: "POST",
+      body: JSON.stringify({ nome: "Zé" }),
+    }).then((r) => r.json());
+    await fetch(`http://127.0.0.1:${a.porta}/chat/equipe`, {
+      method: "POST",
+      body: JSON.stringify({ token: rapido.token, equipe: "pastor" }),
+    }).then((r) => r.json());
+    primeira.desligar();
+
+    const segunda = new RemoteControl(dir, await comCofre(dir));
+    const b = await segunda.ligar();
+    try {
+      const r = await postarNumaConexaoNova(`http://127.0.0.1:${b.porta}/entrar`, {
+        usuario: "bia",
+        senha: "louvor-2026",
+      });
+      assert.equal(r.status, 200, "a conta foi esquecida no fechar");
+      assert.equal(r.corpo.permissao, "editor");
+      // Antes a equipe escolhida no celular se perdia ao reabrir o Lúmen.
+      assert.equal(segunda.listarDispositivos().find((d) => d.nome === "Zé").equipe, "pastor");
+    } finally {
+      segunda.desligar();
+    }
+  } finally {
+    await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
   }
 });

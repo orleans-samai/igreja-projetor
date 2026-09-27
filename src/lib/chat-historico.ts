@@ -125,6 +125,12 @@ function hora(em: number): string {
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
+/** "chat-domingo-19h-2026-09-27.txt": dá para achar na pasta de downloads. */
+export function arquivoDoCulto(c: { nome: string; dia: string }): string {
+  const nome = fold(c.nome).replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "culto";
+  return `chat-${nome}-${c.dia}.txt`;
+}
+
 /** O culto inteiro em texto, para guardar ou mandar depois do culto. */
 export function exportarCulto(c: CultoDoChat): string {
   const [ano, mes, dia] = c.dia.split("-");

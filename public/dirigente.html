@@ -259,11 +259,10 @@
     display: flex; flex-direction: column; gap: 9px;
     max-height: 46dvh; min-height: 140px; overflow-y: auto; padding-right: 2px;
   }
-  .msg { padding: 10px 12px; border-radius: 11px; background: rgba(12, 14, 18, .55); border: 1px solid var(--borda); }
-  .msg.minha { background: rgba(91, 143, 199, .12); border-color: rgba(91, 143, 199, .4); }
-  .msg.cabine { background: rgba(110, 169, 127, .10); border-color: rgba(110, 169, 127, .35); }
-  .msg .de { margin: 0 0 3px; font-size: 12px; font-weight: 600; color: var(--muted); }
-  .msg .texto { margin: 0; white-space: pre-wrap; word-break: break-word; font-size: 14.5px; }
+  /* Balões, cores, destino e fotos moram em chat-equipe.js, o mesmo chat
+     do celular. Aqui fica só o azul do balão de quem escreve. */
+  #painelChat { --ce-minha: rgba(91, 143, 199, .14); --ce-minha-borda: rgba(91, 143, 199, .45); }
+  #formChat .ce-foto { padding: 15px 16px; }
   #formChat { display: flex; gap: 10px; align-items: flex-end; }
   #textoChat { flex: 1; min-height: 52px; max-height: 26dvh; resize: none; padding-left: 14px; }
 
@@ -299,7 +298,7 @@
 <div class="fundo" aria-hidden="true"></div>
 
 <button type="button" class="aviso-ouro" id="avisoOuro" hidden aria-live="polite">
-  <span class="icone" aria-hidden="true">💬</span>
+  <span class="icone" aria-hidden="true" id="avisoOuroIcone">💬</span>
   <span>
     <span class="de" id="avisoOuroDe"></span>
     <span class="texto" id="avisoOuroTexto"></span>
@@ -485,7 +484,7 @@
       <div id="painelChat" hidden style="display:flex;flex-direction:column;gap:12px">
         <div id="listaChat"></div>
         <form id="formChat">
-          <textarea id="textoChat" class="campo" maxlength="500" placeholder="Escrever para a equipe…"></textarea>
+          <textarea id="textoChat" class="campo" maxlength="500" placeholder="Recado (@ cita alguém)"></textarea>
           <button class="mini-botao" type="submit" id="mandarChat" style="padding:15px 18px">Enviar</button>
         </form>
         <p class="erro" id="erroChat"></p>
@@ -538,6 +537,7 @@
 
 <div class="assinatura" aria-hidden="true"><span class="traco"></span>PLANEJAR · PROJETAR · SERVIR</div>
 
+<script src="/chat-equipe.js"></script>
 <script>
 (function () {
   "use strict";
@@ -971,7 +971,7 @@
     if (nome === "chat") {
       naoLidas = 0;
       $("seloChat").hidden = true;
-      rolarChat();
+      chat.rolar();
     }
   }
 
@@ -1018,109 +1018,106 @@
 
   // ─────────────────────────────────────────── chat
 
-  function hora(ms) {
-    try {
-      return new Date(ms).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
-    } catch (e) { return ""; }
-  }
-
-  function rolarChat() {
-    var l = $("listaChat");
-    l.scrollTop = l.scrollHeight;
+  /** Pedido do chat com a identidade desta página; sessão vencida volta à entrada. */
+  function pedirNoChat(caminho, corpo) {
+    return fetch(caminho, {
+      method: "POST",
+      headers: { "x-lumen-dirigente": token },
+      body: JSON.stringify(Object.assign({ de: usuario() }, corpo)),
+    })
+      .then(function (r) { return r.json().then(function (d) { return { s: r.status, d: d }; }); })
+      .then(function (r) {
+        if (r.s === 401) {
+          token = null;
+          mostrar("entrada");
+          $("erro").textContent = "A sessão expirou. Entre novamente.";
+          return { ok: false, erro: "" };
+        }
+        return r.d && r.d.ok ? r.d : { ok: false, erro: (r.d && r.d.erro) || "Não deu." };
+      })
+      .catch(function () { return { ok: false, erro: "Sem conexão com a cabine." }; });
   }
 
   /**
-   * Uma cor para cada pessoa no chat — a mesma paleta e a mesma conta de
-   * src/lib/cor-do-chat.ts (o teste de lá confere as três telas). A cor
-   * preferida sai do nome; se outra pessoa da conversa já estiver com ela,
-   * vai para a próxima livre. A própria mensagem aparece como "Você", sem cor.
+   * O chat da equipe: o mesmo do celular (chat-equipe.js), com balões,
+   * cores, destino, menções, fotos e quem está no chat. Aqui fica o que é
+   * desta página: o aviso dourado e o selo de não lidas.
+   *
+   * Se o arquivo do chat não carregar, mandar arquivo para o culto continua
+   * funcionando — é para isso que a página existe.
    */
-  var CORES_DO_CHAT = ["#5cc8f5", "#b39bfa", "#4fd1a1", "#f58bc4", "#fb9d5c", "#3fd6e8", "#b5e35a", "#f78b8b"];
-  var coresUsadas = {};
-
-  function chaveDaPessoa(m) {
-    return m.daCabine ? "cabine" : "p:" + String(m.de || "").trim().toLowerCase();
-  }
-
-  function corDaPessoa(chave) {
-    if (Object.prototype.hasOwnProperty.call(coresUsadas, chave)) return CORES_DO_CHAT[coresUsadas[chave]];
-    var ocupadas = {};
-    Object.keys(coresUsadas).forEach(function (k) { ocupadas[coresUsadas[k]] = true; });
-    var h = 0;
-    for (var i = 0; i < chave.length; i += 1) h = (h * 31 + chave.charCodeAt(i)) >>> 0;
-    var inicio = h % CORES_DO_CHAT.length;
-    var escolhida = inicio;
-    for (var k = 0; k < CORES_DO_CHAT.length; k += 1) {
-      var idx = (inicio + k) % CORES_DO_CHAT.length;
-      if (!ocupadas[idx]) { escolhida = idx; break; }
-    }
-    coresUsadas[chave] = escolhida;
-    return CORES_DO_CHAT[escolhida];
-  }
-
-  /** Nome e filete na cor de quem escreveu. */
-  function pintarPessoa(div, de, m) {
-    var cor = corDaPessoa(chaveDaPessoa(m));
-    de.style.color = cor;
-    div.style.borderLeft = "3px solid " + cor;
-  }
-
-  function desenharMensagem(m) {
-    var minha = !m.daCabine && m.de === usuario();
-    var div = document.createElement("div");
-    div.className = "msg" + (m.daCabine ? " cabine" : minha ? " minha" : "");
-    var de = document.createElement("p");
-    de.className = "de";
-    de.textContent = (minha ? "Você" : m.daCabine ? "Cabine" : m.de) + " · " + hora(m.em);
-    if (!minha) pintarPessoa(div, de, m);
-    var texto = document.createElement("p");
-    texto.className = "texto";
-    texto.textContent = m.texto;
-    div.appendChild(de);
-    div.appendChild(texto);
-    $("listaChat").appendChild(div);
-  }
+  var chat = window.LumenChat
+    ? window.LumenChat.montar({
+        lista: $("listaChat"),
+        form: $("formChat"),
+        texto: $("textoChat"),
+        enviar: $("mandarChat"),
+        erro: $("erroChat"),
+        classeDoBotao: "mini-botao",
+        meuNome: usuario,
+        enviarTexto: function (texto, para) {
+          return pedirNoChat("/dirigente/chat", { texto: texto, para: para });
+        },
+        enviarFoto: function (foto, texto, para) {
+          return pedirNoChat("/dirigente/chat/foto", { foto: foto, texto: texto, para: para });
+        },
+        avisarDigitando: function (para) { return pedirNoChat("/dirigente/digitando", { para: para }); },
+        urlDaFoto: function (arquivo) {
+          return "/chat/foto?arquivo=" + encodeURIComponent(arquivo) + "&token=" + encodeURIComponent(token || "");
+        },
+        aoRecado: receberChat,
+      })
+    : {
+        inicio: function () {},
+        evento: function () { return false; },
+        para: function () { return { tipo: "todos" }; },
+        rolar: function () {},
+      };
 
   /**
    * O mural, em tempo real.
    *
    * Pelo mesmo cano do celular: recado escrito na cabine ou por quem está
-   * com o aparelho na mão aparece aqui sem recarregar a página.
+   * com o aparelho na mão aparece aqui sem recarregar a página. O nome vai
+   * junto para a equipe ver quem está no chat.
    */
   function ouvirCabine() {
     if (fonte || !token) return;
-    fonte = new EventSource("/dirigente/estado?token=" + encodeURIComponent(token));
+    fonte = new EventSource(
+      "/dirigente/estado?token=" + encodeURIComponent(token) + "&nome=" + encodeURIComponent(usuario()),
+    );
     fonte.onmessage = function (ev) {
       var d;
       try { d = JSON.parse(ev.data); } catch (e) { return; }
       if (d.tipo === "inicio") {
-        $("listaChat").innerHTML = "";
-        coresUsadas = {};
-        (d.chat || []).forEach(desenharMensagem);
-        rolarChat();
+        chat.inicio(d);
         return;
       }
-      if (d.tipo === "chat" && d.mensagem) {
-        desenharMensagem(d.mensagem);
-        rolarChat();
-        // O próprio recado não vira aviso para quem o escreveu.
-        if (d.mensagem.daCabine || d.mensagem.de !== usuario()) mostrarAvisoOuro(d.mensagem);
-        if (abaAtual !== "chat") {
-          naoLidas += 1;
-          $("seloChat").textContent = String(naoLidas);
-          $("seloChat").hidden = false;
-        }
-      }
+      chat.evento(d);
     };
     fonte.onerror = function () { /* o navegador reconecta sozinho */ };
   }
 
+  function receberChat(m, info) {
+    // O próprio recado não vira aviso para quem o escreveu.
+    if (info.minha) return;
+    mostrarAvisoOuro(m, info);
+    if (abaAtual !== "chat") {
+      naoLidas += 1;
+      $("seloChat").textContent = String(naoLidas);
+      $("seloChat").hidden = false;
+    }
+  }
+
   var relogioDoAviso = 0;
 
-  function mostrarAvisoOuro(m) {
-    var texto = (m.texto || "").trim() || (m.audio ? "Recado de voz" : "");
+  function mostrarAvisoOuro(m, info) {
+    var texto = (m.texto || "").trim() || (m.foto ? "Foto" : m.audio ? "Recado de voz" : "");
     if (!texto) return;
-    $("avisoOuroDe").textContent = m.daCabine ? "Cabine" : (m.de || "Recado");
+    $("avisoOuroIcone").textContent = m.foto ? "📷" : m.audio ? "🎤" : "💬";
+    var quem = m.daCabine ? "Cabine" : (m.de || "Recado");
+    $("avisoOuroDe").textContent =
+      quem + (info.mencionado ? " citou você" : info.destino ? " · " + info.destino : "");
     $("avisoOuroTexto").textContent = texto.length > 180 ? texto.slice(0, 177) + "…" : texto;
     var aviso = $("avisoOuro");
     aviso.hidden = true;
@@ -1143,39 +1140,6 @@
     fonte.close();
     fonte = null;
   }
-
-  $("formChat").addEventListener("submit", function (ev) {
-    ev.preventDefault();
-    var texto = $("textoChat").value.trim();
-    if (!texto) return;
-    $("mandarChat").disabled = true;
-    $("erroChat").textContent = "";
-    fetch("/dirigente/chat", {
-      method: "POST",
-      headers: { "x-lumen-dirigente": token },
-      body: JSON.stringify({ texto: texto, de: usuario() }),
-    })
-      .then(function (r) { return r.json().then(function (d) { return { s: r.status, d: d }; }); })
-      .then(function (r) {
-        if (r.s === 401) {
-          token = null;
-          mostrar("entrada");
-          $("erro").textContent = "A sessão expirou. Entre novamente.";
-          return;
-        }
-        if (!r.d.ok) { $("erroChat").textContent = r.d.erro || "Não deu."; return; }
-        $("textoChat").value = "";
-      })
-      .catch(function () { $("erroChat").textContent = "Sem conexão com a cabine."; })
-      .finally(function () { $("mandarChat").disabled = false; });
-  });
-
-  $("textoChat").addEventListener("keydown", function (ev) {
-    if (ev.key === "Enter" && !ev.shiftKey) {
-      ev.preventDefault();
-      $("formChat").requestSubmit();
-    }
-  });
 
   // ─────────────────────────────────────────── partida
 

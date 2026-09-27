@@ -1,6 +1,7 @@
 const nodeCrypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
+const { EQUIPES_DE_APARELHO, dobrar } = require("./chat-regras.cjs");
 
 /**
  * O que o celular da equipe precisa que NÃO mude entre um culto e outro.
@@ -32,6 +33,8 @@ const PORTA_PADRAO = 8787;
 const VALIDADE_MS = 90 * 24 * 60 * 60 * 1000;
 
 const MAX_DISPOSITIVOS = 50;
+/** Contas com senha da equipe: uma por pessoa, não por aparelho. */
+const MAX_CONTAS = 50;
 
 function texto(v, limite) {
   return typeof v === "string" ? v.slice(0, limite) : "";
@@ -74,6 +77,18 @@ function senhaConfere(guardada, tentativa) {
   return a.length === b.length && nodeCrypto.timingSafeEqual(a, b);
 }
 
+/** "Caio", " caio " e "CÁIO" são o mesmo usuário na hora de entrar. */
+function chaveDoUsuario(usuario) {
+  return dobrar(usuario).trim().replace(/\s+/g, " ");
+}
+
+/** Só o formato cozido passa: senha em claro que alguém escreveu no arquivo, não. */
+function senhaCozida(s) {
+  return s && typeof s === "object" && typeof s.sal === "string" && typeof s.chave === "string"
+    ? { sal: s.sal, chave: s.chave }
+    : null;
+}
+
 function saneia(bruto, agora = Date.now(), permissoes = ["chat", "editor", "controle"]) {
   const d = bruto && typeof bruto === "object" && !Array.isArray(bruto) ? bruto : {};
   const porta =
@@ -93,18 +108,38 @@ function saneia(bruto, agora = Date.now(), permissoes = ["chat", "editor", "cont
       id: x.id,
       nome: texto(x.nome, 32) || "Celular",
       permissao: permissoes.includes(x.permissao) ? x.permissao : permissoes[0],
+      // A equipe escolhida no celular volta com ele: antes ela se perdia
+      // ao fechar o Lúmen, e todo mundo reabria em "Nenhuma".
+      equipe: EQUIPES_DE_APARELHO.includes(x.equipe) ? x.equipe : "",
+      contaId: typeof x.contaId === "string" ? x.contaId.slice(0, 64) : "",
       criadoEm: instante(x.criadoEm, agora),
       ultimoVisto: instante(x.ultimoVisto, agora),
     }))
     .filter((x) => agora - x.ultimoVisto < VALIDADE_MS)
     .sort((a, b) => b.ultimoVisto - a.ultimoVisto)
     .slice(0, MAX_DISPOSITIVOS);
-  const s = d.senhaDirigente;
-  const senhaDirigente =
-    s && typeof s === "object" && typeof s.sal === "string" && typeof s.chave === "string"
-      ? { sal: s.sal, chave: s.chave }
-      : null;
-  return { porta, dispositivos, senhaDirigente };
+  const senhaDirigente = senhaCozida(d.senhaDirigente);
+  const usuarios = new Set();
+  const contas = (Array.isArray(d.contas) ? d.contas : [])
+    .filter((x) => x && typeof x === "object" && typeof x.id === "string" && x.id.length > 0)
+    .map((x) => ({
+      id: x.id.slice(0, 64),
+      usuario: texto(x.usuario, 32).trim(),
+      senha: senhaCozida(x.senha),
+      permissao: permissoes.includes(x.permissao) ? x.permissao : permissoes[0],
+      equipe: EQUIPES_DE_APARELHO.includes(x.equipe) ? x.equipe : "",
+      criadaEm: instante(x.criadaEm, agora),
+    }))
+    .filter((x) => {
+      // Conta sem senha cozida não entraria nunca; usuário repetido
+      // deixaria a mesma pessoa com duas senhas.
+      const chave = chaveDoUsuario(x.usuario);
+      if (!x.senha || chave.length < 2 || usuarios.has(chave)) return false;
+      usuarios.add(chave);
+      return true;
+    })
+    .slice(0, MAX_CONTAS);
+  return { porta, dispositivos, senhaDirigente, contas };
 }
 
 class CofreRemoto {
@@ -143,7 +178,9 @@ module.exports = {
   saneia,
   cozinharSenha,
   senhaConfere,
+  chaveDoUsuario,
   PORTA_PADRAO,
   VALIDADE_MS,
   MAX_DISPOSITIVOS,
+  MAX_CONTAS,
 };

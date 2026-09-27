@@ -324,6 +324,13 @@ declare global {
       remoteControlDisconnect: (
         id: string,
       ) => Promise<import("./remote-control").RemoteStatus>;
+      /** Cria (sem id) ou muda uma conta com senha. Sem senha, a antiga fica. */
+      remoteControlSalvarConta: (
+        dados: import("./remote-control").ContaParaSalvar,
+      ) => Promise<{ ok: boolean; erro?: string; status: import("./remote-control").RemoteStatus }>;
+      remoteControlApagarConta: (
+        id: string,
+      ) => Promise<import("./remote-control").RemoteStatus>;
       remoteControlChat: (
         texto: string,
         autor: string,

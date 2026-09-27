@@ -567,6 +567,10 @@ handle("lumen:remote-control-devices", () => remoteControl.listarDispositivos())
 handle("lumen:remote-control-permission", (id, permissao) => remoteControl.definirPermissao(id, permissao));
 handle("lumen:remote-control-default-permission", (permissao) => remoteControl.definirPermissaoPadrao(permissao));
 handle("lumen:remote-control-disconnect", (id) => remoteControl.desconectar(id));
+// Recusa (usuário repetido, senha curta) volta como { ok: false, erro }:
+// é conversa com o operador, não um erro do app para virar janela.
+handle("lumen:remote-control-conta-salvar", (dados) => remoteControl.salvarConta(dados));
+handle("lumen:remote-control-conta-apagar", (id) => remoteControl.apagarConta(id));
 handle("lumen:remote-control-chat", (texto, autor, para) => remoteControl.mensagemDaCabine(texto, autor, para));
 handle("lumen:remote-control-chat-foto", async (dados, texto, autor, para) => {
   const guardada = await chatFotos.salvar(Buffer.from(dados ?? []));

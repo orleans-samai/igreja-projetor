@@ -7,6 +7,7 @@ import {
   Menu as MenuIcon,
   Palette,
   Play,
+  QrCode,
   Search,
   Square,
 } from "lucide-react";
@@ -454,21 +455,45 @@ export function MenuBar({
           // Permissões vem logo depois de Arquivo: quem entrou pelo celular e
           // o que cada pessoa pode fazer é decisão de quem opera, e agora que
           // entrar não pede senha é a única barreira que existe.
-          indice === 0 ? (
-            <button
-              key="permissoes"
-              type="button"
-              onClick={onPermissoes}
-              className={cn(
-                "flex items-center gap-1.5 rounded-md px-2 py-1 text-secondary text-muted",
-                "transition-colors duration-[var(--motion-fast)] ease-[var(--ease-out)]",
-                "hover:bg-elevated hover:text-fg",
-                "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring",
-              )}
-            >
-              <Smartphone className="size-3.5" aria-hidden /> Permissões
-            </button>
-          ) : null,
+          // O Controle pelo celular fica ao lado, a pedido da igreja: o
+          // endereço para a equipe e os aparelhos conectados moravam só no
+          // menu Tela, e é a tela que se abre todo domingo.
+          ...(indice === 0
+            ? [
+                <button
+                  key="permissoes"
+                  type="button"
+                  onClick={onPermissoes}
+                  className={cn(
+                    "flex items-center gap-1.5 rounded-md px-2 py-1 text-secondary text-muted",
+                    "transition-colors duration-[var(--motion-fast)] ease-[var(--ease-out)]",
+                    "hover:bg-elevated hover:text-fg",
+                    "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring",
+                  )}
+                >
+                  <Smartphone className="size-3.5" aria-hidden /> Permissões
+                </button>,
+                <Hint key="controle-celular" label="Controle pelo celular" side="bottom">
+                  <button
+                    type="button"
+                    onClick={onRemoteControl}
+                    // Abaixo de 1280px fica só o ícone: com o rótulo inteiro,
+                    // numa tela 1366 a 125% o Logo, as Artes e o Mais saíam
+                    // da barra.
+                    aria-label="Controle pelo celular"
+                    className={cn(
+                      "flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-2 py-1 text-secondary text-muted",
+                      "transition-colors duration-[var(--motion-fast)] ease-[var(--ease-out)]",
+                      "hover:bg-elevated hover:text-fg",
+                      "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring",
+                    )}
+                  >
+                    <QrCode className="size-3.5" aria-hidden />
+                    <span className="hidden xl:inline">Controle pelo celular</span>
+                  </button>
+                </Hint>,
+              ]
+            : []),
         ])}
 
         {/* Não é um menu, é um modo — e por isso mostra que está ligado. */}
@@ -591,13 +616,16 @@ export function MenuBar({
           <Section first={false} label="Igreja">
             <MenuItem onSelect={onLogo}>Logo e nome da igreja</MenuItem>
             <MenuItem onSelect={onPermissoes}>Permissões do celular</MenuItem>
+            <MenuItem onSelect={onRemoteControl}>Controle pelo celular</MenuItem>
             <MenuItem onSelect={onArtes}>Artes</MenuItem>
             <MenuItem onSelect={onVfx}>VFX</MenuItem>
           </Section>
         </MenuContent>
       </Menu>
 
-      <p className="mx-auto hidden min-w-0 truncate px-2 text-secondary text-subtle md:block">
+      {/* O nome fica só com o que sobra: encolhendo junto com os menus, ele
+          guardava espaço para si enquanto o Mais e as Artes eram cortados. */}
+      <p className="hidden min-w-0 grow basis-0 truncate px-2 text-center text-secondary text-subtle md:block">
         {church}
       </p>
 

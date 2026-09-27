@@ -36,14 +36,12 @@ test("a nona pessoa ainda recebe uma cor da paleta", () => {
   }
 });
 
-test("celular e página do dirigente usam a mesma paleta e a mesma conta", () => {
+test("o chat do celular e do dirigente usa a mesma paleta e a mesma conta", () => {
   const paleta = CORES_DO_CHAT.map((c) => `"${c}"`).join(", ");
-  for (const pagina of ["public/remote-control.html", "public/dirigente.html"]) {
-    const html = readFileSync(path.join(raiz, pagina), "utf8");
-    assert.ok(html.includes(`var CORES_DO_CHAT = [${paleta}];`), `${pagina}: paleta diferente`);
-    assert.ok(html.includes("h = (h * 31 + chave.charCodeAt(i)) >>> 0;"), `${pagina}: conta diferente`);
-    assert.ok(html.includes('return m.daCabine ? "cabine" : "p:" + String(m.de || "").trim().toLowerCase();'), `${pagina}: chave diferente`);
-  }
+  const js = readFileSync(path.join(raiz, "public/chat-equipe.js"), "utf8");
+  assert.ok(js.includes(`var CORES_DO_CHAT = [${paleta}];`), "paleta diferente");
+  assert.ok(js.includes("h = (h * 31 + chave.charCodeAt(i)) >>> 0;"), "conta diferente");
+  assert.ok(js.includes('return m.daCabine ? "cabine" : "p:" + String(m.de || "").trim().toLowerCase();'), "chave diferente");
 });
 
 test("as páginas do celular e do dirigente não dão zoom sem querer", () => {

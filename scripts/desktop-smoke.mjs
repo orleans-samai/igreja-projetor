@@ -594,6 +594,71 @@ try {
   await page.keyboard.press("Escape");
   await dialogoPerm.waitFor({ state: "hidden", timeout: 10000 });
 
+  // ---- Controle pelo celular, ao lado de Permissões ----
+  // O endereço para a equipe e os aparelhos conectados moravam só no menu
+  // Tela; agora abrem num clique na barra de cima.
+  await page.getByRole("button", { name: "Controle pelo celular", exact: true }).click();
+  const dialogoControle = page.getByRole("dialog", { name: "Controle remoto pelo celular" });
+  await dialogoControle.waitFor({ state: "visible", timeout: 10000 });
+  await dialogoControle.getByText("Smoke", { exact: true }).waitFor({ timeout: 10000 });
+  await page.keyboard.press("Escape");
+  await dialogoControle.waitFor({ state: "hidden", timeout: 10000 });
+
+  // ---- Contas com senha: a cabine cria, o celular entra já com a permissão ----
+  // O acesso rápido (só o nome) continua entrando só no chat; com a conta, a
+  // pessoa não espera a cabine liberar o resto a cada culto.
+  await page.getByRole("button", { name: "Permissões", exact: true }).click();
+  await dialogoPerm.waitFor({ state: "visible", timeout: 10000 });
+  const novaConta = dialogoPerm.locator("form", { hasText: "Nova conta" });
+  await novaConta.getByLabel("Usuário da nova conta").fill("Tecladista");
+  await novaConta.getByLabel("Senha da nova conta").fill("tecla-2026");
+  await novaConta.getByRole("button", { name: "Editor", exact: true }).click();
+  await novaConta.getByLabel("Equipe da nova conta").selectOption("louvor");
+  await novaConta.getByRole("button", { name: "Criar conta", exact: true }).click();
+  await dialogoPerm.getByText("Tecladista", { exact: true }).waitFor({ timeout: 10000 });
+  await page.keyboard.press("Escape");
+  await dialogoPerm.waitFor({ state: "hidden", timeout: 10000 });
+  const janelaDaConta = app.waitForEvent("window");
+  await app.evaluate(({ BrowserWindow }, url) => {
+    // Outra sessão: é outro aparelho, com o próprio armazenamento. Na mesma
+    // sessão, o token da conta e o "Usuário e senha" lembrado vazariam para
+    // o celular do teste, que abriria já logado como a conta.
+    const w = new BrowserWindow({
+      width: 420,
+      height: 860,
+      show: true,
+      webPreferences: { partition: "celular-da-conta" },
+    });
+    void w.loadURL(url);
+  }, `${remoteBase}/`);
+  const celularDaConta = await janelaDaConta;
+  await celularDaConta.waitForLoadState("domcontentloaded");
+  // As duas entradas lado a lado, e o acesso rápido é o que abre primeiro.
+  assert.equal(await celularDaConta.locator("#modoRapido").getAttribute("aria-selected"), "true");
+  await celularDaConta.click("#modoConta");
+  await celularDaConta.fill("#usuario", "tecladista");
+  await celularDaConta.fill("#senha", "senha-errada");
+  await celularDaConta.click("#entrarConta");
+  await celularDaConta.waitForFunction(
+    () => document.querySelector("#erroConta").textContent.includes("não conferem"),
+    null,
+    { timeout: 10000 },
+  );
+  await celularDaConta.fill("#senha", "tecla-2026");
+  await celularDaConta.click("#entrarConta");
+  await celularDaConta.waitForSelector("#conectado:not([hidden])", { timeout: 15000 });
+  // Editor pela conta: mexe nas letras sem ninguém liberar o aparelho — e
+  // continua sem comandar o telão, que a conta não dá. Lidos pelo atributo,
+  // não pela tela: o aviso de editor mora na aba Letras, que está fechada, e
+  // "escondido" ali seria verdade de qualquer jeito.
+  const avisosDaConta = await celularDaConta.evaluate(() => ({
+    semEditor: document.querySelector("#semEditor").hidden,
+    semControle: document.querySelector("#semControle").hidden,
+  }));
+  assert.equal(avisosDaConta.semEditor, true, "a conta não trouxe a permissão de editor");
+  assert.equal(avisosDaConta.semControle, false, "a conta de editor comandou o telão");
+  await celularDaConta.close();
+
   // ---- Logo e nome da igreja, à mão na barra de cima ----
   // Era a primeira coisa que alguém faz ao instalar o Lúmen, e a mais
   // escondida: ficava no fundo das Configurações, entre margens e transições.
@@ -777,7 +842,26 @@ try {
       method: "POST",
       body: JSON.stringify({ token: pareado.token, tipo, refId }),
     }).then((r) => r.json());
-  assert.equal(await celular.locator('[data-acao="parar-midia"]').textContent(), "■ Sair do vídeo");
+  // ---- Tocou numa mídia da lista: os controles aparecem ali mesmo ----
+  // Antes era preciso voltar à aba Controle para pausar, mexer no volume ou
+  // tirar o vídeo do telão.
+  await celular.click("#abaMidia");
+  const itemDoHino = celular.locator("#midiaLista button", { hasText: "Hino de abertura" });
+  await itemDoHino.click();
+  await celular.waitForSelector("#midiaPlayer:not([hidden])", { timeout: 10000 });
+  assert.match(await celular.locator("#midiaPlayerTitulo").textContent(), /Hino de abertura/);
+  assert.equal(await itemDoHino.getAttribute("aria-current"), "true", "a mídia no telão não ficou marcada na lista");
+  assert.equal(await celular.locator("#midiaPlayer .volume-telao").getAttribute("aria-label"), "Volume do telão na aba Mídia");
+  await celular.click("#midiaPlayerSair");
+  await celular.waitForSelector("#midiaPlayer", { state: "hidden", timeout: 10000 });
+  await page.waitForFunction(
+    () => JSON.parse(localStorage.getItem("lumen-live-frame") ?? "null")?.status === "clear",
+    null,
+    { timeout: 10000 },
+  );
+  await celular.click("#abaControle");
+
+  assert.equal(await celular.locator('#painelControle [data-acao="parar-midia"]').textContent(), "■ Sair do vídeo");
   assert.equal((await projetarPeloCelular("media", "midia:audio:Hino de abertura.wav")).ok, true);
   await page.waitForFunction(
     () => {
@@ -787,7 +871,7 @@ try {
     null,
     { timeout: 10000 },
   );
-  await celular.click('[data-acao="parar-midia"]');
+  await celular.click('#painelControle [data-acao="parar-midia"]');
   await page.waitForFunction(
     () => JSON.parse(localStorage.getItem("lumen-live-frame") ?? "null")?.status === "clear",
     null,
@@ -802,7 +886,7 @@ try {
     escolhida.titulo,
     { timeout: 10000 },
   );
-  await celular.click('[data-acao="parar-midia"]');
+  await celular.click('#painelControle [data-acao="parar-midia"]');
   await page.waitForTimeout(800);
   assert.equal((await quadroNoTelao()).status, "presenting", "Sair do vídeo apagou a letra do telão");
 
@@ -870,6 +954,15 @@ try {
   // Tocar no aviso leva ao chat.
   await celular.click("#avisoOuro");
   await celular.waitForSelector("#painelChat:not([hidden])", { timeout: 10000 });
+  // O chat do celular é o mesmo do dirigente (chat-equipe.js): o recado em
+  // balão, quem está no chat, e para quem vai o que se escreve.
+  await celular.waitForFunction(
+    () => [...document.querySelectorAll("#chatLista .ce-linha-msg")].some((l) => l.textContent.includes("Repete o refrão")),
+    null,
+    { timeout: 10000 },
+  );
+  assert.match(await celular.locator(".ce-presenca").textContent(), /Cabine/);
+  assert.equal(await celular.locator('select[aria-label="Para quem vai a mensagem"]').count(), 1);
   await celular.click("#abaLetras");
 
   // Voltar tem que devolver a lista de músicas, não deixar as duas telas.
@@ -1032,6 +1125,14 @@ try {
     null,
     { timeout: 10000 },
   );
+  // E fica guardado no histórico daquele culto, com busca e exportação.
+  await page.getByRole("button", { name: "Histórico do chat", exact: true }).click();
+  const dialogoHistorico = page.getByRole("dialog", { name: "Histórico do chat" });
+  await dialogoHistorico.waitFor({ state: "visible", timeout: 10000 });
+  await dialogoHistorico.getByText("Chegamos com o pen drive").first().waitFor({ timeout: 10000 });
+  assert.equal(await dialogoHistorico.getByRole("button", { name: "Exportar" }).count(), 1);
+  await page.keyboard.press("Escape");
+  await dialogoHistorico.waitFor({ state: "hidden", timeout: 10000 });
   // Quem escreveu não recebe aviso da própria mensagem: seria ruído.
   assert.equal(
     await dirigente.locator("#avisoOuro").isHidden(),
@@ -1521,7 +1622,7 @@ try {
   assert.deepEqual(errors, []);
   const disk = JSON.parse(await readFile(path.join(profile, "data", "library.json"), "utf8"));
   assert.ok(disk.values["lumen-v2"]);
-  console.log(`PASS: offline, fonts, Bible (gold buttons in and out of the Bible screen, five versions plus importing a licensed one, its three parts rearranged by dragging and swapping sides, New-Testament-only notice, omitted verse lands on the next), restart persistence, projector, media ranges, preflight, Auto-Slide, remote control (LAN, entrada por nome, nome fixo na rede), update check, review before apply, 1366×768 at 100/125/150% and 800×600, no scroll and exactly one layout at ten sizes from 800×600 to 2560×1440, including every pixel around the 1280 cutover and the chat stays on screen, church logo and name reachable from the menu bar, art studio makes a batch of 8 distinct Konva designs from just a title and a Bible reference, opens one in the editor, saves it and exports PNG and JPEG at exactly 1920×1080 (Full HD is the default), VFX has three modes and a dynamic video becomes a real file in the Vídeos tab, no AI and no YouTube anywhere in the app, dirigente page signs in, sends a file, chats and files a notice, and its PowerPoint and PDF become slides in the service programme, video as a theme background, find a song by a lyric excerpt, right-click on lyrics edits or removes, double-click to project, fixed text only in the footer and the verse always centred vertically, phone has one play/pause button, the screen volume and a Sair do vídeo that takes media off the screen but never a lyric, every new chat message pops up in gold on the phone, the cabine and the dirigente page (never for its own author), sees the media folder, gets a file imported in the cabine or copied in by Explorer within 5 s, a library row dragged into the service programme, a right-click menu that deletes media, a Culto tab that mirrors the service programme and projects or deletes (two taps) from it, projects from it, opens a song as a grid of slides and puts one on the screen, and searches lyrics through the cabine. Evidence: ${evidence}`);
+  console.log(`PASS: offline, fonts, Bible (gold buttons in and out of the Bible screen, five versions plus importing a licensed one, its three parts rearranged by dragging and swapping sides, New-Testament-only notice, omitted verse lands on the next), restart persistence, projector, media ranges, preflight, Auto-Slide, remote control (LAN, entrada por nome, nome fixo na rede, one click from the menu bar beside Permissões, accounts with username and password created in Permissões that sign in already holding their permission while the quick name-only access stays chat-only), update check, review before apply, 1366×768 at 100/125/150% and 800×600, no scroll and exactly one layout at ten sizes from 800×600 to 2560×1440, including every pixel around the 1280 cutover and the chat stays on screen, church logo and name reachable from the menu bar, art studio makes a batch of 8 distinct Konva designs from just a title and a Bible reference, opens one in the editor, saves it and exports PNG and JPEG at exactly 1920×1080 (Full HD is the default), VFX has three modes and a dynamic video becomes a real file in the Vídeos tab, no AI and no YouTube anywhere in the app, dirigente page signs in, sends a file, chats and files a notice, and its PowerPoint and PDF become slides in the service programme, video as a theme background, find a song by a lyric excerpt, right-click on lyrics edits or removes, double-click to project, fixed text only in the footer and the verse always centred vertically, phone has one play/pause button, the screen volume and a Sair do vídeo that takes media off the screen but never a lyric, tapping a media item shows its controls right there in a mini-player, the team chat in bubbles with who is online and who each message is for on the phone and the dirigente page, kept per service in a searchable, exportable history in the cabine, every new chat message pops up in gold on the phone, the cabine and the dirigente page (never for its own author), sees the media folder, gets a file imported in the cabine or copied in by Explorer within 5 s, a library row dragged into the service programme, a right-click menu that deletes media, a Culto tab that mirrors the service programme and projects or deletes (two taps) from it, projects from it, opens a song as a grid of slides and puts one on the screen, and searches lyrics through the cabine. Evidence: ${evidence}`);
 } finally {
   if (app) {
     // O fim do teste deixa uma música no ar, e a cabine (de propósito)

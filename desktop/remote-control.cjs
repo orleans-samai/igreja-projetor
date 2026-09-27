@@ -3,7 +3,7 @@ const path = require("node:path");
 const nodeCrypto = require("node:crypto");
 const fsp = require("node:fs/promises");
 const { enderecosLan } = require("./mdns.cjs");
-const { senhaConfere, cozinharSenha } = require("./remote-store.cjs");
+const { senhaConfere, cozinharSenha, chaveDoUsuario, MAX_CONTAS } = require("./remote-store.cjs");
 const { EQUIPES_DE_APARELHO, paraValido, mencoesNoTexto, podeVer } = require("./chat-regras.cjs");
 
 /**
@@ -62,6 +62,8 @@ const MAX_BODY_FOTO = 9 * 1024 * 1024;
 const FOTOS_ACEITAS = /^data:image\/(jpeg|png|webp);base64,/i;
 /** "Digitando…" não precisa chegar mais que uma vez por segundo. */
 const DIGITANDO_INTERVALO_MS = 1000;
+const TIPO_HTML = "text/html; charset=utf-8";
+const TIPO_JS = "text/javascript; charset=utf-8";
 /** Teto do que a página do dirigente pode largar no computador da igreja. */
 const MAX_ARQUIVO_DIRIGENTE = 64 * 1024 * 1024;
 /** Uma sessão de envio dura um culto, não uma semana. */
@@ -109,6 +111,17 @@ const ACOES_VALIDAS = new Set([
 
 /** Da mais fraca para a mais forte: quem pode X também pode o que vem antes. */
 const PERMISSOES = ["chat", "editor", "controle"];
+
+/**
+ * Senha de ninguém, para conferir quando o usuário não existe: responder
+ * mais depressa a um usuário inexistente contaria quais usuários existem.
+ * Cozida na primeira vez que precisa, não na abertura do app.
+ */
+let senhaDeNinguem = null;
+function senhaDeMentira() {
+  if (!senhaDeNinguem) senhaDeNinguem = cozinharSenha(nodeCrypto.randomUUID());
+  return senhaDeNinguem;
+}
 
 function podeFazer(permissao, minima) {
   const tem = PERMISSOES.indexOf(permissao);
@@ -182,10 +195,18 @@ class RemoteControl {
         id: d.id,
         nome: d.nome,
         permissao: d.permissao,
+        equipe: d.equipe || "",
+        contaId: d.contaId || "",
         criadoEm: d.criadoEm,
         ultimoVisto: d.ultimoVisto,
       });
     }
+    /**
+     * Contas com senha da equipe. Quem entra com uma já chega com o que
+     * pode fazer; o acesso rápido, só com o nome, continua entrando no
+     * chat e esperando a cabine liberar o resto.
+     */
+    this.contas = (guardado?.contas ?? []).map((c) => ({ ...c }));
     this.tentativas = new Map();
     /** res do SSE → token, para saber de quem é cada conexão aberta. */
     this.assinantes = new Map();
@@ -249,6 +270,7 @@ class RemoteControl {
       porta: this.porta ?? this.portaPreferida,
       senhaDirigente: this.senhaDirigente,
       dispositivos: [...this.dispositivos].map(([token, d]) => ({ token, ...d })),
+      contas: this.contas,
     });
   }
 
@@ -262,6 +284,8 @@ class RemoteControl {
         id: d.id,
         nome: d.nome,
         permissao: d.permissao,
+        equipe: d.equipe || "",
+        porConta: Boolean(d.contaId),
         criadoEm: d.criadoEm,
         ultimoVisto: d.ultimoVisto,
         online: this._online(d),
@@ -283,7 +307,99 @@ class RemoteControl {
       sessoesAtivas: [...this.dispositivos.values()].filter((d) => this._online(d)).length,
       dispositivos: this.listarDispositivos(),
       permissaoPadrao: this.permissaoPadrao,
+      contas: this.listarContas(),
     };
+  }
+
+  /** As contas para a cabine — sem a senha, nem cozida. */
+  listarContas() {
+    const aparelhos = [...this.dispositivos.values()];
+    return this.contas
+      .map((c) => ({
+        id: c.id,
+        usuario: c.usuario,
+        permissao: c.permissao,
+        equipe: c.equipe,
+        criadaEm: c.criadaEm,
+        aparelhos: aparelhos.filter((d) => d.contaId === c.id).length,
+      }))
+      .sort((a, b) => a.usuario.localeCompare(b.usuario, "pt-BR"));
+  }
+
+  /**
+   * Cria ou muda uma conta. A senha chega em claro só até aqui: o que fica
+   * no disco é o scrypt dela, como a senha do dirigente.
+   *
+   * Quem já entrou com a conta acompanha a mudança na hora — permissão,
+   * equipe e nome. Senha trocada tira todo mundo que entrou com a antiga:
+   * trocar a senha é justamente o que se faz quando ela vazou.
+   */
+  salvarConta(dados) {
+    const d = dados && typeof dados === "object" ? dados : {};
+    const falha = (erro) => ({ ok: false, erro, status: this.status() });
+    const usuario = nomeLimpo(d.usuario, "");
+    if (chaveDoUsuario(usuario).length < 2) return falha("O usuário precisa de ao menos duas letras.");
+    const id = typeof d.id === "string" ? d.id : "";
+    const existente = id ? this.contas.find((c) => c.id === id) : null;
+    if (id && !existente) return falha("Essa conta não existe mais.");
+    const chave = chaveDoUsuario(usuario);
+    if (this.contas.some((c) => c.id !== id && chaveDoUsuario(c.usuario) === chave)) {
+      return falha("Já existe uma conta com esse usuário.");
+    }
+    const senha = typeof d.senha === "string" ? d.senha.trim() : "";
+    if (senha && senha.length < 4) return falha("A senha precisa de ao menos quatro caracteres.");
+    const permissao = PERMISSOES.includes(d.permissao) ? d.permissao : "chat";
+    const equipe = EQUIPES_DE_APARELHO.includes(d.equipe) ? d.equipe : "";
+    if (!existente) {
+      if (!senha) return falha("Escolha uma senha para a conta.");
+      if (this.contas.length >= MAX_CONTAS) return falha("O Lúmen guarda até 50 contas. Apague uma que não se usa mais.");
+      this.contas.push({
+        id: nodeCrypto.randomUUID(),
+        usuario,
+        senha: cozinharSenha(senha),
+        permissao,
+        equipe,
+        criadaEm: Date.now(),
+      });
+      this._salvar();
+      return { ok: true, status: this.status() };
+    }
+    existente.usuario = usuario;
+    existente.permissao = permissao;
+    existente.equipe = equipe;
+    if (senha) {
+      existente.senha = cozinharSenha(senha);
+      this._desconectarDaConta(existente.id);
+    }
+    for (const [token, disp] of this.dispositivos) {
+      if (disp.contaId !== existente.id) continue;
+      disp.nome = usuario;
+      disp.equipe = equipe;
+      if (disp.permissao !== permissao) {
+        disp.permissao = permissao;
+        this._paraToken(token, { tipo: "permissao", permissao });
+      }
+    }
+    this._salvar();
+    this._avisarPresenca();
+    return { ok: true, status: this.status() };
+  }
+
+  /** Alguém saiu da equipe: a conta some, e os aparelhos dela saem junto. */
+  apagarConta(id) {
+    const antes = this.contas.length;
+    this.contas = this.contas.filter((c) => c.id !== id);
+    if (this.contas.length !== antes) {
+      this._desconectarDaConta(id);
+      this._salvar();
+    }
+    return this.status();
+  }
+
+  _desconectarDaConta(contaId) {
+    for (const d of [...this.dispositivos.values()]) {
+      if (d.contaId === contaId) this.desconectar(d.id);
+    }
   }
 
   /**
@@ -861,9 +977,11 @@ class RemoteControl {
     try {
       const m = req.method;
       const p = url.pathname;
-      if (m === "GET" && p === "/") return await this._servirPagina(res);
+      if (m === "GET" && p === "/") return await this._servirArquivo(res, "remote-control.html", TIPO_HTML);
+      if (m === "GET" && p === "/chat-equipe.js") return await this._servirArquivo(res, "chat-equipe.js", TIPO_JS);
       if (m === "GET" && p === "/estado") return this._sse(req, res, url);
       if (m === "POST" && p === "/parear") return await this._parear(req, res);
+      if (m === "POST" && p === "/entrar") return await this._entrar(req, res);
       if (m === "POST" && p === "/comando") return await this._comando(req, res);
       if (m === "GET" && p === "/repertorio") return this._repertorio(res, url);
       if (m === "GET" && p === "/musica") return this._musica(res, url);
@@ -876,7 +994,7 @@ class RemoteControl {
       if (m === "POST" && p === "/dirigente/chat/foto") return await this._fotoNoChat(req, res, true);
       if (m === "POST" && p === "/dirigente/digitando") return await this._digitando(req, res, true);
       if (m === "POST" && p === "/voz") return await this._voz(req, res);
-      if (m === "GET" && p === "/dirigente") return await this._paginaDirigente(res);
+      if (m === "GET" && p === "/dirigente") return await this._servirArquivo(res, "dirigente.html", TIPO_HTML);
       if (m === "GET" && p === "/dirigente/igreja") return this._igrejaDirigente(res);
       if (m === "POST" && p === "/dirigente/entrar") return await this._entrarDirigente(req, res);
       if (m === "POST" && p === "/dirigente/enviar") return await this._enviarDirigente(req, res);
@@ -898,15 +1016,19 @@ class RemoteControl {
     this._json(res, 404, { ok: false, erro: "Não encontrado" });
   }
 
-  async _servirPagina(res) {
+  /**
+   * As páginas do celular e do dirigente, e o chat que as duas carregam.
+   * Nomes fixos, nunca vindos do pedido: nada fora destes arquivos sai daqui.
+   */
+  async _servirArquivo(res, nome, tipo) {
     try {
-      const html = await fsp.readFile(path.join(this.wwwRoot, "remote-control.html"));
+      const corpo = await fsp.readFile(path.join(this.wwwRoot, nome));
       res.writeHead(200, {
-        "content-type": "text/html; charset=utf-8",
+        "content-type": tipo,
         "cache-control": "no-store",
         "x-content-type-options": "nosniff",
       });
-      res.end(html);
+      res.end(corpo);
     } catch {
       res.writeHead(500, { "content-type": "text/plain; charset=utf-8" });
       res.end("Página ausente. Reinstale o Lúmen.");
@@ -1018,6 +1140,51 @@ class RemoteControl {
       permissao: disp.permissao,
       nome: disp.nome,
     });
+  }
+
+  /**
+   * Entrar com usuário e senha.
+   *
+   * A conta que a cabine criou já traz o que a pessoa pode fazer — sem o
+   * operador promover o aparelho a cada culto. Errar conta nas mesmas
+   * tentativas do acesso rápido: cinco e o IP espera alguns minutos.
+   */
+  async _entrar(req, res) {
+    const ip = req.socket.remoteAddress || "?";
+    if (this._limitado(ip)) {
+      this._json(res, 429, { ok: false, erro: "Muitas tentativas. Aguarde alguns minutos." });
+      return;
+    }
+    let corpo;
+    try {
+      corpo = JSON.parse(await this._lerCorpo(req));
+    } catch {
+      corpo = {};
+    }
+    const chave = chaveDoUsuario(String(corpo.usuario || "").slice(0, 64));
+    const conta = chave ? this.contas.find((c) => chaveDoUsuario(c.usuario) === chave) : null;
+    const senha = String(corpo.senha || "").trim().slice(0, 128);
+    const confere = senhaConfere(conta ? conta.senha : senhaDeMentira(), senha);
+    if (!conta || !confere) {
+      this._registrarFalha(ip);
+      this._json(res, 401, { ok: false, erro: "Usuário ou senha não conferem." });
+      return;
+    }
+    const token = nodeCrypto.randomUUID();
+    const agora = Date.now();
+    const disp = {
+      id: nodeCrypto.randomUUID(),
+      nome: conta.usuario,
+      permissao: conta.permissao,
+      equipe: conta.equipe,
+      contaId: conta.id,
+      criadoEm: agora,
+      ultimoVisto: agora,
+    };
+    this.dispositivos.set(token, disp);
+    this._salvar();
+    this.onEvento?.({ tipo: "dispositivos", novo: disp.nome });
+    this._json(res, 200, { ok: true, token, permissao: disp.permissao, nome: disp.nome });
   }
 
   async _comando(req, res) {
@@ -1296,28 +1463,6 @@ class RemoteControl {
     this._json(res, 200, { ok: true });
   }
 
-  /**
-   * Recado falado do celular.
-   *
-   * O áudio viaja como `data:` e fica só na memória desta sessão: some ao
-   * fechar o Lúmen, como qualquer recado de culto. Quem manda precisa só de
-   * chat — falar é a coisa mais básica que o aparelho faz aqui.
-   */
-  async _paginaDirigente(res) {
-    try {
-      const html = await fsp.readFile(path.join(this.wwwRoot, "dirigente.html"));
-      res.writeHead(200, {
-        "content-type": "text/html; charset=utf-8",
-        "cache-control": "no-store",
-        "x-content-type-options": "nosniff",
-      });
-      res.end(html);
-    } catch {
-      res.writeHead(500, { "content-type": "text/plain; charset=utf-8" });
-      res.end("Página ausente. Reinstale o Lúmen.");
-    }
-  }
-
   _igrejaDirigente(res) {
     this._json(res, 200, {
       ok: true,
@@ -1416,6 +1561,13 @@ class RemoteControl {
     });
   }
 
+  /**
+   * Recado falado do celular.
+   *
+   * O áudio viaja como `data:` e fica só na memória desta sessão: some ao
+   * fechar o Lúmen, como qualquer recado de culto. Quem manda precisa só de
+   * chat — falar é a coisa mais básica que o aparelho faz aqui.
+   */
   async _voz(req, res) {
     let corpo;
     try {

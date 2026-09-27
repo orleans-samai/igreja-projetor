@@ -66,6 +66,7 @@ export function Dispositivos({
               <p className="min-w-0 flex-1 truncate text-body font-medium text-fg">{d.nome}</p>
               <span className="shrink-0 text-caption text-subtle">
                 {d.online ? "conectado" : "sem sinal"}
+                {d.porConta ? " · com senha" : ""}
               </span>
               <Button
                 size="iconSm"

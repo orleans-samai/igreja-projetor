@@ -13,16 +13,17 @@
 
   Fala com o servidor deste mesmo endereço:
 
-    /parear      seis dígitos viram sessão
+    /parear      acesso rápido: o nome vira sessão, só com chat
+    /entrar      usuário e senha: a conta já traz o que a pessoa pode
     /estado      SSE: o que está no ar, chat e permissão
     /comando     transporte do telão
     /repertorio  lista de músicas
     /musica      ler e salvar uma letra
     /chat        recado para a cabine
 
-  Quem decide o que aceitar é o servidor. Esta página é o painel: trocar o
-  PIN, mudar a permissão ou desligar o controle remoto na cabine invalida o
-  que está aqui na hora.
+  Quem decide o que aceitar é o servidor. Esta página é o painel: mudar a
+  permissão, trocar a senha de uma conta ou desligar o controle remoto na
+  cabine vale aqui na hora.
 -->
 <style>
   :root {
@@ -207,6 +208,20 @@
     border: 1px solid var(--borda); background: var(--superficie); color: var(--fg);
   }
   .lista > li > button:active { background: var(--realce); }
+  .lista > li > button[aria-current="true"] { border-color: var(--live-borda); background: var(--live-fraco); }
+  /* O mini-player da aba Mídia: tocou num vídeo da lista, os controles
+     aparecem ali mesmo e ficam presos embaixo enquanto a lista rola. */
+  .tocando {
+    position: sticky; bottom: calc(8px + env(safe-area-inset-bottom)); z-index: 2;
+    display: flex; flex-direction: column; gap: 10px; padding: 12px;
+    border-radius: var(--r); border: 1px solid var(--live-borda); background: var(--superficie);
+    box-shadow: 0 -14px 28px rgba(0, 0, 0, .5);
+  }
+  .tocando .titulo-tocando {
+    margin: 0; font-size: 14px; font-weight: 600; color: var(--fg);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .volume-telao { flex: 1; min-width: 0; accent-color: var(--live); }
   .lista .autor { display: block; margin-top: 3px; font-size: 13px; color: var(--muted); }
 
   /* ── culto: a programação da cabine ──────────────────────────── */
@@ -344,12 +359,30 @@
     gap: 16px; text-align: center;
   }
   #pareamento h1 { font-size: 24px; margin: 0; }
+  /* Dois jeitos de entrar, lado a lado: quem só vai conversar não precisa
+     de senha, e quem tem conta não precisa esperar a cabine liberar. */
+  .modos {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px;
+    border-radius: 14px; background: var(--superficie); border: 1px solid var(--borda);
+  }
+  .modos button {
+    font: inherit; font-size: 15px; font-weight: 600; padding: 11px 8px;
+    border: 0; border-radius: 10px; background: transparent; color: var(--muted);
+  }
+  .modos button[aria-selected="true"] {
+    background: var(--elevada); color: var(--fg); box-shadow: inset 0 0 0 1px var(--live-borda);
+  }
+  .entrada { display: flex; flex-direction: column; gap: 16px; }
   #pareamento p { color: var(--muted); margin: 0; font-size: 14px; }
 
   /* ── chat ────────────────────────────────────────────────────── */
   #chatLista { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
-  .msg { padding: 11px 13px; border-radius: var(--r); background: var(--superficie); border: 1px solid var(--borda); }
-  .msg.minha { background: var(--live-fraco); border-color: var(--live-borda); }
+  /* Balões, cores, destino e fotos moram em chat-equipe.js, o mesmo chat
+     da página do dirigente. Aqui fica só o que é deste aparelho: o balão
+     de quem escreve no dourado do celular. */
+  #painelChat { --ce-minha: var(--live-fraco); --ce-minha-borda: var(--live-borda); }
+  #chatErro { margin: 0; font-size: 13px; color: var(--muted); }
+  #chatErro:empty { display: none; }
 
   /* Recado novo: um cartão dourado no alto, por cima de qualquer aba.
      Quem está no Controle passando slides não olha o contador do Chat —
@@ -378,12 +411,10 @@
     from { opacity: 0; transform: translateY(-12px); }
     to { opacity: 1; transform: none; }
   }
-  .msg .de { margin: 0 0 3px; font-size: 12px; font-weight: 600; color: var(--muted); }
-  .msg .texto { margin: 0; white-space: pre-wrap; word-break: break-word; user-select: text; font-size: 14px; }
+  #chatForm .ce-foto { padding: 15px; }
   #chatForm { display: flex; gap: 10px; align-items: flex-end; }
   #chatTexto { flex: 1; min-height: 50px; max-height: 30dvh; }
 
-  #volume { flex: 1; min-width: 0; accent-color: var(--live); }
 </style>
 
 <div class="app">
@@ -396,14 +427,27 @@
   </button>
   <!-- ─ Entrar ─ -->
   <section id="pareamento">
-    <div>
-      <h1>Entrar no Lúmen</h1>
-      <p>Escreva o seu nome. É ele que aparece na cabine, e é por ele que o operador libera o que você pode fazer.</p>
+    <h1>Entrar no Lúmen</h1>
+    <div class="modos" role="tablist" aria-label="Como entrar">
+      <button type="button" role="tab" id="modoRapido" aria-selected="true" aria-controls="entradaRapida">Acesso rápido</button>
+      <button type="button" role="tab" id="modoConta" aria-selected="false" aria-controls="entradaConta">Usuário e senha</button>
     </div>
-    <input id="nome" class="campo" maxlength="32" placeholder="Seu nome" autocomplete="name" autofocus>
-    <p class="erro" id="erroPin"></p>
-    <button class="botao botao-principal" id="entrar">Entrar</button>
-    <p class="dica">Você entra no chat. Para mexer nos slides ou nas letras, peça na cabine.</p>
+    <div class="entrada" id="entradaRapida" role="tabpanel" aria-labelledby="modoRapido">
+      <p>Escreva o seu nome. É ele que aparece na cabine, e é por ele que o operador libera o que você pode fazer.</p>
+      <input id="nome" class="campo" maxlength="32" placeholder="Seu nome" autocomplete="name" autofocus>
+      <p class="erro" id="erroPin"></p>
+      <button class="botao botao-principal" id="entrar">Entrar</button>
+      <p class="dica">Você entra no chat. Para mexer nos slides ou nas letras, peça na cabine.</p>
+    </div>
+    <!-- Um formulário de verdade: é o que faz o celular oferecer guardar a senha. -->
+    <form class="entrada" id="entradaConta" role="tabpanel" aria-labelledby="modoConta" hidden>
+      <p>Entre com a conta que a cabine criou para você: você já chega com o que pode fazer.</p>
+      <input id="usuario" class="campo" maxlength="32" placeholder="Usuário" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false">
+      <input id="senha" class="campo" type="password" maxlength="64" placeholder="Senha" autocomplete="current-password">
+      <p class="erro" id="erroConta"></p>
+      <button class="botao botao-principal" type="submit" id="entrarConta">Entrar</button>
+      <p class="dica">Sem conta? Use o acesso rápido, ou peça uma na cabine.</p>
+    </form>
   </section>
 
   <!-- ─ Conectado ─ -->
@@ -506,15 +550,15 @@
       </div>
       <p class="dica">Vídeo no telão</p>
       <div class="grade">
-        <button class="botao" id="tocarPausar" data-acao="tocar">▶ Tocar</button>
+        <button class="botao tocar-pausar" id="tocarPausar" data-acao="tocar">▶ Tocar</button>
         <button class="botao" data-acao="parar-midia">■ Sair do vídeo</button>
       </div>
       <!-- O som sai do telão, não do aparelho: este controle é o volume que a
            igreja inteira escuta, por isso exige controle do telão. -->
       <div class="linha" id="caixaVolume">
-        <button class="botao" id="mudo" aria-label="Mudo" style="padding:12px 14px">🔇</button>
-        <input id="volume" type="range" min="0" max="100" step="5" value="100" aria-label="Volume do telão">
-        <span class="dica" id="volumeRotulo" style="width:3.4em;text-align:right">100%</span>
+        <button class="botao mudo-telao" id="mudo" aria-label="Mudo" style="padding:12px 14px">🔇</button>
+        <input class="volume-telao" id="volume" type="range" min="0" max="100" step="5" value="100" aria-label="Volume do telão">
+        <span class="dica volume-rotulo" id="volumeRotulo" style="width:3.4em;text-align:right">100%</span>
       </div>
       <p class="dica" id="quem">—</p>
       <div id="fixoBloco" hidden>
@@ -645,6 +689,18 @@
         <span class="ordem">Ordenar por: <span id="midiaOrdemRotulo" style="color:var(--fg);font-weight:600">Nome</span></span>
       </div>
       <ul class="lista" id="midiaLista"></ul>
+      <div class="tocando" id="midiaPlayer" hidden>
+        <p class="titulo-tocando" id="midiaPlayerTitulo">Vídeo no telão</p>
+        <div class="grade">
+          <button class="botao tocar-pausar" data-acao="tocar">▶ Tocar</button>
+          <button class="botao" data-acao="parar-midia" id="midiaPlayerSair">■ Sair do vídeo</button>
+        </div>
+        <div class="linha">
+          <button class="botao mudo-telao" aria-label="Mudo" style="padding:12px 14px">🔇</button>
+          <input class="volume-telao" type="range" min="0" max="100" step="5" value="100" aria-label="Volume do telão na aba Mídia">
+          <span class="dica volume-rotulo" style="width:3.4em;text-align:right">100%</span>
+        </div>
+      </div>
     </section>
 
     <!-- Culto: a programação aberta na cabine -->
@@ -662,8 +718,9 @@
     <!-- Chat -->
     <section class="painel" id="painelChat" hidden>
       <div id="chatLista"></div>
+      <p id="chatErro" aria-live="polite"></p>
       <form id="chatForm">
-        <textarea id="chatTexto" class="campo" maxlength="500" placeholder="Mensagem para a cabine" rows="1"></textarea>
+        <textarea id="chatTexto" class="campo" maxlength="500" placeholder="Recado (@ cita alguém)" rows="1"></textarea>
         <!--
           Recado falado pelo gravador do próprio celular.
 
@@ -684,6 +741,7 @@
   </div>
 </div>
 
+<script src="/chat-equipe.js"></script>
 <script>
 (function () {
   "use strict";
@@ -708,6 +766,8 @@
 
   var CHAVE = "lumen-remote-token";
   var CHAVE_NOME = "lumen-remote-nome";
+  var CHAVE_USUARIO = "lumen-remote-usuario";
+  var CHAVE_MODO = "lumen-remote-modo";
   var CHAVE_RASCUNHO = "lumen-remote-rascunho";
 
   var es = null;
@@ -733,6 +793,7 @@
     $("conectado").hidden = true;
     $("pareamento").hidden = false;
     $("erroPin").textContent = msg || "";
+    $("erroConta").textContent = msg || "";
   }
 
   function mostrarPainel() {
@@ -795,7 +856,7 @@
             if (r.status === 401) {
               localStorage.removeItem(CHAVE);
               token = null;
-              mostrarPareamento("A sessão não é mais válida. Digite o PIN de novo.");
+              mostrarPareamento("A sessão não é mais válida. Entre de novo.");
             } else {
               agendarReconexao();
             }
@@ -815,15 +876,13 @@
       mostrarEnderecoFixo(d.enderecoFixo);
       definirPermissao(d.permissao);
       aplicarEstado(d.estado);
-      $("chatLista").innerHTML = "";
-      coresUsadas = {};
-      (d.chat || []).forEach(function (m) { desenharMensagem(m, true); });
-      rolarChat();
+      chat.inicio(d);
       return;
     }
     if (d.tipo === "estado") return aplicarEstado(d.estado);
     if (d.tipo === "permissao") return definirPermissao(d.permissao);
-    if (d.tipo === "chat") return receberChat(d.mensagem);
+    // Recados, quem está no chat, quem digita, recado apagado, silêncio.
+    if (chat.evento(d)) return;
     // A pasta de mídia da cabine mudou: quem está olhando a lista vê o
     // arquivo novo na hora, sem sair e voltar da aba.
     if (d.tipo === "midia") {
@@ -874,8 +933,9 @@
     $("novaMusica").disabled = !podeEditar;
     $("edSalvar").disabled = !podeEditar;
     $("semMidia").hidden = podeEditar;
-    $("volume").disabled = !podeControlar;
-    $("mudo").disabled = !podeControlar;
+    document.querySelectorAll(".volume-telao, .mudo-telao").forEach(function (el) {
+      el.disabled = !podeControlar;
+    });
     $("buscarWeb").disabled = !podeEditar;
     $("buscaWeb").disabled = !podeEditar;
     // A grade já desenhada precisa saber: o operador acabou de liberar (ou
@@ -906,6 +966,7 @@
     $("preto").classList.toggle("ativo", !!e.preto);
     desenharTocarPausar(e.midiaTocando);
     desenharVolume(e.midiaVolume);
+    desenharMiniPlayer(e);
     marcarSlideNoAr(e);
   }
 
@@ -917,17 +978,21 @@
    */
   var arrastandoVolume = false;
   function desenharVolume(valor) {
-    var b = $("volume");
-    if (!b || arrastandoVolume) return;
+    if (arrastandoVolume) return;
     var v = valor === null || valor === undefined ? 100 : valor;
-    b.value = String(v);
-    $("volumeRotulo").textContent = v + "%";
-    $("mudo").textContent = v === 0 ? "🔈" : "🔇";
+    document.querySelectorAll(".volume-telao").forEach(function (b) { b.value = String(v); });
+    rotularVolume(v);
+  }
+
+  /** O número e o alto-falante, nos dois lugares onde o volume aparece. */
+  function rotularVolume(v) {
+    document.querySelectorAll(".volume-rotulo").forEach(function (r) { r.textContent = v + "%"; });
+    document.querySelectorAll(".mudo-telao").forEach(function (m) { m.textContent = v === 0 ? "🔈" : "🔇"; });
   }
 
   function mandarVolume(v) {
-    $("volumeRotulo").textContent = v + "%";
-    $("mudo").textContent = v === 0 ? "🔈" : "🔇";
+    document.querySelectorAll(".volume-telao").forEach(function (b) { b.value = String(v); });
+    rotularVolume(v);
     return pedir("/volume", { valor: v }).catch(function (e) {
       if (e.message !== "sessao") conexao("off", e.message);
     });
@@ -941,10 +1006,38 @@
    * brigaria com a regra de permissão, que é quem manda nestes botões.
    */
   function desenharTocarPausar(tocando) {
-    var b = $("tocarPausar");
-    if (!b) return;
-    b.textContent = tocando ? "❚❚ Pausar" : "▶ Tocar";
-    b.dataset.acao = tocando ? "pausar" : "tocar";
+    document.querySelectorAll(".tocar-pausar").forEach(function (b) {
+      b.textContent = tocando ? "❚❚ Pausar" : "▶ Tocar";
+      b.dataset.acao = tocando ? "pausar" : "tocar";
+    });
+  }
+
+  /**
+   * O mini-player da aba Mídia aparece enquanto houver vídeo ou áudio no
+   * telão, e a mídia que está no ar fica marcada na lista.
+   */
+  var midiaNoAr = null;
+  function desenharMiniPlayer(e) {
+    // Vídeo ou áudio no telão — no ar, ou sob a tela preta, onde o som pode
+    // continuar e os controles ainda servem. "Sair do vídeo" deixa a mídia
+    // carregada na cabine, só que limpa: aí os controles saem daqui.
+    var tem = e.midiaTocando !== null && e.midiaTocando !== undefined && (e.noAr || e.preto);
+    midiaNoAr = tem ? e.refId : null;
+    $("midiaPlayer").hidden = !tem;
+    if (tem) {
+      var item = midia.filter(function (m) { return m.id === e.refId; })[0];
+      var audio = item && item.tipo === "audio";
+      $("midiaPlayerTitulo").textContent = (e.titulo || (audio ? "Áudio" : "Vídeo")) + (audio ? " — tocando" : " — no telão");
+      $("midiaPlayerSair").textContent = audio ? "■ Parar o áudio" : "■ Sair do vídeo";
+    }
+    marcarMidiaNoAr();
+  }
+
+  function marcarMidiaNoAr() {
+    document.querySelectorAll("#midiaLista button[data-id]").forEach(function (b) {
+      if (midiaNoAr && b.dataset.id === midiaNoAr) b.setAttribute("aria-current", "true");
+      else b.removeAttribute("aria-current");
+    });
   }
 
   // ─────────────────────────────────────────── ações
@@ -958,7 +1051,7 @@
         if (r.status === 401) {
           localStorage.removeItem(CHAVE);
           token = null;
-          mostrarPareamento("A sessão expirou. Digite o PIN de novo.");
+          mostrarPareamento("A sessão expirou. Entre de novo.");
           throw new Error("sessao");
         }
         if (!r.corpo || r.corpo.ok === false) throw new Error(r.corpo && r.corpo.erro || "Falhou");
@@ -996,6 +1089,60 @@
       .catch(function () { $("erroPin").textContent = "Sem conexão com a cabine."; });
   }
 
+  /** Os dois jeitos de entrar; o último usado neste aparelho volta escolhido. */
+  function modoDeEntrada(modo) {
+    var conta = modo === "conta";
+    $("modoRapido").setAttribute("aria-selected", String(!conta));
+    $("modoConta").setAttribute("aria-selected", String(conta));
+    $("entradaRapida").hidden = conta;
+    $("entradaConta").hidden = !conta;
+    $("erroPin").textContent = "";
+    $("erroConta").textContent = "";
+    try { localStorage.setItem(CHAVE_MODO, conta ? "conta" : "rapido"); } catch (e) { /* aba privada */ }
+  }
+
+  function focarEntrada() {
+    if ($("entradaConta").hidden) $("nome").focus();
+    else ($("usuario").value ? $("senha") : $("usuario")).focus();
+  }
+
+  /**
+   * Entrar com usuário e senha.
+   *
+   * A conta que a cabine criou já traz o que a pessoa pode fazer — o
+   * operador não precisa liberar o mesmo aparelho todo culto. A senha só
+   * atravessa a rede da igreja até o computador, e não fica guardada aqui.
+   */
+  function entrarComConta() {
+    $("erroConta").textContent = "";
+    var usuario = $("usuario").value.trim();
+    var senha = $("senha").value;
+    if (usuario.length < 2 || !senha) {
+      $("erroConta").textContent = "Escreva o usuário e a senha.";
+      (usuario.length < 2 ? $("usuario") : $("senha")).focus();
+      return Promise.resolve();
+    }
+    $("entrarConta").disabled = true;
+    return fetch("/entrar", { method: "POST", body: JSON.stringify({ usuario: usuario, senha: senha }) })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        $("senha").value = "";
+        if (!d.ok) {
+          $("erroConta").textContent = d.erro || "Não consegui entrar.";
+          $("senha").focus();
+          return;
+        }
+        token = d.token;
+        localStorage.setItem(CHAVE, d.token);
+        localStorage.setItem(CHAVE_USUARIO, usuario);
+        definirPermissao(d.permissao);
+        tentativas = 0;
+        conectar();
+      })
+      .catch(function () { $("erroConta").textContent = "Sem conexão com a cabine."; })
+      .then(function () { $("entrarConta").disabled = false; });
+  }
+
   // ─────────────────────────────────────────── abas
 
   function trocarAba(nome) {
@@ -1021,7 +1168,7 @@
     if (nome === "chat") {
       naoLidas = 0;
       $("seloChat").hidden = true;
-      rolarChat();
+      chat.rolar();
     }
     if (nome === "letras" && !musicaAberta && !musicaEmSlides) carregarRepertorio();
     if (nome === "midia") carregarMidia();
@@ -1273,6 +1420,7 @@
       var li = document.createElement("li");
       var b = document.createElement("button");
       b.disabled = permissao !== "controle";
+      b.dataset.id = m.id;
 
       var capa = document.createElement("span");
       capa.className = "capa";
@@ -1328,6 +1476,8 @@
       li.appendChild(b);
       ul.appendChild(li);
     });
+
+    marcarMidiaNoAr();
 
     if (lista.length === 0) {
       $("midiaEstado").textContent = midia.length
@@ -1611,93 +1761,53 @@
 
   // ─────────────────────────────────────────── chat
 
-  function hora(ms) {
-    try {
-      return new Date(ms).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
-    } catch (e) { return ""; }
-  }
-
   /** O nome com que este aparelho entrou — é o que separa "minha" de "dos outros". */
   var meuNome = "";
 
   /**
-   * Se a mensagem foi escrita por este aparelho.
+   * O chat da equipe: balões, cores, destino, menções, fotos, quem está no
+   * chat e quem está digitando moram em chat-equipe.js, o mesmo da página
+   * do dirigente. Aqui fica o que é deste aparelho: o aviso dourado, o selo
+   * de não lidas e o recado falado.
    *
-   * Antes, toda mensagem que não era da cabine saía marcada como "minha",
-   * inclusive a de outro celular e a do dirigente. Era só a cor da bolha;
-   * com o aviso dourado virou decisão — e aviso da própria mensagem é
-   * ruído.
+   * Se o arquivo do chat não carregar (a Wi-Fi piscou bem na hora), o resto
+   * da página continua: passar slide não pode depender do chat.
    */
-  function ehMinha(m) {
-    return !m.daCabine && !!meuNome && m.de === meuNome;
-  }
+  var chat = window.LumenChat
+    ? window.LumenChat.montar({
+        lista: $("chatLista"),
+        form: $("chatForm"),
+        texto: $("chatTexto"),
+        enviar: $("chatEnviar"),
+        erro: $("chatErro"),
+        classeDoBotao: "botao",
+        extras: [$("vozBotao")],
+        meuNome: function () { return meuNome; },
+        enviarTexto: function (texto, para) {
+          return pedirNoChat("/chat", { texto: texto, para: para });
+        },
+        enviarFoto: function (foto, texto, para) {
+          return pedirNoChat("/chat/foto", { foto: foto, texto: texto, para: para });
+        },
+        avisarDigitando: function (para) { return pedir("/chat/digitando", { para: para }); },
+        urlDaFoto: function (arquivo) {
+          return "/chat/foto?arquivo=" + encodeURIComponent(arquivo) + "&token=" + encodeURIComponent(token || "");
+        },
+        mudarEquipe: function (equipe) { return pedirNoChat("/chat/equipe", { equipe: equipe }); },
+        aoRecado: receberChat,
+      })
+    : {
+        inicio: function () {},
+        evento: function () { return false; },
+        para: function () { return { tipo: "todos" }; },
+        rolar: function () {},
+      };
 
-  /**
-   * Uma cor para cada pessoa no chat — a mesma paleta e a mesma conta de
-   * src/lib/cor-do-chat.ts (o teste de lá confere as três telas). A cor
-   * preferida sai do nome; se outra pessoa da conversa já estiver com ela,
-   * vai para a próxima livre. A própria mensagem aparece como "Você", sem cor.
-   */
-  var CORES_DO_CHAT = ["#5cc8f5", "#b39bfa", "#4fd1a1", "#f58bc4", "#fb9d5c", "#3fd6e8", "#b5e35a", "#f78b8b"];
-  var coresUsadas = {};
-
-  function chaveDaPessoa(m) {
-    return m.daCabine ? "cabine" : "p:" + String(m.de || "").trim().toLowerCase();
-  }
-
-  function corDaPessoa(chave) {
-    if (Object.prototype.hasOwnProperty.call(coresUsadas, chave)) return CORES_DO_CHAT[coresUsadas[chave]];
-    var ocupadas = {};
-    Object.keys(coresUsadas).forEach(function (k) { ocupadas[coresUsadas[k]] = true; });
-    var h = 0;
-    for (var i = 0; i < chave.length; i += 1) h = (h * 31 + chave.charCodeAt(i)) >>> 0;
-    var inicio = h % CORES_DO_CHAT.length;
-    var escolhida = inicio;
-    for (var k = 0; k < CORES_DO_CHAT.length; k += 1) {
-      var idx = (inicio + k) % CORES_DO_CHAT.length;
-      if (!ocupadas[idx]) { escolhida = idx; break; }
-    }
-    coresUsadas[chave] = escolhida;
-    return CORES_DO_CHAT[escolhida];
-  }
-
-  /** Nome e filete na cor de quem escreveu. */
-  function pintarPessoa(div, de, m) {
-    var cor = corDaPessoa(chaveDaPessoa(m));
-    de.style.color = cor;
-    div.style.borderLeft = "3px solid " + cor;
-  }
-
-  function desenharMensagem(m, silencioso) {
-    var minha = ehMinha(m);
-    var div = document.createElement("div");
-    div.className = "msg" + (m.daCabine ? " cabine" : minha ? " minha" : "");
-    var de = document.createElement("p");
-    de.className = "de";
-    de.textContent = (minha ? "Você" : m.de) + " · " + hora(m.em);
-    if (!minha) pintarPessoa(div, de, m);
-    div.appendChild(de);
-    if (m.audio) {
-      var som = document.createElement("audio");
-      som.controls = true;
-      som.preload = "none";
-      som.src = m.audio;
-      som.style.width = "100%";
-      div.appendChild(som);
-    }
-    if (m.texto) {
-      var txt = document.createElement("p");
-      txt.className = "texto";
-      txt.textContent = m.texto;
-      div.appendChild(txt);
-    }
-    $("chatLista").appendChild(div);
-    if (!silencioso) rolarChat();
-  }
-
-  function rolarChat() {
-    var l = $("chatLista");
-    l.scrollTop = l.scrollHeight;
+  /** O chat espera { ok, erro }, nunca uma exceção. */
+  function pedirNoChat(caminho, corpo) {
+    return pedir(caminho, corpo).catch(function (e) {
+      return { ok: false, erro: e.message === "sessao" ? "" : e.message };
+    });
   }
 
   var relogioDoAviso = 0;
@@ -1708,11 +1818,13 @@
     return Math.min(14000, Math.max(6000, 2500 + (palavras / 3) * 1000));
   }
 
-  function mostrarAvisoOuro(m) {
-    var texto = (m.texto || "").trim() || (m.audio ? "Recado de voz" : "");
+  function mostrarAvisoOuro(m, info) {
+    var texto = (m.texto || "").trim() || (m.foto ? "Foto" : m.audio ? "Recado de voz" : "");
     if (!texto) return;
-    $("avisoOuroIcone").textContent = m.audio ? "🎤" : "💬";
-    $("avisoOuroDe").textContent = m.daCabine ? "Cabine" : (m.de || "Recado");
+    $("avisoOuroIcone").textContent = m.foto ? "📷" : m.audio ? "🎤" : "💬";
+    var quem = m.daCabine ? "Cabine" : (m.de || "Recado");
+    $("avisoOuroDe").textContent =
+      quem + (info.mencionado ? " citou você" : info.destino ? " · " + info.destino : "");
     $("avisoOuroTexto").textContent = texto.length > 180 ? texto.slice(0, 177) + "…" : texto;
     var aviso = $("avisoOuro");
     // Recado novo por cima do anterior substitui: dois cartões empilhados
@@ -1724,10 +1836,12 @@
     relogioDoAviso = setTimeout(function () { aviso.hidden = true; }, duracaoDoAviso(texto));
   }
 
-  function receberChat(m) {
-    if (!m) return;
-    desenharMensagem(m);
-    if (!ehMinha(m)) mostrarAvisoOuro(m);
+  function receberChat(m, info) {
+    // Aviso da própria mensagem é ruído, e ela não é "não lida".
+    if (info.minha) return;
+    mostrarAvisoOuro(m, info);
+    // Citado pelo nome: o celular vibra, que no bolso o dourado não se vê.
+    if (info.mencionado && navigator.vibrate) navigator.vibrate([120, 60, 120]);
     if (abaAtual !== "chat") {
       naoLidas += 1;
       $("seloChat").hidden = false;
@@ -1739,6 +1853,12 @@
 
   $("entrar").addEventListener("click", function () {
     void parear();
+  });
+  $("modoRapido").addEventListener("click", function () { modoDeEntrada("rapido"); focarEntrada(); });
+  $("modoConta").addEventListener("click", function () { modoDeEntrada("conta"); focarEntrada(); });
+  $("entradaConta").addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    void entrarComConta();
   });
   $("avisoOuro").addEventListener("click", function () {
     $("avisoOuro").hidden = true;
@@ -1768,21 +1888,21 @@
   $("abaCulto").addEventListener("click", function () { trocarAba("culto"); });
   $("abaChat").addEventListener("click", function () { trocarAba("chat"); });
 
-  $("volume").addEventListener("pointerdown", function () { arrastandoVolume = true; });
-  $("volume").addEventListener("input", function () {
-    $("volumeRotulo").textContent = $("volume").value + "%";
-  });
-  ["pointerup", "pointercancel", "change"].forEach(function (evento) {
-    $("volume").addEventListener(evento, function () {
-      arrastandoVolume = false;
-      void mandarVolume(Number($("volume").value));
+  document.querySelectorAll(".volume-telao").forEach(function (barra) {
+    barra.addEventListener("pointerdown", function () { arrastandoVolume = true; });
+    barra.addEventListener("input", function () { rotularVolume(Number(barra.value)); });
+    ["pointerup", "pointercancel", "change"].forEach(function (evento) {
+      barra.addEventListener(evento, function () {
+        arrastandoVolume = false;
+        void mandarVolume(Number(barra.value));
+      });
     });
   });
-  $("mudo").addEventListener("click", function () {
-    var atual = Number($("volume").value);
-    var novo = atual === 0 ? 100 : 0;
-    $("volume").value = String(novo);
-    void mandarVolume(novo);
+  document.querySelectorAll(".mudo-telao").forEach(function (botao) {
+    botao.addEventListener("click", function () {
+      var novo = Number($("volume").value) === 0 ? 100 : 0;
+      void mandarVolume(novo);
+    });
   });
 
   $("midiaBusca").addEventListener("input", desenharMidia);
@@ -1813,7 +1933,7 @@
   document.querySelectorAll("[data-acao]").forEach(function (b) {
     // O tocar/pausar tem tratamento próprio, logo abaixo: precisa virar de
     // cara no instante do toque, antes de a cabine confirmar.
-    if (b.id === "tocarPausar") return;
+    if (b.classList.contains("tocar-pausar")) return;
     b.addEventListener("click", function () {
       pedir("/comando", { acao: b.dataset.acao }).catch(function (e) {
         if (e.message !== "sessao") conexao("off", e.message);
@@ -1821,15 +1941,18 @@
     });
   });
 
-  $("tocarPausar").addEventListener("click", function () {
-    var acao = $("tocarPausar").dataset.acao;
-    // Vira na hora: esperar a volta pela rede faria o dedo achar que o toque
-    // não pegou e apertar de novo, mandando o comando duas vezes. O estado
-    // que a cabine devolve corrige, se for o caso.
-    desenharTocarPausar(acao === "tocar");
-    pedir("/comando", { acao: acao }).catch(function (e) {
-      desenharTocarPausar(acao !== "tocar");
-      if (e.message !== "sessao") conexao("off", e.message);
+  // Os dois tocar/pausar (aba Controle e mini-player da aba Mídia) viram
+  // juntos na hora: esperar a volta pela rede faria o dedo achar que o toque
+  // não pegou e apertar de novo, mandando o comando duas vezes. O estado que
+  // a cabine devolve corrige, se for o caso.
+  document.querySelectorAll(".tocar-pausar").forEach(function (botao) {
+    botao.addEventListener("click", function () {
+      var acao = botao.dataset.acao;
+      desenharTocarPausar(acao === "tocar");
+      pedir("/comando", { acao: acao }).catch(function (e) {
+        desenharTocarPausar(acao !== "tocar");
+        if (e.message !== "sessao") conexao("off", e.message);
+      });
     });
   });
 
@@ -1877,7 +2000,7 @@
       som.preload = "metadata";
       var mandar = function () {
         var s = Number.isFinite(som.duration) ? Math.round(som.duration) : 0;
-        pedir("/voz", { audio: audio, segundos: s }).catch(function (e) {
+        pedir("/voz", { audio: audio, segundos: s, para: chat.para() }).catch(function (e) {
           if (e.message !== "sessao") conexao("off", e.message);
         });
       };
@@ -1889,23 +2012,6 @@
     leitor.readAsDataURL(arquivo);
   });
 
-  $("chatForm").addEventListener("submit", function (ev) {
-    ev.preventDefault();
-    var texto = $("chatTexto").value.trim();
-    if (!texto) return;
-    $("chatEnviar").disabled = true;
-    pedir("/chat", { texto: texto })
-      .then(function () { $("chatTexto").value = ""; })
-      .catch(function (e) { if (e.message !== "sessao") conexao("off", e.message); })
-      .finally(function () { $("chatEnviar").disabled = false; });
-  });
-  $("chatTexto").addEventListener("keydown", function (ev) {
-    // Enter envia; Shift+Enter quebra linha, como em qualquer mensageiro.
-    if (ev.key === "Enter" && !ev.shiftKey) {
-      ev.preventDefault();
-      $("chatForm").requestSubmit();
-    }
-  });
 
   // A tela volta do bolso: se a conexão morreu enquanto estava guardada,
   // tenta agora em vez de esperar o próximo toque.
@@ -1919,6 +2025,11 @@
 
   var nomeSalvo = localStorage.getItem(CHAVE_NOME);
   if (nomeSalvo) $("nome").value = nomeSalvo;
+  var usuarioSalvo = localStorage.getItem(CHAVE_USUARIO);
+  if (usuarioSalvo) $("usuario").value = usuarioSalvo;
+  var modoSalvo = null;
+  try { modoSalvo = localStorage.getItem(CHAVE_MODO); } catch (e) { /* aba privada */ }
+  modoDeEntrada(modoSalvo === "conta" ? "conta" : "rapido");
 
   token = localStorage.getItem(CHAVE);
   if (token) {
@@ -1926,9 +2037,9 @@
     recuperarRascunho();
   } else {
     mostrarPareamento();
-    // Quem já entrou uma vez neste aparelho só precisa confirmar: o nome
-    // volta preenchido e o Enter resolve.
-    $("nome").focus();
+    // Quem já entrou uma vez neste aparelho só precisa confirmar: o nome (ou
+    // o usuário) volta preenchido e o Enter resolve.
+    focarEntrada();
   }
 })();
 </script>

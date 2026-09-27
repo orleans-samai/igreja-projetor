@@ -34,9 +34,36 @@ export interface DispositivoRemoto {
   id: string;
   nome: string;
   permissao: PermissaoRemota;
+  /** A equipe que o aparelho escolheu no chat (ou a da conta dele). */
+  equipe?: "" | "som" | "louvor" | "pastor";
+  /** Entrou com usuário e senha, não pelo acesso rápido. */
+  porConta?: boolean;
   criadoEm: number;
   ultimoVisto: number;
   online: boolean;
+}
+
+/**
+ * Conta com senha da equipe. Quem entra com ela pelo celular já chega com
+ * a permissão e a equipe dela; a senha nunca sai do processo principal.
+ */
+export interface ContaRemota {
+  id: string;
+  usuario: string;
+  permissao: PermissaoRemota;
+  equipe: "" | "som" | "louvor" | "pastor";
+  criadaEm: number;
+  /** Quantos aparelhos entraram com ela. */
+  aparelhos: number;
+}
+
+export interface ContaParaSalvar {
+  id?: string;
+  usuario: string;
+  /** Obrigatória na conta nova; vazia ao mudar, mantém a antiga. */
+  senha?: string;
+  permissao: PermissaoRemota;
+  equipe: "" | "som" | "louvor" | "pastor";
 }
 
 /** As equipes do culto no chat. "cabine" é só da cabine. */
@@ -226,6 +253,7 @@ export interface RemoteStatus {
   sessoesAtivas: number;
   dispositivos?: DispositivoRemoto[];
   permissaoPadrao?: PermissaoRemota;
+  contas?: ContaRemota[];
 }
 
 /** O que a cabine publica a cada troca de slide, para o aparelho mostrar. */
