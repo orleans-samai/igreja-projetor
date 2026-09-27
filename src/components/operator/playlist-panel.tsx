@@ -280,8 +280,9 @@ export function PlaylistPanel({ showThemes = false }: { showThemes?: boolean }) 
                 "transition-colors duration-[var(--motion-fast)] ease-[var(--ease-out)]",
                 selected && "bg-elevated",
                 onAir && "bg-live/10",
-                // O que já passou não esmaece: a igreja pediu a lista inteira
-                // legível. A marca "Concluído" basta para dizer o que passou.
+                // O que já passou não esmaece nem ganha marca de "feito": a
+                // igreja pediu poder voltar e projetar de novo sem o item
+                // parecer travado (ver culto-etapas.ts).
                 dragFrom === i && "opacity-40",
                 dragOver === i &&
                   dragFrom !== i &&
@@ -368,13 +369,6 @@ function EtapaTag({ etapa }: { etapa: Etapa }) {
     return (
       <span className="rounded-sm bg-accent/20 px-1.5 text-caption font-medium text-accent">
         Próximo
-      </span>
-    );
-  }
-  if (etapa === "concluido") {
-    return (
-      <span className="flex items-center gap-1 text-caption text-subtle">
-        <Check className="size-3" aria-hidden /> Concluído
       </span>
     );
   }

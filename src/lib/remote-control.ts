@@ -141,7 +141,7 @@ export interface ItemDoCultoRemoto {
   tipo: "song" | "bible" | "media" | "text" | "apresentacao";
   /** Autor, versão da Bíblia ou tipo de arquivo. */
   detalhe: string;
-  etapa: "no-ar" | "proximo" | "concluido" | "pendente";
+  etapa: "no-ar" | "proximo" | "pendente";
 }
 
 /** A programação aberta na cabine, espelhada no celular. */

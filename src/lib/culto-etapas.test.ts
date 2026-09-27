@@ -9,10 +9,11 @@ describe("etapaDoItem", () => {
     assert.equal(etapaDoItem(5, -1), "pendente");
   });
 
-  test("com algo no ar, a lista se parte em feito, agora, próximo e resto", () => {
+  test("com algo no ar, a lista se parte em agora, próximo e resto", () => {
     const noAr = 2;
-    assert.equal(etapaDoItem(0, noAr), "concluido");
-    assert.equal(etapaDoItem(1, noAr), "concluido");
+    // O que já passou não tem marca própria: continua pronto para projetar.
+    assert.equal(etapaDoItem(0, noAr), "pendente");
+    assert.equal(etapaDoItem(1, noAr), "pendente");
     assert.equal(etapaDoItem(2, noAr), "no-ar");
     assert.equal(etapaDoItem(3, noAr), "proximo");
     assert.equal(etapaDoItem(4, noAr), "pendente");
@@ -20,7 +21,7 @@ describe("etapaDoItem", () => {
 
   test("no último item não existe próximo", () => {
     assert.equal(etapaDoItem(3, 3), "no-ar");
-    assert.equal(etapaDoItem(2, 3), "concluido");
+    assert.equal(etapaDoItem(2, 3), "pendente");
   });
 });
 

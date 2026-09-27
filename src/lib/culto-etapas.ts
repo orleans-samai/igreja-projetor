@@ -1,11 +1,17 @@
 /**
  * Em que pé está cada item da programação do culto.
  *
- * Quatro estados, lidos de relance: o que já passou, o que está no ar agora,
- * o que vem logo depois e o que ainda espera. Quem opera precisa achar a
- * própria posição na lista sem ler item por item.
+ * Três estados, lidos de relance: o que está no ar agora, o que vem logo
+ * depois e o resto. Quem opera precisa achar a própria posição na lista sem
+ * ler item por item.
+ *
+ * Já houve um quarto, "concluído", para o que tinha passado — e ele saía
+ * apagado na tela. A igreja pediu para tirar: projetar um item só para ver,
+ * voltar a ele e achá-lo com cara de travado atrapalhava mais do que
+ * ajudava. O que já passou é um item como os outros, sempre pronto para
+ * projetar de novo.
  */
-export type Etapa = "concluido" | "no-ar" | "proximo" | "pendente";
+export type Etapa = "no-ar" | "proximo" | "pendente";
 
 /**
  * @param indice    posição do item na lista
@@ -14,7 +20,6 @@ export type Etapa = "concluido" | "no-ar" | "proximo" | "pendente";
 export function etapaDoItem(indice: number, indiceNoAr: number): Etapa {
   if (indiceNoAr < 0) return indice === 0 ? "proximo" : "pendente";
   if (indice === indiceNoAr) return "no-ar";
-  if (indice < indiceNoAr) return "concluido";
   if (indice === indiceNoAr + 1) return "proximo";
   return "pendente";
 }
