@@ -751,23 +751,26 @@
   }
 }
 
+/* Livros, capítulos e versículos em tamanho de alvo de dedo e de leitura à
+   distância: a igreja pediu esta parte maior, e é nela que se clica no meio
+   da pregação, com pressa. */
 .bible-mosaic {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(3.4rem, 1fr));
-  gap: 2px;
+  grid-template-columns: repeat(auto-fill, minmax(4.6rem, 1fr));
+  gap: 3px;
 }
 
 .bible-tile {
   position: relative;
   display: flex;
   min-width: 0;
-  min-height: 2.6rem;
+  min-height: 3.4rem;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  border-radius: 3px;
-  padding: 2px 4px 2px 7px;
+  border-radius: 4px;
+  padding: 4px 5px 4px 9px;
   background: var(--color-elevated);
   color: var(--color-fg);
   text-align: center;
@@ -782,7 +785,7 @@
   content: "";
   position: absolute;
   inset: 0 auto 0 0;
-  width: 3px;
+  width: 4px;
   background: var(--secao, transparent);
 }
 
@@ -801,7 +804,7 @@
 }
 
 .bible-tile-abbr {
-  font-size: 0.82rem;
+  font-size: 1.1rem;
   font-weight: 650;
   line-height: 1.1;
 }
@@ -811,24 +814,24 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 0.62rem;
-  line-height: 1.2;
-  opacity: 0.6;
+  font-size: 0.74rem;
+  line-height: 1.25;
+  opacity: 0.65;
 }
 
 /* Capítulo e versículo são números, não livros: sem filete, e menores
    conforme descem na hierarquia. */
 .bible-nums {
   display: grid;
-  gap: 2px;
+  gap: 3px;
 }
 
 .bible-nums-ch {
-  grid-template-columns: repeat(auto-fill, minmax(2.5rem, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(3.2rem, 1fr));
 }
 
 .bible-nums-vs {
-  grid-template-columns: repeat(auto-fill, minmax(2.1rem, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(3rem, 1fr));
 }
 
 .bible-num {
@@ -852,14 +855,14 @@
 }
 
 .bible-num-ch {
-  min-height: 2.15rem;
-  font-size: 0.8rem;
+  min-height: 2.8rem;
+  font-size: 1.05rem;
   font-weight: 600;
 }
 
 .bible-num-vs {
-  min-height: 1.85rem;
-  font-size: 0.72rem;
+  min-height: 2.6rem;
+  font-size: 0.95rem;
 }
 
 /* No pop-up "ir para referência" os números são alvos para ler de longe. */
@@ -883,9 +886,9 @@
 .bible-num-feito::after {
   content: "";
   position: absolute;
-  bottom: 3px;
-  width: 3px;
-  height: 3px;
+  bottom: 4px;
+  width: 4px;
+  height: 4px;
   border-radius: 9999px;
   background: currentColor;
   opacity: 0.55;

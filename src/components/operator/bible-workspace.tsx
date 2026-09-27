@@ -49,7 +49,7 @@ const IMPORTAR_VERSAO = "__importar";
 /** Rótulo de seção: o que faltava para os três níveis se distinguirem. */
 function Rotulo({ children }: { children: React.ReactNode }) {
   return (
-    <p className="text-caption font-medium uppercase tracking-wide text-subtle">{children}</p>
+    <p className="text-[0.8125rem] font-semibold uppercase tracking-wide text-muted">{children}</p>
   );
 }
 
