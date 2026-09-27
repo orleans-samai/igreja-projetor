@@ -261,10 +261,8 @@
   }
   /* Balões, cores, destino e fotos moram em chat-equipe.js, o mesmo chat
      do celular. Aqui fica só o azul do balão de quem escreve. */
-  #painelChat { --ce-minha: rgba(91, 143, 199, .14); --ce-minha-borda: rgba(91, 143, 199, .45); }
-  #formChat .ce-foto { padding: 15px 16px; }
+  #painelChat { --ce-minha: rgba(91, 143, 199, .14); --ce-minha-borda: rgba(91, 143, 199, .45); --ce-acao: var(--accent); }
   #formChat { display: flex; gap: 10px; align-items: flex-end; }
-  #textoChat { flex: 1; min-height: 52px; max-height: 26dvh; resize: none; padding-left: 14px; }
 
   .aviso { margin: 0; font-size: 13px; color: var(--muted); }
 
@@ -1053,7 +1051,6 @@
         texto: $("textoChat"),
         enviar: $("mandarChat"),
         erro: $("erroChat"),
-        classeDoBotao: "mini-botao",
         meuNome: usuario,
         enviarTexto: function (texto, para) {
           return pedirNoChat("/dirigente/chat", { texto: texto, para: para });

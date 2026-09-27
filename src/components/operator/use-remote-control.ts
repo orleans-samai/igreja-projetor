@@ -305,6 +305,44 @@ export function useRemoteControl() {
         }
         return;
       }
+      if (evento.tipo === "culto-adicionar") {
+        const st = useLumenStore.getState();
+        const porNoCulto = (titulo: string) => {
+          useLumenStore.getState().addToPlaylist({
+            type: evento.kind,
+            refId: evento.refId,
+            notes: "",
+            title: titulo,
+          });
+          toast(`${evento.de} pôs “${titulo}” no culto.`);
+        };
+        // Mídia da pasta que a biblioteca ainda não conhece entra nela antes,
+        // como no projetar: item da programação sem mídia não teria o que tocar.
+        if (evento.kind === "media" && !st.media.some((m) => m.id === evento.refId)) {
+          void (async () => {
+            for (const k of MEDIA_KINDS) {
+              const lista = await listMedia(k.value);
+              const achado = (lista.items ?? []).find((m) => m.id === evento.refId);
+              if (!achado) continue;
+              useLumenStore.getState().addMedia({ id: achado.id, type: k.value, title: achado.title, path: achado.url });
+              porNoCulto(achado.title);
+              return;
+            }
+            toast(`${evento.de} pediu um arquivo que não está mais na pasta.`);
+          })();
+          return;
+        }
+        const titulo =
+          evento.kind === "song"
+            ? st.songs.find((s) => s.id === evento.refId)?.title
+            : st.media.find((m) => m.id === evento.refId)?.title;
+        if (!titulo) {
+          toast(`${evento.de} pediu um item que não está mais na biblioteca.`);
+          return;
+        }
+        porNoCulto(titulo);
+        return;
+      }
       if (evento.tipo === "arquivo") {
         const st = useLumenStore.getState();
         if (evento.projetavel && evento.kind && evento.id) {
@@ -445,8 +483,9 @@ export function useRemoteControl() {
         const existente = evento.musica.id
           ? st.songs.find((s) => s.id === evento.musica.id)
           : undefined;
+        const id = existente?.id ?? nid();
         st.saveSong({
-          id: existente?.id ?? nid(),
+          id,
           title: evento.musica.titulo,
           artist: evento.musica.artista || existente?.artist || "",
           groupId: existente?.groupId ?? "g-louvor",
@@ -457,10 +496,20 @@ export function useRemoteControl() {
           createdAt: existente?.createdAt ?? Date.now(),
           updatedAt: Date.now(),
         });
+        if (evento.noCulto) {
+          useLumenStore.getState().addToPlaylist({
+            type: "song",
+            refId: id,
+            notes: "",
+            title: evento.musica.titulo,
+          });
+        }
         toast(
           existente
             ? `${evento.de} editou “${evento.musica.titulo}”.`
-            : `${evento.de} criou “${evento.musica.titulo}”.`,
+            : evento.noCulto
+              ? `${evento.de} trouxe “${evento.musica.titulo}” e pôs no culto.`
+              : `${evento.de} criou “${evento.musica.titulo}”.`,
         );
       }
     });

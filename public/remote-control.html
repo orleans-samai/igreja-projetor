@@ -223,6 +223,17 @@
   }
   .volume-telao { flex: 1; min-width: 0; accent-color: var(--live); }
   .lista .autor { display: block; margin-top: 3px; font-size: 13px; color: var(--muted); }
+  /* O + ao lado do item: põe na programação do culto sem sair da lista. */
+  .lista > li.com-mais { display: flex; gap: 8px; align-items: stretch; }
+  .lista > li.com-mais > button:first-child { flex: 1; min-width: 0; }
+  .mais-culto {
+    flex: none; width: 52px; border-radius: var(--r);
+    border: 1px solid var(--borda); background: var(--superficie);
+    color: var(--live); font-size: 26px; font-weight: 500; line-height: 1;
+  }
+  .mais-culto:disabled { opacity: .4; }
+  .mais-culto.feito { color: var(--ok, #4fd1a1); font-size: 20px; }
+  .lista .ja-tem { display: block; margin-top: 4px; font-size: 12px; font-weight: 600; color: var(--live); }
 
   /* ── culto: a programação da cabine ──────────────────────────── */
   .culto-item .numero {
@@ -388,7 +399,7 @@
   /* Balões, cores, destino e fotos moram em chat-equipe.js, o mesmo chat
      da página do dirigente. Aqui fica só o que é deste aparelho: o balão
      de quem escreve no dourado do celular. */
-  #painelChat { --ce-minha: var(--live-fraco); --ce-minha-borda: var(--live-borda); }
+  #painelChat { --ce-minha: var(--live-fraco); --ce-minha-borda: var(--live-borda); --ce-acao: var(--live); }
   #chatErro { margin: 0; font-size: 13px; color: var(--muted); }
   #chatErro:empty { display: none; }
 
@@ -419,9 +430,7 @@
     from { opacity: 0; transform: translateY(-12px); }
     to { opacity: 1; transform: none; }
   }
-  #chatForm .ce-foto { padding: 15px; }
   #chatForm { display: flex; gap: 10px; align-items: flex-end; }
-  #chatTexto { flex: 1; min-height: 50px; max-height: 30dvh; }
 
 </style>
 
@@ -730,19 +739,16 @@
       <form id="chatForm">
         <textarea id="chatTexto" class="campo" maxlength="500" placeholder="Recado (@ cita alguém)" rows="1"></textarea>
         <!--
-          Recado falado pelo gravador do próprio celular.
+          Recado falado, pelo 📎 › Áudio.
 
           Não é gravação dentro da página de propósito: `getUserMedia` só
           funciona em contexto seguro, e este endereço é HTTP puro num IP da
-          rede da igreja — o navegador recusa o microfone e não há HTTPS aqui
-          sem um certificado que cada aparelho teria de aceitar na mão. O
-          campo de arquivo com `capture` abre o gravador que a pessoa já sabe
-          usar, e funciona em qualquer celular.
+          rede da igreja — o navegador recusa o microfone. O campo de arquivo
+          com `capture` abre o gravador do celular no Android; no iPhone, o
+          Safari só deixa escolher uma gravação que já exista (do Gravador,
+          salva em Arquivos).
         -->
-        <label class="botao" id="vozBotao" aria-label="Gravar recado falado" style="padding:15px">
-          🎤
-          <input id="vozArquivo" type="file" accept="audio/*" capture hidden>
-        </label>
+        <input id="vozArquivo" type="file" accept="audio/*" capture hidden>
         <button class="botao botao-principal" type="submit" id="chatEnviar">Enviar</button>
       </form>
     </section>
@@ -1321,16 +1327,73 @@
 
   // ─────────────────────────────────────────── letras
 
+  /** O repertório da cabine, também para a busca saber o que já existe. */
+  var repertorio = [];
+
+  /** Sem acento, sem pontuação, minúsculo: "Quem É Esse?" = "quem e esse". */
+  function chaveDeTitulo(texto) {
+    return String(texto || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  }
+
+  /** A música do repertório que é esta, se houver — pelo título, e pelo artista quando os dois têm. */
+  function jaNoRepertorio(titulo, artista) {
+    var t = chaveDeTitulo(titulo);
+    var a = chaveDeTitulo(artista);
+    if (!t) return null;
+    return repertorio.filter(function (m) {
+      if (chaveDeTitulo(m.titulo) !== t) return false;
+      var ma = chaveDeTitulo(m.artista);
+      return !a || !ma || ma === a;
+    })[0] || null;
+  }
+
+  /**
+   * O + ao lado de um item: põe na programação do culto. A resposta vira
+   * um ✓ por dois segundos, para o dedo saber que pegou.
+   */
+  function botaoMaisNoCulto(nome, pedidoDoMais) {
+    var mais = document.createElement("button");
+    mais.type = "button";
+    mais.className = "mais-culto";
+    mais.textContent = "+";
+    mais.setAttribute("aria-label", "Pôr " + nome + " no culto");
+    mais.addEventListener("click", function () {
+      mais.disabled = true;
+      pedidoDoMais()
+        .then(function () {
+          mais.textContent = "✓";
+          mais.classList.add("feito");
+          setTimeout(function () {
+            mais.textContent = "+";
+            mais.classList.remove("feito");
+            mais.disabled = false;
+          }, 2000);
+        })
+        .catch(function (e) {
+          mais.disabled = false;
+          if (e && e.message !== "sessao") $("buscaEstado").textContent = e.message;
+        });
+    });
+    return mais;
+  }
+
+  function porNoCulto(tipo, refId) {
+    return pedir("/culto/adicionar", { tipo: tipo, refId: refId });
+  }
+
   function carregarRepertorio() {
     if (permissao !== "editor" && permissao !== "controle") return;
     fetch("/repertorio?token=" + encodeURIComponent(token))
       .then(function (r) { return r.json(); })
       .then(function (d) {
         if (!d.ok) return;
+        repertorio = d.musicas || [];
         var ul = $("musicas");
         ul.innerHTML = "";
         d.musicas.forEach(function (m) {
           var li = document.createElement("li");
+          li.className = "com-mais";
           var b = document.createElement("button");
           b.textContent = m.titulo;
           if (m.artista) {
@@ -1341,6 +1404,7 @@
           }
           b.onclick = function () { abrirMusica(m.id); };
           li.appendChild(b);
+          li.appendChild(botaoMaisNoCulto(m.titulo, function () { return porNoCulto("song", m.id); }));
           ul.appendChild(li);
         });
       })
@@ -1468,16 +1532,8 @@
       corpo.appendChild(risco);
       corpo.appendChild(etiqueta);
 
-      var mais = document.createElement("span");
-      mais.className = "mais";
-      mais.setAttribute("aria-hidden", "true");
-      mais.innerHTML =
-        '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">' +
-        '<circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>';
-
       b.appendChild(capa);
       b.appendChild(corpo);
-      b.appendChild(mais);
       b.onclick = function () {
         $("midiaEstado").textContent = "Mandando para o telão…";
         pedir("/projetar", { tipo: "media", refId: m.id })
@@ -1486,7 +1542,9 @@
             if (e.message !== "sessao") $("midiaEstado").textContent = e.message;
           });
       };
+      li.className = "com-mais";
       li.appendChild(b);
+      li.appendChild(botaoMaisNoCulto(m.titulo, function () { return porNoCulto("media", m.id); }));
       ul.appendChild(li);
     });
 
@@ -1505,21 +1563,26 @@
 
   // ─────────────────────────────────────────── buscar letra na internet
 
+  /** A busca mais recente: resposta de uma busca velha não pisa na nova. */
+  var buscaAtual = 0;
+
   function buscarNaInternet(termo) {
-    $("achados").innerHTML = "";
+    var esta = ++buscaAtual;
     $("buscaEstado").textContent = "Procurando…";
-    $("buscarWeb").disabled = true;
     pedir("/buscar", { termo: termo })
       .then(function (d) {
+        if (esta !== buscaAtual) return;
+        $("achados").innerHTML = "";
         var achados = d.achados || [];
         if (achados.length === 0) {
           $("buscaEstado").textContent = d.erro || "Nada encontrado com esse nome.";
           return;
         }
-        $("buscaEstado").textContent = "Toque para trazer a letra.";
+        $("buscaEstado").textContent = "Toque para trazer a letra; o + põe no culto.";
         var ul = $("achados");
         achados.forEach(function (a) {
           var li = document.createElement("li");
+          li.className = "com-mais";
           var b = document.createElement("button");
           b.textContent = a.titulo;
           if (a.artista) {
@@ -1528,15 +1591,46 @@
             sp.textContent = a.artista;
             b.appendChild(sp);
           }
-          b.onclick = function () { trazerLetra(a); };
+          // Já está no repertório: tocar abre a que existe, e o + põe essa
+          // no culto — trazer de novo da internet criaria uma cópia.
+          var existente = jaNoRepertorio(a.titulo, a.artista);
+          if (existente) {
+            var ja = document.createElement("span");
+            ja.className = "ja-tem";
+            ja.textContent = "Já está no repertório";
+            b.appendChild(ja);
+            b.onclick = function () { abrirMusica(existente.id); };
+          } else {
+            b.onclick = function () { trazerLetra(a); };
+          }
           li.appendChild(b);
+          li.appendChild(botaoMaisNoCulto(a.titulo, function () {
+            return existente ? porNoCulto("song", existente.id) : trazerParaOCulto(a);
+          }));
           ul.appendChild(li);
         });
       })
       .catch(function (e) {
+        if (esta !== buscaAtual) return;
         if (e.message !== "sessao") $("buscaEstado").textContent = e.message;
-      })
-      .finally(function () { $("buscarWeb").disabled = permissao === "chat"; });
+      });
+  }
+
+  /** O + de um resultado novo: traz a letra, cria a música e a põe no culto. */
+  function trazerParaOCulto(achado) {
+    $("buscaEstado").textContent = "Trazendo “" + achado.titulo + "”…";
+    return pedir("/letra", { fonte: achado.fonte }).then(function (d) {
+      if (!d.letra) throw new Error(d.erro || "Essa página não trouxe a letra.");
+      return pedir("/musica", {
+        titulo: achado.titulo,
+        artista: achado.artista || "",
+        letra: d.letra,
+        noCulto: true,
+      }).then(function () {
+        $("buscaEstado").textContent = "“" + achado.titulo + "” entrou no repertório e no culto.";
+        carregarRepertorio();
+      });
+    });
   }
 
   /** A letra chega no editor, não no repertório: quem confere é quem pediu. */
@@ -1793,8 +1887,7 @@
         texto: $("chatTexto"),
         enviar: $("chatEnviar"),
         erro: $("chatErro"),
-        classeDoBotao: "botao",
-        extras: [$("vozBotao")],
+        anexos: [{ rotulo: "Áudio", icone: "🎤", escolher: function () { $("vozArquivo").click(); } }],
         meuNome: function () { return meuNome; },
         enviarTexto: function (texto, para) {
           return pedirNoChat("/chat", { texto: texto, para: para });
@@ -1814,6 +1907,7 @@
         evento: function () { return false; },
         para: function () { return { tipo: "todos" }; },
         rolar: function () {},
+        erro: function () {},
       };
 
   /** O chat espera { ok, erro }, nunca uma exceção. */
@@ -1935,12 +2029,27 @@
   });
   $("buscaForm").addEventListener("submit", function (ev) {
     ev.preventDefault();
+    clearTimeout(relogioDaBusca);
     var termo = $("buscaWeb").value.trim();
     if (termo.length < 2) {
       $("buscaEstado").textContent = "Escreva ao menos duas letras.";
       return;
     }
     buscarNaInternet(termo);
+  });
+  // Os resultados aparecem enquanto se digita: uma pausa de meio segundo e a
+  // cabine já procura, sem precisar tocar em Buscar.
+  var relogioDaBusca = 0;
+  $("buscaWeb").addEventListener("input", function () {
+    clearTimeout(relogioDaBusca);
+    var termo = $("buscaWeb").value.trim();
+    if (termo.length < 3) {
+      buscaAtual += 1;
+      $("achados").innerHTML = "";
+      $("buscaEstado").textContent = "";
+      return;
+    }
+    relogioDaBusca = setTimeout(function () { buscarNaInternet(termo); }, 600);
   });
 
   document.querySelectorAll("[data-acao]").forEach(function (b) {
@@ -1993,36 +2102,99 @@
     $(id).addEventListener("input", guardarRascunho);
   });
 
-  /** 1,5 MB é o teto do servidor; avisar antes poupa uma ida à rede à toa. */
-  var MAX_VOZ = 1536 * 1024;
+  /**
+   * Recado de voz: a gravação vira WAV (12 kHz, mono) antes de sair.
+   *
+   * O iPhone grava em m4a, o Android em aac, 3gp ou ogg — e nem todo
+   * aparelho toca o formato do outro, nem a cabine. WAV todos tocam, e a
+   * duração sai exata. A conversão é do próprio navegador (Web Audio), que
+   * funciona em HTTP; só o microfone é que exige endereço seguro.
+   */
+  var MAX_SEGUNDOS_DE_VOZ = 120;
+  var TAXA_DA_VOZ = 12000;
+
+  function lerComo(arquivo, jeito) {
+    return new Promise(function (ok, falha) {
+      var leitor = new FileReader();
+      leitor.onload = function () { ok(leitor.result); };
+      leitor.onerror = function () { falha(new Error("Não consegui ler a gravação.")); };
+      leitor[jeito](arquivo);
+    });
+  }
+
+  function wavDe(amostras, taxa) {
+    var bytes = new DataView(new ArrayBuffer(44 + amostras.length * 2));
+    var escrever = function (pos, texto) {
+      for (var i = 0; i < texto.length; i += 1) bytes.setUint8(pos + i, texto.charCodeAt(i));
+    };
+    escrever(0, "RIFF");
+    bytes.setUint32(4, 36 + amostras.length * 2, true);
+    escrever(8, "WAVE");
+    escrever(12, "fmt ");
+    bytes.setUint32(16, 16, true);
+    bytes.setUint16(20, 1, true);
+    bytes.setUint16(22, 1, true);
+    bytes.setUint32(24, taxa, true);
+    bytes.setUint32(28, taxa * 2, true);
+    bytes.setUint16(32, 2, true);
+    bytes.setUint16(34, 16, true);
+    escrever(36, "data");
+    bytes.setUint32(40, amostras.length * 2, true);
+    for (var k = 0; k < amostras.length; k += 1) {
+      var v = Math.max(-1, Math.min(1, amostras[k]));
+      bytes.setInt16(44 + k * 2, v < 0 ? v * 0x8000 : v * 0x7fff, true);
+    }
+    return new Blob([bytes.buffer], { type: "audio/wav" });
+  }
+
+  function vozEmWav(arquivo) {
+    var Contexto = window.AudioContext || window.webkitAudioContext;
+    var Offline = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+    if (!Contexto || !Offline) return Promise.reject(new Error("Este celular não converte áudio."));
+    return lerComo(arquivo, "readAsArrayBuffer").then(function (bruto) {
+      var ctx = new Contexto();
+      return new Promise(function (ok, falha) {
+        // A forma com callbacks é a que todo Safari aceita.
+        ctx.decodeAudioData(bruto, ok, function () {
+          falha(new Error("Não consegui abrir essa gravação. Tente outra, ou grave de novo."));
+        });
+      }).then(function (som) {
+        if (ctx.close) ctx.close();
+        if (som.duration > MAX_SEGUNDOS_DE_VOZ) throw new Error("Recado longo demais: até 2 minutos.");
+        var off = new Offline(1, Math.max(1, Math.ceil(som.duration * TAXA_DA_VOZ)), TAXA_DA_VOZ);
+        var fonte = off.createBufferSource();
+        fonte.buffer = som;
+        fonte.connect(off.destination);
+        fonte.start(0);
+        return new Promise(function (ok) {
+          off.oncomplete = function (e) { ok(e.renderedBuffer); };
+          var r = off.startRendering();
+          if (r && r.then) r.then(ok);
+        }).then(function (pronto) {
+          return lerComo(wavDe(pronto.getChannelData(0), TAXA_DA_VOZ), "readAsDataURL").then(function (url) {
+            return { audio: String(url), segundos: Math.round(som.duration) };
+          });
+        });
+      });
+    });
+  }
 
   $("vozArquivo").addEventListener("change", function () {
     var arquivo = $("vozArquivo").files && $("vozArquivo").files[0];
     $("vozArquivo").value = "";
     if (!arquivo) return;
-    if (arquivo.size > MAX_VOZ) {
-      conexao("off", "Recado longo demais. Grave um mais curto.");
-      return;
-    }
-    var leitor = new FileReader();
-    leitor.onload = function () {
-      var audio = String(leitor.result || "");
-      // A duração o navegador só sabe depois de carregar o áudio; sem ela o
-      // player da cabine mostra o recado do mesmo jeito.
-      var som = document.createElement("audio");
-      som.preload = "metadata";
-      var mandar = function () {
-        var s = Number.isFinite(som.duration) ? Math.round(som.duration) : 0;
-        pedir("/voz", { audio: audio, segundos: s, para: chat.para() }).catch(function (e) {
-          if (e.message !== "sessao") conexao("off", e.message);
-        });
-      };
-      som.onloadedmetadata = mandar;
-      som.onerror = mandar;
-      som.src = audio;
-    };
-    leitor.onerror = function () { conexao("off", "Não consegui ler o recado."); };
-    leitor.readAsDataURL(arquivo);
+    // O aviso fica perto de quem escreve — antes ia para a barra de cima, e
+    // parecia que nada tinha acontecido.
+    chat.erro("Preparando o recado de voz…");
+    vozEmWav(arquivo)
+      .then(function (voz) {
+        chat.erro("Mandando o recado de voz…");
+        return pedir("/voz", { audio: voz.audio, segundos: voz.segundos, para: chat.para() });
+      })
+      .then(function () { chat.erro(""); })
+      .catch(function (e) {
+        chat.erro(e.message === "sessao" ? "" : e.message || "O recado de voz não foi.");
+      });
   });
 
 

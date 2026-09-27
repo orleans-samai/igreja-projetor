@@ -128,10 +128,14 @@ export type EventoRemoto =
   | { tipo: "chat-apagada"; id: string }
   // Tirar um item da programação, ou mandá-lo para o telão, pela aba Culto.
   | { tipo: "culto-remover" | "culto-projetar"; id: string; titulo: string; de: string }
+  // O + do celular: uma música ou mídia vai para o fim da programação.
+  | { tipo: "culto-adicionar"; kind: "song" | "media"; refId: string; titulo: string; de: string }
   | {
       tipo: "musica";
       de: string;
       musica: { id: string | null; titulo: string; artista: string; letra: string };
+      /** O + de um resultado da internet: a música nova já entra no culto. */
+      noCulto?: boolean;
     }
   // Mandar para o telão pelo celular: o item vai pelo nome, não por um botão
   // fixo, e por isso não cabe na lista de ações.

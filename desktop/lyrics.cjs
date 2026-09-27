@@ -9,9 +9,23 @@ const NAVEGADOR = {
   'accept-language': 'pt-BR,pt;q=0.9,en;q=0.6',
   accept: 'text/html,application/json;q=0.9,*/*;q=0.8',
 };
+/**
+ * Por onde o pedido sai. No app, o processo principal entrega aqui o
+ * net.fetch do Electron — a rede do Chromium, com a cara de um navegador de
+ * verdade. O fetch do Node dentro do Electron sai com outra "impressão
+ * digital" de conexão, e o Letras passou a recusar (403) só por isso: a
+ * mesma página abria no navegador e no Node comum. Sem nada entregue (nos
+ * testes), vale o fetch do próprio Node.
+ * @type {typeof fetch | null}
+ */
+let rede = null;
+/** @param {typeof fetch | null} f */
+function usarRede(f) {
+  rede = f;
+}
 /** @param {string} url */
 async function request(url) {
-  const res = await fetch(url, { headers: NAVEGADOR, signal: AbortSignal.timeout(6000), redirect: 'error' });
+  const res = await (rede || fetch)(url, { headers: NAVEGADOR, signal: AbortSignal.timeout(6000), redirect: 'error' });
   if (!res.ok) {
     const erro = /** @type {Error & { status?: number }} */ (new Error(`Fonte indisponível (${res.status})`));
     erro.status = res.status;
@@ -129,4 +143,4 @@ async function load(sourceUrl) {
   }
   return { ok: false, error: `${motivo} Tente outra opção da lista ou cole a letra.` };
 }
-module.exports = { suggest, load, parseJson, decode };
+module.exports = { suggest, load, parseJson, decode, usarRede };

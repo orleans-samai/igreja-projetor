@@ -42,15 +42,17 @@ const MAX_BODY = 4 * 1024;
 /** Letra de música é maior que um comando: um hino comprido passa de 4 KB. */
 const MAX_BODY_MUSICA = 256 * 1024;
 /**
- * Recado falado cabe em 1,5 MB.
+ * Recado falado cabe em 4,5 MB.
  *
- * Trinta segundos de opus dão uns 60 KB; o teto é folgado de propósito, para
- * aceitar o que o navegador do celular escolher gravar, e apertado o
- * bastante para ninguém mandar um culto inteiro pelo chat.
+ * A página do celular converte a gravação para WAV de 12 kHz, mono, antes de
+ * mandar (o m4a do iPhone e o 3gp de muito Android não tocam em todo lugar):
+ * dois minutos disso dão 2,9 MB, e uns 3,9 MB em base64. Com 1,5 MB, recado
+ * de mais de meio minuto era recusado sem ninguém entender por quê. O teto
+ * continua apertado o bastante para ninguém mandar um culto pelo chat.
  */
-const MAX_BODY_VOZ = 1536 * 1024;
-/** Tipos de áudio que um navegador de celular grava. */
-const AUDIOS_ACEITOS = /^data:audio\/(webm|ogg|mp4|mpeg|wav)(;[^,]*)?,/i;
+const MAX_BODY_VOZ = 4608 * 1024;
+/** Tipos de áudio que um navegador de celular grava (a página nova manda sempre WAV). */
+const AUDIOS_ACEITOS = /^data:audio\/(webm|ogg|mp4|x-m4a|aac|mpeg|wav|x-wav|wave)(;[^,]*)?,/i;
 /** Recado mais comprido que isto é conversa, não recado. */
 const MAX_SEGUNDOS_VOZ = 120;
 /**
@@ -1004,6 +1006,7 @@ class RemoteControl {
       if (m === "GET" && p === "/midia") return this._midia(res, url);
       if (m === "GET" && p === "/culto") return this._culto(res, url);
       if (m === "POST" && p === "/culto/remover") return await this._itemDoCulto(req, res, "remover");
+      if (m === "POST" && p === "/culto/adicionar") return await this._adicionarAoCulto(req, res);
       if (m === "POST" && p === "/culto/projetar") return await this._itemDoCulto(req, res, "projetar");
       if (m === "POST" && p === "/projetar") return await this._projetar(req, res);
       if (m === "POST" && p === "/volume") return await this._volume(req, res);
@@ -1308,6 +1311,39 @@ class RemoteControl {
   }
 
   /**
+   * Põe uma música ou uma mídia no fim da programação, pelo + do celular.
+   *
+   * É de editor, como tirar do culto: mexe no roteiro, não no que a igreja
+   * está vendo. Só entra o que a cabine mostrou ao celular — um id inventado
+   * não vira item da programação.
+   */
+  async _adicionarAoCulto(req, res) {
+    let corpo;
+    try {
+      corpo = JSON.parse(await this._lerCorpo(req));
+    } catch {
+      corpo = {};
+    }
+    const disp = this._sessao(corpo.token);
+    if (!disp) {
+      this._json(res, 401, { ok: false, erro: "Sessão expirada. Pareie novamente." });
+      return;
+    }
+    if (!podeFazer(disp.permissao, "editor")) return this._semPermissao(res, "editor");
+    const tipo = String(corpo.tipo || "");
+    const refId = String(corpo.refId || "");
+    const lista = tipo === "song" ? this.repertorio : tipo === "media" ? this.midia : [];
+    const item = lista.find((x) => x && x.id === refId);
+    if (!item) {
+      this._json(res, 404, { ok: false, erro: "Esse item não está mais na biblioteca." });
+      return;
+    }
+    const titulo = String(item.titulo || "");
+    this.onEvento?.({ tipo: "culto-adicionar", kind: tipo, refId, titulo, de: disp.nome });
+    this._json(res, 200, { ok: true, titulo });
+  }
+
+  /**
    * Manda um item da biblioteca para o telão.
    *
    * Não entra na lista de ações porque não é um botão fixo: carrega qual item
@@ -1459,7 +1495,9 @@ class RemoteControl {
       letra,
     };
     // Quem guarda o repertório é a cabine; aqui só se entrega o pedido.
-    this.onEvento?.({ tipo: "musica", musica, de: disp.nome });
+    // `noCulto`: o + de um resultado da internet cria a música e já a põe
+    // na programação — o celular não sabe o id que ela vai ganhar.
+    this.onEvento?.({ tipo: "musica", musica, de: disp.nome, noCulto: corpo.noCulto === true });
     this._json(res, 200, { ok: true });
   }
 

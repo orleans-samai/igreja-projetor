@@ -1673,3 +1673,82 @@ test("as contas e a equipe do aparelho sobrevivem a fechar e abrir o app", async
     await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
   }
 });
+
+test("recado de voz em WAV de dois minutos cabe; um culto inteiro, não", async () => {
+  // A página converte a gravação para WAV de 12 kHz: dois minutos dão uns
+  // 3,9 MB em base64. Com o teto antigo (1,5 MB), meio minuto já era recusado.
+  const ctx = await subir();
+  try {
+    const token = await parear(ctx.base, "Ministério");
+    const mandar = (audio, segundos) =>
+      fetch(ctx.base + "/voz", { method: "POST", body: JSON.stringify({ token, audio, segundos }) }).then(
+        (r) => r.status,
+        () => "cortado",
+      );
+    assert.equal(await mandar("data:audio/wav;base64," + "A".repeat(3_900_000), 118), 200);
+    // O m4a do iPhone, vindo cru de uma página antiga, também entra.
+    assert.equal(await mandar("data:audio/x-m4a;base64,AAAA", 5), 200);
+    // Um culto inteiro não: o servidor recusa ou corta a conexão.
+    const grande = await mandar("data:audio/wav;base64," + "A".repeat(6_000_000), 118);
+    assert.ok(grande === 400 || grande === "cortado", `recado gigante entrou (${grande})`);
+    assert.equal(ctx.rc.chat.filter((m) => m.audio).length, 2);
+  } finally {
+    await derrubar(ctx);
+  }
+});
+
+test("o + do celular põe música ou mídia no culto; é de editor, e id inventado não entra", async () => {
+  const ctx = await subir();
+  const vistos = [];
+  ctx.rc.onEvento = (e) => vistos.push(e);
+  try {
+    ctx.rc.atualizarRepertorio([{ id: "s1", titulo: "Quem É Esse?", artista: "Julliany Souza" }]);
+    ctx.rc.atualizarMidia([{ id: "midia:video:Coisas.mp4", tipo: "video", titulo: "Coisas Maiores" }]);
+    const token = await parear(ctx.base, "Tecladista");
+    const pedir = (corpo) =>
+      fetch(ctx.base + "/culto/adicionar", { method: "POST", body: JSON.stringify({ token, ...corpo }) });
+    // Só chat não mexe no roteiro do culto.
+    assert.equal((await pedir({ tipo: "song", refId: "s1" })).status, 403);
+    ctx.rc.definirPermissao(ctx.rc.listarDispositivos()[0].id, "editor");
+    const r = await pedir({ tipo: "song", refId: "s1" });
+    assert.equal(r.status, 200);
+    assert.equal((await r.json()).titulo, "Quem É Esse?");
+    assert.equal((await pedir({ tipo: "media", refId: "midia:video:Coisas.mp4" })).status, 200);
+    assert.equal((await pedir({ tipo: "song", refId: "inventado" })).status, 404);
+    assert.equal((await pedir({ tipo: "text", refId: "s1" })).status, 404);
+    assert.deepEqual(
+      vistos.filter((e) => e.tipo === "culto-adicionar").map((e) => [e.kind, e.refId, e.titulo, e.de]),
+      [
+        ["song", "s1", "Quem É Esse?", "Tecladista"],
+        ["media", "midia:video:Coisas.mp4", "Coisas Maiores", "Tecladista"],
+      ],
+    );
+  } finally {
+    await derrubar(ctx);
+  }
+});
+
+test("a música trazida da internet pelo + já chega pedindo para entrar no culto", async () => {
+  const ctx = await subir();
+  const vistos = [];
+  ctx.rc.onEvento = (e) => vistos.push(e);
+  try {
+    const token = await parear(ctx.base, "Tecladista");
+    ctx.rc.definirPermissao(ctx.rc.listarDispositivos()[0].id, "editor");
+    const salvar = (extra) =>
+      fetch(ctx.base + "/musica", {
+        method: "POST",
+        body: JSON.stringify({ token, titulo: "Quem É Esse?", artista: "Julliany Souza", letra: "Linha um", ...extra }),
+      });
+    assert.equal((await salvar({ noCulto: true })).status, 200);
+    assert.equal((await salvar({})).status, 200);
+    // Só o true de verdade conta: "sim" num corpo estranho não põe nada no culto.
+    assert.equal((await salvar({ noCulto: "sim" })).status, 200);
+    assert.deepEqual(
+      vistos.filter((e) => e.tipo === "musica").map((e) => e.noCulto),
+      [true, false, false],
+    );
+  } finally {
+    await derrubar(ctx);
+  }
+});

@@ -22,6 +22,12 @@
   var EQUIPES_DE_APARELHO = ["som", "louvor", "pastor"];
   /** "Digitando…" some sozinho se ninguém disser mais nada. */
   var DIGITANDO_MS = 4000;
+  var SVG_CLIPE =
+    '<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
+    'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>';
+  var SVG_SETA =
+    '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" ' +
+    'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg>';
   /** Foto reduzida antes de sair do celular: poucas centenas de KB pela Wi-Fi da igreja. */
   var LADO_DA_FOTO = 1600;
 
@@ -53,12 +59,20 @@
     ".ce-calado{margin:0;font-size:13px;color:var(--perigo,#e5484d)}",
     ".ce-para{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted,#9aa2ad)}",
     ".ce-para select{flex:1;min-width:0}",
-    ".ce-foto{cursor:pointer}",
+    ".ce-compositor{position:relative;display:flex;align-items:flex-end;gap:8px}",
+    ".ce-compositor textarea{flex:1;min-width:0;min-height:44px;max-height:132px;resize:none;line-height:1.35;padding:11px 14px;font-size:16px;border-radius:22px}",
+    ".ce-anexo,.ce-enviar{flex:none;width:44px;height:44px;border-radius:50%;display:grid;place-items:center;padding:0;border:1px solid var(--borda,#23272e);background:var(--elevada,#171a1e);color:var(--muted,#9aa2ad);cursor:pointer}",
+    ".ce-enviar{background:var(--ce-acao,#f0a830);border-color:transparent;color:#15110a}",
+    ".ce-anexo:disabled,.ce-enviar:disabled{opacity:.45}",
+    ".ce-anexo[aria-expanded=true]{color:var(--fg,#f1f3f5);border-color:var(--ce-minha-borda,rgba(240,168,48,.45))}",
+    ".ce-menu-anexo{position:absolute;left:0;bottom:calc(100% + 8px);z-index:5;display:flex;flex-direction:column;min-width:190px;padding:6px;border-radius:14px;background:var(--elevada,#171a1e);border:1px solid var(--borda,#23272e);box-shadow:0 12px 30px rgba(0,0,0,.55)}",
+    ".ce-menu-anexo button{display:flex;align-items:center;gap:12px;padding:12px;border:0;border-radius:10px;background:none;color:var(--fg,#f1f3f5);font:inherit;font-size:16px;text-align:left}",
+    ".ce-menu-anexo button:active{background:rgba(255,255,255,.07)}",
     ".ce-lupa{position:fixed;inset:0;z-index:80;background:rgba(0,0,0,.92);display:grid;place-items:center;padding:12px}",
     ".ce-lupa img{max-width:100%;max-height:100%;border-radius:8px}",
     // Sem isto, o display acima venceria o `hidden` numa página que não o
     // reforça — e a lupa preta cobriria a tela inteira.
-    ".ce-sugestoes[hidden],.ce-calado[hidden],.ce-lupa[hidden]{display:none}",
+    ".ce-sugestoes[hidden],.ce-calado[hidden],.ce-lupa[hidden],.ce-menu-anexo[hidden]{display:none}",
   ].join("\n");
 
   function dobrar(s) {
@@ -112,13 +126,13 @@
      * Monta o chat sobre os elementos que a página já tem.
      *
      * o.lista, o.form, o.texto, o.enviar — da página; o.erro (opcional).
-     * o.classeDoBotao — a classe dos botões da página, para o 📷.
+     * o.anexos — o que o 📎 oferece além da foto: [{ rotulo, icone, escolher() }].
      * o.meuNome() — o nome de quem está aqui (fallback de "minha").
      * o.enviarTexto(texto, para), o.enviarFoto(dataUrl, texto, para) — Promise de { ok, erro }.
      * o.avisarDigitando(para), o.urlDaFoto(arquivo).
      * o.mudarEquipe(equipe) — Promise; ausente, a página não escolhe equipe (dirigente).
      * o.aoRecado(m, { minha, mencionado, destino }) — aviso dourado, selo de não lidas.
-     * o.extras — elementos da página para o compositor (o botão de voz).
+     * (o retorno tem erro(texto): um aviso perto de quem escreve, para a página.)
      */
     montar: function (o) {
       if (!document.getElementById("ce-estilo")) {
@@ -227,18 +241,79 @@
       linhaPara.appendChild(seletorPara);
       o.form.parentNode.insertBefore(linhaPara, o.form);
 
-      var foto = document.createElement("label");
-      foto.className = (o.classeDoBotao ? o.classeDoBotao + " " : "") + "ce-foto";
-      foto.setAttribute("aria-label", "Enviar foto");
-      foto.title = "Enviar foto";
-      foto.textContent = "📷";
+      // ── o teclado: 📎 pequeno, o campo largo, ➤ pequeno no canto ──
+      // O campo ficava espremido entre três botões grandes, e nem o texto de
+      // exemplo cabia. Foto e áudio moram num anexo só, que abre as opções,
+      // como nos mensageiros.
+      o.form.classList.add("ce-compositor");
       var arquivoDeFoto = document.createElement("input");
       arquivoDeFoto.type = "file";
       arquivoDeFoto.accept = "image/*";
       arquivoDeFoto.hidden = true;
-      foto.appendChild(arquivoDeFoto);
-      o.form.insertBefore(foto, o.enviar);
-      (o.extras || []).forEach(function (el) { o.form.insertBefore(el, o.enviar); });
+      o.form.appendChild(arquivoDeFoto);
+
+      var opcoesDeAnexo = [
+        { rotulo: "Foto", icone: "🖼️", escolher: function () { arquivoDeFoto.click(); } },
+      ].concat(o.anexos || []);
+
+      var anexo = document.createElement("button");
+      anexo.type = "button";
+      anexo.className = "ce-anexo";
+      anexo.setAttribute("aria-label", opcoesDeAnexo.length > 1 ? "Anexar foto ou áudio" : "Anexar foto");
+      anexo.setAttribute("aria-haspopup", "menu");
+      anexo.setAttribute("aria-expanded", "false");
+      anexo.innerHTML = SVG_CLIPE;
+      o.form.insertBefore(anexo, o.form.firstChild);
+
+      var menuDeAnexo = document.createElement("div");
+      menuDeAnexo.className = "ce-menu-anexo";
+      menuDeAnexo.setAttribute("role", "menu");
+      menuDeAnexo.hidden = true;
+      opcoesDeAnexo.forEach(function (op) {
+        var b = document.createElement("button");
+        b.type = "button";
+        b.setAttribute("role", "menuitem");
+        var icone = document.createElement("span");
+        icone.setAttribute("aria-hidden", "true");
+        icone.textContent = op.icone;
+        b.appendChild(icone);
+        b.appendChild(document.createTextNode(op.rotulo));
+        // O seletor de arquivo só abre dentro do toque: chamado aqui mesmo,
+        // sem esperar nada antes.
+        b.addEventListener("click", function () {
+          fecharAnexo();
+          op.escolher();
+        });
+        menuDeAnexo.appendChild(b);
+      });
+      o.form.appendChild(menuDeAnexo);
+
+      function fecharAnexo() {
+        menuDeAnexo.hidden = true;
+        anexo.setAttribute("aria-expanded", "false");
+      }
+      anexo.addEventListener("click", function () {
+        var abrir = menuDeAnexo.hidden;
+        menuDeAnexo.hidden = !abrir;
+        anexo.setAttribute("aria-expanded", String(abrir));
+      });
+      document.addEventListener("click", function (ev) {
+        if (menuDeAnexo.hidden || anexo.contains(ev.target) || menuDeAnexo.contains(ev.target)) return;
+        fecharAnexo();
+      });
+
+      // O Enviar vira uma seta pequena no canto; o nome continua "Enviar".
+      o.enviar.className = "ce-enviar";
+      o.enviar.removeAttribute("style");
+      o.enviar.setAttribute("aria-label", "Enviar");
+      o.enviar.innerHTML = SVG_SETA;
+
+      // O campo cresce com o recado, até umas cinco linhas.
+      function ajustarAltura() {
+        o.texto.style.height = "auto";
+        o.texto.style.height = Math.min(o.texto.scrollHeight + 2, 132) + "px";
+      }
+      o.texto.addEventListener("input", ajustarAltura);
 
       var lupa = document.createElement("div");
       lupa.className = "ce-lupa";
@@ -348,8 +423,8 @@
         o.texto.disabled = calada;
         o.enviar.disabled = calada;
         arquivoDeFoto.disabled = calada;
-        foto.style.opacity = calada ? "0.4" : "";
-        (o.extras || []).forEach(function (el) { el.style.opacity = calada ? "0.4" : ""; el.style.pointerEvents = calada ? "none" : ""; });
+        anexo.disabled = calada;
+        if (calada) fecharAnexo();
         if (relogioDoSilencio) clearTimeout(relogioDoSilencio);
         if (calada) relogioDoSilencio = setTimeout(redesenharCalado, Math.min(60000, silenciadoAte - Date.now() + 50));
       }
@@ -570,6 +645,7 @@
           .then(function (r) {
             if (r && r.ok) {
               o.texto.value = "";
+              ajustarAltura();
               sugestoes.hidden = true;
             } else if (r && r.erro) {
               mostrarErro(r.erro);
@@ -715,6 +791,7 @@
         },
         para: paraAtual,
         rolar: rolar,
+        erro: mostrarErro,
       };
     },
   };

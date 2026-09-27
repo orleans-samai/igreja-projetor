@@ -997,6 +997,62 @@ try {
   );
   assert.match(await celular.locator(".ce-presenca").textContent(), /Cabine/);
   assert.equal(await celular.locator('select[aria-label="Para quem vai a mensagem"]').count(), 1);
+  // O teclado: o campo largo, o Enviar pequeno no canto, e foto e áudio num
+  // anexo só, que abre as duas opções.
+  const larguras = await celular.evaluate(() => ({
+    enviar: document.querySelector("#chatEnviar").getBoundingClientRect().width,
+    campo: document.querySelector("#chatTexto").getBoundingClientRect().width,
+    teclado: document.querySelector("#chatForm").getBoundingClientRect().width,
+  }));
+  assert.ok(larguras.enviar <= 48, `o Enviar voltou a ser grande (${larguras.enviar}px)`);
+  assert.ok(larguras.campo >= larguras.teclado * 0.6, `o campo de texto ficou espremido (${larguras.campo}px)`);
+  const anexo = celular.getByRole("button", { name: "Anexar foto ou áudio", exact: true });
+  await anexo.click();
+  const opcoesDoAnexo = await celular.locator('.ce-menu-anexo [role="menuitem"]').allTextContents();
+  assert.deepEqual(
+    opcoesDoAnexo.map((t) => t.replace(/[^\p{L}]/gu, "")),
+    ["Foto", "Áudio"],
+  );
+  await anexo.click();
+  // Recado de voz: a gravação (aqui um WAV de 44,1 kHz e 3 s feito na hora,
+  // como viria de um gravador) vira WAV de 12 kHz no celular e chega à
+  // cabine com a duração certa. Antes, m4a e aac eram recusados calados.
+  await celular.evaluate(() => {
+    const taxa = 44100;
+    const n = taxa * 3;
+    const dv = new DataView(new ArrayBuffer(44 + n * 2));
+    const texto = (pos, t) => {
+      for (let i = 0; i < t.length; i += 1) dv.setUint8(pos + i, t.charCodeAt(i));
+    };
+    texto(0, "RIFF");
+    dv.setUint32(4, 36 + n * 2, true);
+    texto(8, "WAVE");
+    texto(12, "fmt ");
+    dv.setUint32(16, 16, true);
+    dv.setUint16(20, 1, true);
+    dv.setUint16(22, 1, true);
+    dv.setUint32(24, taxa, true);
+    dv.setUint32(28, taxa * 2, true);
+    dv.setUint16(32, 2, true);
+    dv.setUint16(34, 16, true);
+    texto(36, "data");
+    dv.setUint32(40, n * 2, true);
+    for (let i = 0; i < n; i += 1) dv.setInt16(44 + i * 2, Math.round(Math.sin(i / 20) * 12000), true);
+    const dt = new DataTransfer();
+    dt.items.add(new File([dv.buffer], "recado.wav", { type: "audio/wav" }));
+    const campo = document.querySelector("#vozArquivo");
+    campo.files = dt.files;
+    campo.dispatchEvent(new Event("change"));
+  });
+  await page.waitForFunction(
+    () => !!document.querySelector('[aria-label^="Recado falado de Celular do teste, 3 segundos"]'),
+    null,
+    { timeout: 20000 },
+  );
+  assert.match(
+    await page.locator('[aria-label^="Recado falado de Celular do teste"]').last().getAttribute("src"),
+    /^data:audio\/wav;base64,/,
+  );
   await celular.click("#abaLetras");
 
   // Voltar tem que devolver a lista de músicas, não deixar as duas telas.
@@ -1045,6 +1101,33 @@ try {
     { timeout: 5000 },
   );
   assert.deepEqual(await titulosNoCelular(), await titulosDaCabine(), "celular e cabine divergiram depois de excluir");
+
+  // ---- O + do celular põe na programação, e a busca anda enquanto se digita ----
+  // Antes, pôr uma música no culto era só pela cabine, e a busca de letras
+  // esperava o toque em Buscar.
+  await celular.click("#abaLetras");
+  await celular.waitForSelector("#musicas li.com-mais .mais-culto", { timeout: 10000 });
+  const primeiraMusica = (await celular.locator("#musicas li.com-mais > button:first-child").first().innerText())
+    .split("\n")[0]
+    .trim();
+  const antesDoMais = (await titulosDaCabine()).length;
+  await celular.locator("#musicas li.com-mais .mais-culto").first().click();
+  await page.waitForFunction(
+    (n) => document.querySelectorAll("[data-soltar-culto] > li").length === n + 1,
+    antesDoMais,
+    { timeout: 10000 },
+  );
+  assert.equal((await titulosDaCabine()).at(-1), primeiraMusica, "o + pôs outra coisa no culto");
+  await celular.waitForFunction(
+    () => document.querySelector("#musicas li.com-mais .mais-culto")?.textContent === "✓",
+    null,
+    { timeout: 5000 },
+  );
+  // A busca na internet começa sozinha, sem tocar em Buscar.
+  await celular.fill("#buscaWeb", "castelo forte");
+  await celular.waitForFunction(() => document.querySelector("#buscaEstado").textContent.trim() !== "", null, {
+    timeout: 5000,
+  });
 
   await celular.close();
 
@@ -1671,7 +1754,7 @@ try {
   assert.deepEqual(errors, []);
   const disk = JSON.parse(await readFile(path.join(profile, "data", "library.json"), "utf8"));
   assert.ok(disk.values["lumen-v2"]);
-  console.log(`PASS: offline, fonts, Bible (one click on a verse projects it, − and + resize the book, chapter and verse squares, gold buttons in and out of the Bible screen, five versions plus importing a licensed one, its three parts rearranged by dragging and swapping sides, New-Testament-only notice, omitted verse lands on the next), restart persistence, projector, media ranges, preflight, remote control (LAN, entrada por nome, nome fixo na rede, one click from the menu bar beside Permissões, accounts with username and password created in Permissões that sign in already holding their permission while the quick name-only access stays chat-only), update check, review before apply, 1366×768 at 100/125/150% and 800×600, no scroll and exactly one layout at ten sizes from 800×600 to 2560×1440, including every pixel around the 1280 cutover and the chat stays on screen, church logo and name reachable from the menu bar, art studio makes a batch of 8 distinct Konva designs from just a title and a Bible reference, opens one in the editor, saves it and exports PNG and JPEG at exactly 1920×1080 (Full HD is the default), VFX has three modes and a dynamic video becomes a real file in the Vídeos tab, no AI, no YouTube and no Auto-Slide anywhere in the app (and what Auto-Slide downloaded is deleted on start), dirigente page signs in, sends a file, chats and files a notice, and its PowerPoint and PDF become slides in the service programme, video as a theme background, find a song by a lyric excerpt, right-click on lyrics edits or removes, double-click to project, fixed text only in the footer and the verse always centred vertically, phone has one play/pause button, the screen volume and a Sair do vídeo that takes media off the screen but never a lyric, tapping a media item shows its controls right there in a mini-player, the team chat in bubbles with who is online and who each message is for on the phone and the dirigente page, kept per service in a searchable, exportable history in the cabine, every new chat message pops up in gold on the phone, the cabine and the dirigente page (never for its own author), sees the media folder, gets a file imported in the cabine or copied in by Explorer within 5 s, a library row dragged into the service programme, a right-click menu that deletes media, a Culto tab that mirrors the service programme, projects with a tap on the item and deletes (two taps) from it, projects from it, opens a song as a grid of slides and puts one on the screen, and searches lyrics through the cabine. Evidence: ${evidence}`);
+  console.log(`PASS: offline, fonts, Bible (one click on a verse projects it, − and + resize the book, chapter and verse squares, gold buttons in and out of the Bible screen, five versions plus importing a licensed one, its three parts rearranged by dragging and swapping sides, New-Testament-only notice, omitted verse lands on the next), restart persistence, projector, media ranges, preflight, remote control (LAN, entrada por nome, nome fixo na rede, one click from the menu bar beside Permissões, accounts with username and password created in Permissões that sign in already holding their permission while the quick name-only access stays chat-only), update check, review before apply, 1366×768 at 100/125/150% and 800×600, no scroll and exactly one layout at ten sizes from 800×600 to 2560×1440, including every pixel around the 1280 cutover and the chat stays on screen, church logo and name reachable from the menu bar, art studio makes a batch of 8 distinct Konva designs from just a title and a Bible reference, opens one in the editor, saves it and exports PNG and JPEG at exactly 1920×1080 (Full HD is the default), VFX has three modes and a dynamic video becomes a real file in the Vídeos tab, no AI, no YouTube and no Auto-Slide anywhere in the app (and what Auto-Slide downloaded is deleted on start), dirigente page signs in, sends a file, chats and files a notice, and its PowerPoint and PDF become slides in the service programme, video as a theme background, find a song by a lyric excerpt, right-click on lyrics edits or removes, double-click to project, fixed text only in the footer and the verse always centred vertically, phone has one play/pause button, the screen volume and a Sair do vídeo that takes media off the screen but never a lyric, tapping a media item shows its controls right there in a mini-player, a chat keyboard with a wide text field, a small send arrow and one attach button for photo or voice, voice messages converted to WAV on the phone and arriving with their length, the team chat in bubbles with who is online and who each message is for on the phone and the dirigente page, kept per service in a searchable, exportable history in the cabine, every new chat message pops up in gold on the phone, the cabine and the dirigente page (never for its own author), sees the media folder, gets a file imported in the cabine or copied in by Explorer within 5 s, a library row dragged into the service programme, a right-click menu that deletes media, a Culto tab that mirrors the service programme, projects with a tap on the item and deletes (two taps) from it, a + beside songs, media and web results that puts them in the service programme, lyrics search results that appear while typing and mark songs already in the library, projects from it, opens a song as a grid of slides and puts one on the screen, and searches lyrics through the cabine. Evidence: ${evidence}`);
 } finally {
   if (app) {
     // O fim do teste deixa uma música no ar, e a cabine (de propósito)

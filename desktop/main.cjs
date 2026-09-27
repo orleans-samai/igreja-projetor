@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, screen, ipcMain, shell, powerSaveBlocker, protocol, dialog } = require("electron");
+const { app, BrowserWindow, Menu, screen, ipcMain, shell, powerSaveBlocker, protocol, dialog, net } = require("electron");
 const { Storage } = require("./storage.cjs");
 const { resolveAsset } = require("./assets.cjs");
 const media = require("./media.cjs");
@@ -392,6 +392,9 @@ if (!gotLock) {
     // HTTP header values must be ASCII: the accented app name otherwise breaks
     // Electron protocol.handle when Chromium sends its User-Agent.
     app.userAgentFallback = app.userAgentFallback.normalize("NFKD").replace(/[^\x20-\x7E]/g, "");
+    // Letra da internet pela rede do Chromium: pelo fetch do Node dentro do
+    // Electron, o Letras recusava o pedido (403) — no navegador, a mesma página abria.
+    require("./lyrics.cjs").usarRede((url, init) => net.fetch(url, init));
     storage = new Storage(path.join(dataDir, "data"), (message) => dialog.showMessageBox({ message }));
     await storage.init();
     media.init(dataDir);

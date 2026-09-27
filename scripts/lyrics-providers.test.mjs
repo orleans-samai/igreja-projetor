@@ -67,3 +67,14 @@ test('handles a failed source without discarding valid suggestions', async () =>
 test('parses JSONP without evaluating source scripts', () => {
  assert.throws(() => providers.parseJson('LetrasSug({});process.exit()'));
 });
+test('the request goes through the network the app hands over (Chromium, inside Electron)', async () => {
+ // Inside Electron, Node's fetch got 403 from Letras where the browser got the page.
+ const pedidos = [];
+ providers.usarRede(async (url) => { pedidos.push(String(url)); return new Response('<div class="lyric-original">Linha</div>'); });
+ try {
+  const r = await providers.load('https://www.letras.mus.br/artista/musica/');
+  assert.equal(r.ok, true);
+  assert.equal(r.lyrics, 'Linha');
+  assert.deepEqual(pedidos, ['https://www.letras.mus.br/artista/musica/']);
+ } finally { providers.usarRede(null); }
+});
