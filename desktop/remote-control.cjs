@@ -5,6 +5,7 @@ const fsp = require("node:fs/promises");
 const { enderecosLan } = require("./mdns.cjs");
 const { senhaConfere, cozinharSenha, chaveDoUsuario, MAX_CONTAS } = require("./remote-store.cjs");
 const { EQUIPES_DE_APARELHO, paraValido, mencoesNoTexto, podeVer } = require("./chat-regras.cjs");
+const { normalizarPermissoes, pode, podeAlguma, alemDoChat } = require("./permissoes.cjs");
 
 /**
  * Controle remoto pelo celular.
@@ -111,8 +112,8 @@ const ACOES_VALIDAS = new Set([
   "parar-midia",
 ]);
 
-/** Da mais fraca para a mais forte: quem pode X também pode o que vem antes. */
-const PERMISSOES = ["chat", "editor", "controle"];
+/** Tocar, pausar e sair do vídeo também moram no mini-player da aba Mídia. */
+const ACOES_DA_MIDIA = new Set(["tocar", "pausar", "parar-midia"]);
 
 /**
  * Senha de ninguém, para conferir quando o usuário não existe: responder
@@ -123,12 +124,6 @@ let senhaDeNinguem = null;
 function senhaDeMentira() {
   if (!senhaDeNinguem) senhaDeNinguem = cozinharSenha(nodeCrypto.randomUUID());
   return senhaDeNinguem;
-}
-
-function podeFazer(permissao, minima) {
-  const tem = PERMISSOES.indexOf(permissao);
-  const precisa = PERMISSOES.indexOf(minima);
-  return tem >= 0 && precisa >= 0 && tem >= precisa;
 }
 
 /**
@@ -196,7 +191,7 @@ class RemoteControl {
       this.dispositivos.set(d.token, {
         id: d.id,
         nome: d.nome,
-        permissao: d.permissao,
+        permissoes: normalizarPermissoes(d.permissoes ?? d.permissao),
         equipe: d.equipe || "",
         contaId: d.contaId || "",
         criadoEm: d.criadoEm,
@@ -254,8 +249,8 @@ class RemoteControl {
     /** Ligado pelo processo principal: é ele que sabe escrever no disco. */
     this.aoReceberArquivo = null;
     this.chat = [];
-    /** Permissão de quem acabou de parear. A cabine pode afrouxar isto. */
-    this.permissaoPadrao = "chat";
+    /** Permissões de quem acabou de parear: só o chat. A cabine pode afrouxar isto. */
+    this.permissoesPadrao = [];
     /** Ligados pelo processo principal. */
     this.onComando = null;
     this.onEvento = null;
@@ -285,7 +280,7 @@ class RemoteControl {
       .map((d) => ({
         id: d.id,
         nome: d.nome,
-        permissao: d.permissao,
+        permissoes: d.permissoes,
         equipe: d.equipe || "",
         porConta: Boolean(d.contaId),
         criadoEm: d.criadoEm,
@@ -308,7 +303,7 @@ class RemoteControl {
       avisoNome: this.ligado() ? (this.anunciante?.erro ?? null) : null,
       sessoesAtivas: [...this.dispositivos.values()].filter((d) => this._online(d)).length,
       dispositivos: this.listarDispositivos(),
-      permissaoPadrao: this.permissaoPadrao,
+      permissoesPadrao: this.permissoesPadrao,
       contas: this.listarContas(),
     };
   }
@@ -320,7 +315,7 @@ class RemoteControl {
       .map((c) => ({
         id: c.id,
         usuario: c.usuario,
-        permissao: c.permissao,
+        permissoes: c.permissoes,
         equipe: c.equipe,
         criadaEm: c.criadaEm,
         aparelhos: aparelhos.filter((d) => d.contaId === c.id).length,
@@ -350,7 +345,7 @@ class RemoteControl {
     }
     const senha = typeof d.senha === "string" ? d.senha.trim() : "";
     if (senha && senha.length < 4) return falha("A senha precisa de ao menos quatro caracteres.");
-    const permissao = PERMISSOES.includes(d.permissao) ? d.permissao : "chat";
+    const permissoes = normalizarPermissoes(d.permissoes ?? d.permissao);
     const equipe = EQUIPES_DE_APARELHO.includes(d.equipe) ? d.equipe : "";
     if (!existente) {
       if (!senha) return falha("Escolha uma senha para a conta.");
@@ -359,7 +354,7 @@ class RemoteControl {
         id: nodeCrypto.randomUUID(),
         usuario,
         senha: cozinharSenha(senha),
-        permissao,
+        permissoes,
         equipe,
         criadaEm: Date.now(),
       });
@@ -367,7 +362,7 @@ class RemoteControl {
       return { ok: true, status: this.status() };
     }
     existente.usuario = usuario;
-    existente.permissao = permissao;
+    existente.permissoes = permissoes;
     existente.equipe = equipe;
     if (senha) {
       existente.senha = cozinharSenha(senha);
@@ -377,9 +372,9 @@ class RemoteControl {
       if (disp.contaId !== existente.id) continue;
       disp.nome = usuario;
       disp.equipe = equipe;
-      if (disp.permissao !== permissao) {
-        disp.permissao = permissao;
-        this._paraToken(token, { tipo: "permissao", permissao });
+      if (JSON.stringify(disp.permissoes) !== JSON.stringify(permissoes)) {
+        disp.permissoes = [...permissoes];
+        this._paraToken(token, { tipo: "permissoes", permissoes });
       }
     }
     this._salvar();
@@ -516,27 +511,33 @@ class RemoteControl {
     return this.status();
   }
 
-  definirPermissao(id, permissao) {
-    if (!PERMISSOES.includes(permissao)) return this.status();
+  /**
+   * O que um aparelho pode: a lista de partes (culto, mídia, letras,
+   * controle), ["completo"] ou [] — só o chat. O nome antigo de um degrau
+   * ("editor", "controle") ainda é aceito e vira a lista equivalente.
+   */
+  definirPermissao(id, permissoes) {
+    const lista = normalizarPermissoes(permissoes);
     for (const [token, d] of this.dispositivos) {
       if (d.id !== id) continue;
-      d.permissao = permissao;
-      this._paraToken(token, { tipo: "permissao", permissao });
+      d.permissoes = lista;
+      this._paraToken(token, { tipo: "permissoes", permissoes: lista });
       this._salvar();
       break;
     }
     return this.status();
   }
 
-  definirPermissaoPadrao(permissao) {
-    if (PERMISSOES.includes(permissao)) this.permissaoPadrao = permissao;
+  definirPermissaoPadrao(permissoes) {
+    this.permissoesPadrao = normalizarPermissoes(permissoes);
     return this.status();
   }
 
   /** O que a cabine está fazendo agora, para o aparelho mostrar. */
   atualizarEstado(payload) {
     this.ultimoEstado = payload;
-    this._transmitir({ tipo: "estado", estado: payload });
+    // O que está no ar é de quem mexe no culto: quem só tem o chat vê só o chat.
+    this._transmitir({ tipo: "estado", estado: payload }, (d) => alemDoChat(d.permissoes));
   }
 
   /** A lista de músicas que o celular pode abrir para editar. */
@@ -612,7 +613,7 @@ class RemoteControl {
         if (!antigo || m.capa) return m;
         return { ...m, capa: antigo.capa, segundos: m.segundos || antigo.segundos };
       });
-    if (assinaturaDaMidia(this.midia) !== antes) this._transmitir({ tipo: "midia" });
+    if (assinaturaDaMidia(this.midia) !== antes) this._transmitir({ tipo: "midia" }, (d) => pode(d.permissoes, "midia"));
   }
 
   /**
@@ -671,7 +672,7 @@ class RemoteControl {
           etapa: ETAPAS_DO_CULTO.includes(i.etapa) ? i.etapa : "pendente",
         })),
     };
-    if (JSON.stringify(this.culto) !== antes) this._transmitir({ tipo: "culto" });
+    if (JSON.stringify(this.culto) !== antes) this._transmitir({ tipo: "culto" }, (d) => pode(d.permissoes, "culto"));
   }
 
   /**
@@ -887,9 +888,14 @@ class RemoteControl {
     return { ok: true };
   }
 
-  _transmitir(payload) {
+  /** Para todos os aparelhos — ou só para os que `filtro` aprova. */
+  _transmitir(payload, filtro) {
     const linha = `data: ${JSON.stringify(payload)}\n\n`;
-    for (const res of [...this.assinantes.keys()]) {
+    for (const [res, token] of [...this.assinantes]) {
+      if (filtro) {
+        const d = this.dispositivos.get(token);
+        if (!d || !filtro(d)) continue;
+      }
       try {
         res.write(linha);
       } catch {
@@ -958,12 +964,15 @@ class RemoteControl {
   }
 
   _semPermissao(res, precisa) {
+    const qual = {
+      controle: "comandar o telão",
+      letras: "usar as letras",
+      midia: "usar a mídia",
+      culto: "mexer no culto",
+    };
     this._json(res, 403, {
       ok: false,
-      erro:
-        precisa === "controle"
-          ? "Este aparelho ainda não tem permissão para comandar o telão. Peça na cabine."
-          : "Este aparelho ainda não tem permissão para editar letras. Peça na cabine.",
+      erro: `Este aparelho ainda não tem permissão para ${qual[precisa] ?? "isso"}. Peça na cabine.`,
     });
   }
 
@@ -1065,8 +1074,8 @@ class RemoteControl {
     res.write(
       `data: ${JSON.stringify({
         tipo: "inicio",
-        estado: this.ultimoEstado,
-        permissao: disp.permissao,
+        estado: alemDoChat(disp.permissoes) ? this.ultimoEstado : null,
+        permissoes: disp.permissoes,
         nome: disp.nome,
         // O endereço que não vence, para o aparelho poder guardar. Vai como
         // um link de verdade: se abrir neste celular, funciona neste celular
@@ -1130,7 +1139,7 @@ class RemoteControl {
     const disp = {
       id: nodeCrypto.randomUUID(),
       nome,
-      permissao: this.permissaoPadrao,
+      permissoes: [...this.permissoesPadrao],
       criadoEm: agora,
       ultimoVisto: agora,
     };
@@ -1140,7 +1149,7 @@ class RemoteControl {
     this._json(res, 200, {
       ok: true,
       token,
-      permissao: disp.permissao,
+      permissoes: disp.permissoes,
       nome: disp.nome,
     });
   }
@@ -1178,7 +1187,7 @@ class RemoteControl {
     const disp = {
       id: nodeCrypto.randomUUID(),
       nome: conta.usuario,
-      permissao: conta.permissao,
+      permissoes: [...conta.permissoes],
       equipe: conta.equipe,
       contaId: conta.id,
       criadoEm: agora,
@@ -1187,7 +1196,7 @@ class RemoteControl {
     this.dispositivos.set(token, disp);
     this._salvar();
     this.onEvento?.({ tipo: "dispositivos", novo: disp.nome });
-    this._json(res, 200, { ok: true, token, permissao: disp.permissao, nome: disp.nome });
+    this._json(res, 200, { ok: true, token, permissoes: disp.permissoes, nome: disp.nome });
   }
 
   async _comando(req, res) {
@@ -1202,12 +1211,14 @@ class RemoteControl {
       this._json(res, 401, { ok: false, erro: "Sessão expirada. Pareie novamente." });
       return;
     }
-    if (!podeFazer(disp.permissao, "controle")) return this._semPermissao(res, "controle");
-
     const acao = String(corpo.acao || "");
     if (!ACOES_VALIDAS.has(acao)) {
       this._json(res, 400, { ok: false, erro: "Comando desconhecido." });
       return;
+    }
+    const daMidia = ACOES_DA_MIDIA.has(acao);
+    if (daMidia ? !podeAlguma(disp.permissoes, ["midia", "controle"]) : !pode(disp.permissoes, "controle")) {
+      return this._semPermissao(res, daMidia ? "midia" : "controle");
     }
     this.onComando?.(acao);
     this._json(res, 200, { ok: true });
@@ -1219,7 +1230,7 @@ class RemoteControl {
       this._json(res, 401, { ok: false, erro: "Sessão expirada. Pareie novamente." });
       return;
     }
-    if (!podeFazer(disp.permissao, "editor")) return this._semPermissao(res, "editor");
+    if (!pode(disp.permissoes, "letras")) return this._semPermissao(res, "letras");
     this._json(res, 200, {
       ok: true,
       musicas: this.repertorio.map((m) => ({ id: m.id, titulo: m.titulo, artista: m.artista })),
@@ -1232,7 +1243,7 @@ class RemoteControl {
       this._json(res, 401, { ok: false, erro: "Sessão expirada. Pareie novamente." });
       return;
     }
-    if (!podeFazer(disp.permissao, "editor")) return this._semPermissao(res, "editor");
+    if (!pode(disp.permissoes, "letras")) return this._semPermissao(res, "letras");
     const id = String(url.searchParams.get("id") || "");
     const musica = this.repertorio.find((m) => m.id === id);
     if (!musica) {
@@ -1252,7 +1263,7 @@ class RemoteControl {
       this._json(res, 401, { ok: false, erro: "Sessão expirada. Pareie novamente." });
       return;
     }
-    if (!podeFazer(disp.permissao, "editor")) return this._semPermissao(res, "editor");
+    if (!pode(disp.permissoes, "midia")) return this._semPermissao(res, "midia");
     this._json(res, 200, { ok: true, midia: this.midia });
   }
 
@@ -1262,15 +1273,15 @@ class RemoteControl {
       this._json(res, 401, { ok: false, erro: "Sessão expirada. Pareie novamente." });
       return;
     }
-    if (!podeFazer(disp.permissao, "editor")) return this._semPermissao(res, "editor");
+    if (!pode(disp.permissoes, "culto")) return this._semPermissao(res, "culto");
     this._json(res, 200, { ok: true, culto: this.culto });
   }
 
   /**
    * Tirar um item da programação ou mandá-lo para o telão, pelo celular.
    *
-   * Tirar é de editor — mexe no plano, como editar uma letra. Projetar é de
-   * quem tem o controle do telão. O item precisa estar na programação que a
+   * Tirar e projetar são da aba Culto: quem cuida da programação é quem a
+   * põe no ar pelo celular (o controle do telão pode também). O item precisa estar na programação que a
    * cabine mostrou; quem aplica é a cabine, que é dona do culto. Tirar some
    * daqui na hora, para o celular não mostrar um item que já saiu enquanto a
    * cabine confirma.
@@ -1289,8 +1300,7 @@ class RemoteControl {
       this._json(res, 401, { ok: false, erro: "Sessão expirada. Pareie novamente." });
       return;
     }
-    const precisa = acao === "remover" ? "editor" : "controle";
-    if (!podeFazer(disp.permissao, precisa)) return this._semPermissao(res, precisa);
+    if (!podeAlguma(disp.permissoes, ["culto", "controle"])) return this._semPermissao(res, "culto");
     const id = String(corpo.id || "");
     const item = this.culto.itens.find((i) => i.id === id);
     if (!item) {
@@ -1329,9 +1339,11 @@ class RemoteControl {
       this._json(res, 401, { ok: false, erro: "Sessão expirada. Pareie novamente." });
       return;
     }
-    if (!podeFazer(disp.permissao, "editor")) return this._semPermissao(res, "editor");
     const tipo = String(corpo.tipo || "");
     const refId = String(corpo.refId || "");
+    // O + mora na aba Letras (música) e na aba Mídia: é a permissão dela.
+    const parte = tipo === "media" ? "midia" : "letras";
+    if (!pode(disp.permissoes, parte)) return this._semPermissao(res, parte);
     const lista = tipo === "song" ? this.repertorio : tipo === "media" ? this.midia : [];
     const item = lista.find((x) => x && x.id === refId);
     if (!item) {
@@ -1362,13 +1374,15 @@ class RemoteControl {
       this._json(res, 401, { ok: false, erro: "Sessão expirada. Pareie novamente." });
       return;
     }
-    if (!podeFazer(disp.permissao, "controle")) return this._semPermissao(res, "controle");
     const tipo = String(corpo.tipo || "");
     const refId = String(corpo.refId || "");
     if (!TIPOS_PROJETAVEIS.includes(tipo) || !refId) {
       this._json(res, 400, { ok: false, erro: "Item inválido." });
       return;
     }
+    // A estrofe é da aba Letras, a mídia é da aba Mídia; o controle pode tudo.
+    const parte = tipo === "song" ? "letras" : tipo === "media" ? "midia" : "controle";
+    if (!podeAlguma(disp.permissoes, [parte, "controle"])) return this._semPermissao(res, parte);
     // O slide é opcional: sem ele o item vai inteiro, do começo. Com ele, o
     // toque na grade manda a estrofe exata. Índice fora da faixa é recusado
     // em vez de aparado — aparar mandaria para o telão um slide que não é o
@@ -1399,7 +1413,7 @@ class RemoteControl {
       this._json(res, 401, { ok: false, erro: "Sessão expirada. Entre novamente." });
       return;
     }
-    if (!podeFazer(disp.permissao, "controle")) return this._semPermissao(res, "controle");
+    if (!podeAlguma(disp.permissoes, ["midia", "controle"])) return this._semPermissao(res, "midia");
     // `typeof` antes de `Number`: `Number(null)` é zero, e um corpo torto
     // passaria por "mudo" — a igreja perderia o som sem ninguém ter pedido.
     const valor = typeof corpo.valor === "number" ? corpo.valor : NaN;
@@ -1423,7 +1437,7 @@ class RemoteControl {
       this._json(res, 401, { ok: false, erro: "Sessão expirada. Pareie novamente." });
       return;
     }
-    if (!podeFazer(disp.permissao, "editor")) return this._semPermissao(res, "editor");
+    if (!pode(disp.permissoes, "letras")) return this._semPermissao(res, "letras");
     const termo = semControle(String(corpo.termo || "")).trim().slice(0, 120);
     if (termo.length < 2) {
       this._json(res, 400, { ok: false, erro: "Escreva ao menos duas letras." });
@@ -1449,7 +1463,7 @@ class RemoteControl {
       this._json(res, 401, { ok: false, erro: "Sessão expirada. Pareie novamente." });
       return;
     }
-    if (!podeFazer(disp.permissao, "editor")) return this._semPermissao(res, "editor");
+    if (!pode(disp.permissoes, "letras")) return this._semPermissao(res, "letras");
     const fonte = String(corpo.fonte || "");
     if (!/^https?:\/\//.test(fonte)) {
       this._json(res, 400, { ok: false, erro: "Endereço de letra inválido." });
@@ -1476,7 +1490,7 @@ class RemoteControl {
       this._json(res, 401, { ok: false, erro: "Sessão expirada. Pareie novamente." });
       return;
     }
-    if (!podeFazer(disp.permissao, "editor")) return this._semPermissao(res, "editor");
+    if (!pode(disp.permissoes, "letras")) return this._semPermissao(res, "letras");
 
     const titulo = String(corpo.titulo || "").trim();
     const letra = String(corpo.letra || "");
@@ -1575,6 +1589,7 @@ class RemoteControl {
       de,
       kind: r.kind,
       id: r.id,
+      url: r.url || null,
       projetavel: Boolean(r.projetavel),
     });
     this._json(res, 200, { ok: true, nome: r.nome, projetavel: Boolean(r.projetavel) });
@@ -1925,4 +1940,4 @@ class RemoteControl {
   }
 }
 
-module.exports = { RemoteControl, ACOES_VALIDAS, PERMISSOES, podeFazer };
+module.exports = { RemoteControl, ACOES_VALIDAS };

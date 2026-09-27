@@ -5,13 +5,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { cn } from "@/lib/cn";
+import { SeletorDePermissoes } from "@/components/operator/seletor-de-permissoes";
 import {
-  AJUDA_PERMISSAO,
-  ROTULO_PERMISSAO,
   enderecoFixo,
   enderecosDeAcesso,
   type DispositivoRemoto,
-  type PermissaoRemota,
   type RemoteStatus,
 } from "@/lib/remote-control";
 
@@ -21,8 +19,6 @@ const VAZIO: RemoteStatus = {
   enderecos: [],
   sessoesAtivas: 0,
 };
-
-const PERMISSOES_UI: PermissaoRemota[] = ["chat", "editor", "controle"];
 
 
 /**
@@ -81,29 +77,16 @@ export function Dispositivos({
                 <Power />
               </Button>
             </div>
-            <div className="mt-1 flex flex-wrap gap-1">
-              {PERMISSOES_UI.map((p) => (
-                <button
-                  key={p}
-                  type="button"
-                  title={AJUDA_PERMISSAO[p]}
-                  aria-pressed={d.permissao === p}
-                  onClick={async () => {
-                    const bridge = window.lumenDesktop;
-                    if (bridge) aoMudar(await bridge.remoteControlSetPermission(d.id, p));
-                  }}
-                  className={cn(
-                    "rounded-md px-2 py-0.5 text-caption font-medium",
-                    "transition-colors duration-[var(--motion-fast)] ease-[var(--ease-out)]",
-                    "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring",
-                    d.permissao === p
-                      ? "bg-primary text-primary-fg"
-                      : "bg-raised text-muted hover:text-fg",
-                  )}
-                >
-                  {ROTULO_PERMISSAO[p]}
-                </button>
-              ))}
+            <div className="mt-1">
+              <SeletorDePermissoes
+                compacto
+                rotulo={`Permissões de ${d.nome}`}
+                valor={d.permissoes}
+                aoMudar={async (p) => {
+                  const bridge = window.lumenDesktop;
+                  if (bridge) aoMudar(await bridge.remoteControlSetPermission(d.id, p));
+                }}
+              />
             </div>
           </li>
         ))}
@@ -336,28 +319,15 @@ export function RemoteControlDialog({
                   <p className="text-caption font-medium uppercase tracking-wide text-subtle">
                     Ao parear, o aparelho entra como
                   </p>
-                  <div className="mt-1 flex flex-wrap gap-1">
-                    {PERMISSOES_UI.map((p) => (
-                      <button
-                        key={p}
-                        type="button"
-                        aria-pressed={(status.permissaoPadrao ?? "chat") === p}
-                        onClick={async () => {
-                          const d = window.lumenDesktop;
-                          if (d) setStatus(await d.remoteControlSetDefaultPermission(p));
-                        }}
-                        className={cn(
-                          "rounded-md px-2 py-1 text-caption font-medium",
-                          "transition-colors duration-[var(--motion-fast)] ease-[var(--ease-out)]",
-                          "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring",
-                          (status.permissaoPadrao ?? "chat") === p
-                            ? "bg-primary text-primary-fg"
-                            : "bg-elevated text-muted hover:text-fg",
-                        )}
-                      >
-                        {ROTULO_PERMISSAO[p]}
-                      </button>
-                    ))}
+                  <div className="mt-1">
+                    <SeletorDePermissoes
+                      rotulo="Permissões de quem pareia"
+                      valor={status.permissoesPadrao ?? []}
+                      aoMudar={async (p) => {
+                        const d = window.lumenDesktop;
+                        if (d) setStatus(await d.remoteControlSetDefaultPermission(p));
+                      }}
+                    />
                   </div>
                   <p className="mt-1 text-caption text-subtle">
                     Estar na Wi-Fi da igreja não quer dizer que a pessoa deva comandar o telão.

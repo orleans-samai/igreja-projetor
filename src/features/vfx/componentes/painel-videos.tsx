@@ -1,4 +1,4 @@
-import { Copy, FolderOpen, MoreVertical, Pencil, Play, Trash2 } from "lucide-react";
+import { Copy, FolderOpen, MoreVertical, Pencil, Play, Trash2, Wallpaper } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Menu, MenuContent, MenuItem, MenuTrigger } from "@/components/ui/menu";
@@ -8,11 +8,12 @@ import { cn } from "@/lib/cn";
 import { useLumenStore } from "@/store/lumen-store";
 
 /**
- * A aba Vídeos: o que já está pronto e otimizado.
+ * A aba Vídeos da coluna de temas: a pasta de vídeo da igreja, incluindo o
+ * que saiu dos vídeos dinâmicos, como fundo da letra.
  *
- * É a pasta de vídeo da igreja, incluindo o que saiu dos vídeos dinâmicos.
- * Um clique põe no telão — e é daqui que o culto deveria sair, porque um
- * arquivo pronto não gasta processador desenhando efeito a cada quadro.
+ * Um clique põe o vídeo atrás da letra; projetar o vídeo sozinho, na tela
+ * inteira, fica no menu de cada um. A igreja pediu a coluna toda de temas —
+ * antes o clique aqui trocava o que estava no telão, e a letra sumia.
  */
 
 export function PainelVideos({ recarregarEm }: { recarregarEm?: number }) {
@@ -22,6 +23,15 @@ export function PainelVideos({ recarregarEm }: { recarregarEm?: number }) {
   const [rascunho, setRascunho] = useState("");
   const addMedia = useLumenStore((s) => s.addMedia);
   const projetarDaBiblioteca = useLumenStore((s) => s.projetarDaBiblioteca);
+  const usarComoFundo = useLumenStore((s) => s.usarVideoComoFundoDaLetra);
+  const fundoDaLetra = useLumenStore((s) => {
+    const t = s.themes.find((x) => x.id === s.songThemeId);
+    return t?.backgroundType === "video" ? t.backgroundValue : "";
+  });
+  const aplicar = (m: MediaFile) => {
+    const tema = usarComoFundo({ url: m.url, titulo: m.title });
+    toast(`Fundo das letras: “${tema.name}”.`);
+  };
 
   const carregar = useCallback(async () => {
     const r = await listMedia("video");
@@ -98,21 +108,25 @@ export function PainelVideos({ recarregarEm }: { recarregarEm?: number }) {
       {itens.map((m) => (
         <li
           key={m.id}
-          className="group/item flex items-center gap-2 rounded-md p-1.5 shadow-[var(--shadow-border)]"
+          className={cn(
+            "group/item flex items-center gap-2 rounded-md p-1.5",
+            fundoDaLetra === m.url ? "shadow-[0_0_0_1px_var(--color-fg)]" : "shadow-[var(--shadow-border)]",
+          )}
         >
           <button
             type="button"
-            onDoubleClick={() => projetar(m)}
-            onClick={() => projetar(m)}
-            title="Pôr no telão"
+            onClick={() => aplicar(m)}
+            title="Usar como fundo da letra"
+            aria-label={`Usar ${m.title} como fundo da letra`}
+            aria-pressed={fundoDaLetra === m.url}
             className={cn(
-              "grid size-9 shrink-0 place-items-center rounded-md bg-elevated text-muted",
-              "transition-colors duration-[var(--motion-fast)] ease-[var(--ease-out)]",
-              "hover:bg-raised hover:text-fg",
+              "h-9 w-16 shrink-0 overflow-hidden rounded-sm bg-stage",
               "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
             )}
           >
-            <Play className="size-4" />
+            {/* Um quadro parado do vídeo: tocar todos juntos na coluna
+                gastaria o processador da cabine que projeta. */}
+            <video className="size-full object-cover" src={`${m.url}#t=0.5`} muted preload="metadata" aria-hidden />
           </button>
 
           <div className="min-w-0 flex-1">
@@ -147,7 +161,18 @@ export function PainelVideos({ recarregarEm }: { recarregarEm?: number }) {
               </button>
             </MenuTrigger>
             <MenuContent>
-              <MenuItem onSelect={() => projetar(m)}>Pôr no telão</MenuItem>
+              <MenuItem onSelect={() => aplicar(m)}>
+                <span className="flex items-center gap-2">
+                  <Wallpaper className="size-3.5" aria-hidden />
+                  Usar como fundo da letra
+                </span>
+              </MenuItem>
+              <MenuItem onSelect={() => projetar(m)}>
+                <span className="flex items-center gap-2">
+                  <Play className="size-3.5" aria-hidden />
+                  Pôr no telão, na tela inteira
+                </span>
+              </MenuItem>
               <MenuItem
                 onSelect={() => {
                   setRascunho(m.title);

@@ -23,6 +23,11 @@ npm run test:desktop:smoke
   `artifacts/desktop-smoke/`.
 - Mudou comportamento visível? Acrescente a prova no smoke e na linha `PASS`
   do fim dele.
+- No smoke as janelas ficam escondidas (`show: false`): sem quadros, a
+  rolagem suave, o `requestAnimationFrame` e o `ResizeObserver` não andam. É
+  o mesmo que acontece com a cabine coberta pelo telão num monitor só — o
+  que precisa acontecer de qualquer jeito não pode depender só deles (ver a
+  garantia da rolagem em `slide-grid.tsx`).
 - Teste novo em `src/**/*.test.ts` precisa entrar **nas três listas** do
   `package.json` (`test`, `test:app`, `test:core`). Testes rodam no Node
   (`--experimental-strip-types`): importe com caminho relativo e extensão
@@ -45,11 +50,16 @@ npm run test:desktop:smoke
   (`BUILTIN_BIBLES` em `src/lib/bible.ts`, licenças em
   `public/bible/LICENCAS.txt`). NVI, NAA, ARA e outras com direitos autorais
   **não** entram; a igreja importa as que tem licença.
-- **Apresentações:** .pptx, .ppsx, .ppt, .pps e .odp são desenhados pelo
-  PowerPoint (se houver) ou pelo LibreOffice (`desktop/conversor-office.cjs`)
-  em PDF, e dali seguem o caminho do PDF (pdf.js, 1920 px) — sai como no
-  PowerPoint, sem animações. Sem nenhum dos dois, .pptx/.ppsx caem no leitor
-  simplificado (`desktop/pptx.cjs`, texto e imagem) e a cabine avisa.
+- **Apresentações:** .pptx, .ppsx, .ppt, .pps e .odp são desenhados, nesta
+  ordem, pelo PowerPoint (se houver; usa o que já está aberto e só o fecha
+  se não sobrou apresentação do usuário) ou pelo LibreOffice
+  (`desktop/conversor-office.cjs`) em PDF, e dali seguem o caminho do PDF
+  (pdf.js, 1920 px) — sai como no PowerPoint, sem animações. Sem nenhum dos
+  dois, .pptx/.ppsx são desenhados pelo próprio Lúmen (`src/lib/pptx/`:
+  tema, herança do layout e do mestre, texto) e, se nem isso der, caem no
+  leitor simplificado (`desktop/pptx.cjs`, texto e imagem). A cabine sempre
+  diz quem desenhou. Arquivo com senha é recusado na hora: o PowerPoint
+  nunca pode ficar parado esperando senha no meio do culto.
 - **Telão:** a letra fica sempre centralizada na vertical
   (`SlideBody` em `src/components/slide/slide-renderer.tsx`,
   `margensCentradas`). Não reintroduza alinhamento em cima/embaixo.
@@ -62,6 +72,11 @@ npm run test:desktop:smoke
   por voz do Modo operador continuam. As gavetas antigas do YouTube e do
   Auto-Slide são aceitas e descartadas na leitura (`APOSENTADAS` em
   `desktop/storage.cjs`) — recurso que sai deixa a chave lá, nunca a recusa.
+- **Som:** só o telão toca. A prévia da cabine fica sempre muda — o som
+  saía por duas fontes. "Tirar vídeo" tira a imagem e deixa o som seguindo
+  por baixo da letra (`src/lib/trilha.ts`): é o mesmo `<video>` que continua
+  tocando, por isso o áudio não corta. Outra mídia com som no ar encerra a
+  trilha.
 
 ## Arquitetura e segurança
 
@@ -82,9 +97,15 @@ npm run test:desktop:smoke
   usuário e senha (conta criada em Permissões, já com permissão e equipe).
   A senha da conta só existe cozida (scrypt) em `remote.json`; o `status`
   que vai para a janela nunca leva nem a cozida.
-- O servidor do celular (`desktop/remote-control.cjs`) confere permissão em
-  toda rota (`chat` < `editor` < `controle`) e avisa mudanças pelo fluxo SSE
-  sem carregar dados que exijam permissão.
+- **Permissões por parte** (`desktop/permissoes.cjs`, espelhado em
+  `src/lib/permissoes.ts` — os testes conferem os dois): só chat (lista
+  vazia), `culto`, `midia`, `letras`, `controle`, uma ou mais, ou `completo`.
+  O celular mostra só as abas que a pessoa pode usar; quem só tem o chat vê
+  só o chat. Os degraus antigos (`chat`, `editor`, `controle`) do
+  `remote.json` são convertidos na leitura, nunca recusados.
+- O servidor do celular (`desktop/remote-control.cjs`) confere a permissão
+  em toda rota e avisa mudanças pelo fluxo SSE sem carregar dados que
+  exijam permissão (o que está no ar só vai para quem tem mais que o chat).
 
 ## Armadilhas do Windows
 

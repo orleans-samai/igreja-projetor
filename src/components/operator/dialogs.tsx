@@ -806,7 +806,7 @@ export function DisplayDialog({
  * Ajustar véu e corpo de letra às cegas obrigava a olhar o telão a cada
  * arrasto; o número ao lado resolve sem ocupar linha extra.
  */
-function Slider({
+export function Slider({
   label,
   value,
   min,

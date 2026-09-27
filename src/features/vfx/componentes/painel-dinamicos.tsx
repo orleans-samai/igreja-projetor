@@ -1,24 +1,30 @@
-import { Copy, MoreVertical, Plus, Trash2 } from "lucide-react";
+import { Copy, MoreVertical, Plus, Trash2, Wallpaper } from "lucide-react";
 import { useState } from "react";
+import { toast } from "sonner";
 import type { VfxQualidade } from "../tipos.ts";
 import { Button } from "@/components/ui/button";
 import { Menu, MenuContent, MenuItem, MenuTrigger } from "@/components/ui/menu";
 import { Empty } from "@/components/ui/panel";
 import { cn } from "@/lib/cn";
+import { listMedia } from "@/lib/media-library";
+import { useLumenStore } from "@/store/lumen-store";
 import { MODELOS } from "../padroes.ts";
 import { limitarPorQualidade } from "../qualidade.ts";
 import { nomeNovoProjeto, useVfxStore } from "../store.ts";
 import { useQualidadeEfetiva } from "../usar-vfx.ts";
 import type { VfxProjeto } from "../tipos.ts";
 import { EditorVfx } from "./editor-vfx.tsx";
+import { SalvarVideoDialog } from "./salvar-video.tsx";
 import { TelaVfx } from "./tela-vfx.tsx";
 
 /**
- * A aba Vídeos dinâmicos.
+ * A aba Dinâmicos da coluna de temas: as composições de VFX como fundo da
+ * letra.
  *
  * Mostra os modelos prontos e as composições da casa. Cada cartão roda de
  * verdade, na miniatura: um quadro parado não diz se o efeito ficou bom, e
- * escolher pelo nome é escolher no escuro.
+ * escolher pelo nome é escolher no escuro. Um clique no cartão põe a
+ * composição atrás da letra; editar fica no menu.
  *
  * Só aparece com o VFX ligado ou automático. Desligado, a coluna explica
  * em vez de sumir — quem desligou pode ter esquecido.
@@ -35,6 +41,36 @@ export function PainelDinamicos({ aoSalvarVideo }: { aoSalvarVideo?: () => void 
   const excluir = useVfxStore((s) => s.excluir);
   const { qualidade } = useQualidadeEfetiva();
   const [mostrarModelos, setMostrarModelos] = useState(false);
+  const usarComoFundo = useLumenStore((s) => s.usarVideoComoFundoDaLetra);
+  const fundoDaLetra = useLumenStore((s) => {
+    const t = s.themes.find((x) => x.id === s.songThemeId);
+    return t?.backgroundType === "video" ? t.backgroundValue : "";
+  });
+  // A composição que ainda não virou vídeo passa por "Salvar como vídeo" e
+  // vira fundo assim que o arquivo fica pronto.
+  const [gravandoId, setGravandoId] = useState<string | null>(null);
+  const gravando = projetos.find((p) => p.id === gravandoId) ?? null;
+
+  /**
+   * O fundo da letra é o vídeo que a composição gerou, não a composição
+   * desenhada ao vivo: um arquivo pronto não gasta o processador da cabine
+   * desenhando efeito a cada quadro enquanto ela projeta o culto.
+   */
+  const usarComoFundoDaLetra = async (p: VfxProjeto) => {
+    const gerado = p.gerados[0];
+    if (!gerado) {
+      setGravandoId(p.id);
+      return;
+    }
+    const pasta = await listMedia("video");
+    const arquivo = pasta.items?.find((v) => v.id === gerado.id);
+    if (!arquivo) {
+      toast(`O vídeo de “${p.nome}” não está mais na pasta de vídeo. Salve como vídeo de novo.`);
+      return;
+    }
+    const tema = usarComoFundo({ url: arquivo.url, titulo: p.nome });
+    toast(`Fundo das letras: “${tema.name}”.`);
+  };
 
   if (modo === "desligado") {
     return (
@@ -102,7 +138,9 @@ export function PainelDinamicos({ aoSalvarVideo }: { aoSalvarVideo?: () => void 
               key={p.id}
               projeto={p}
               qualidade={qualidade}
+              ativo={p.gerados.some((g) => urlDoGerado(g.id) === fundoDaLetra)}
               onAbrir={() => abrir(p.id)}
+              onUsarComoFundo={() => void usarComoFundoDaLetra(p)}
               onDuplicar={() => duplicar(p.id)}
               onExcluir={() => {
                 if (
@@ -116,6 +154,22 @@ export function PainelDinamicos({ aoSalvarVideo }: { aoSalvarVideo?: () => void 
             />
           ))}
         </ul>
+      )}
+
+      {gravando && (
+        <SalvarVideoDialog
+          projeto={gravando}
+          open
+          onOpenChange={(v) => {
+            if (!v) setGravandoId(null);
+          }}
+          aoSalvar={() => {
+            aoSalvarVideo?.();
+            // O projeto guardado agora tem o vídeo novo em `gerados`.
+            const salvo = useVfxStore.getState().projetos.find((x) => x.id === gravando.id);
+            if (salvo) void usarComoFundoDaLetra(salvo);
+          }}
+        />
       )}
 
       {aberto && (
@@ -132,16 +186,26 @@ export function PainelDinamicos({ aoSalvarVideo }: { aoSalvarVideo?: () => void 
   );
 }
 
+/** O endereço do vídeo que uma composição gerou (`midia:video:<arquivo>`). */
+function urlDoGerado(id: string): string {
+  const prefixo = "midia:video:";
+  return id.startsWith(prefixo) ? `lumen://app/__midia/video/${encodeURIComponent(id.slice(prefixo.length))}` : "";
+}
+
 function Cartao({
   projeto,
   qualidade,
+  ativo,
   onAbrir,
+  onUsarComoFundo,
   onDuplicar,
   onExcluir,
 }: {
   projeto: VfxProjeto;
   qualidade: VfxQualidade;
+  ativo: boolean;
   onAbrir: () => void;
+  onUsarComoFundo: () => void;
   onDuplicar: () => void;
   onExcluir: () => void;
 }) {
@@ -151,13 +215,18 @@ function Cartao({
   const [sobre, setSobre] = useState(false);
   return (
     <li
-      className="flex items-center gap-2 rounded-md p-1.5 shadow-[var(--shadow-border)]"
+      className={cn(
+        "flex items-center gap-2 rounded-md p-1.5",
+        ativo ? "shadow-[0_0_0_1px_var(--color-fg)]" : "shadow-[var(--shadow-border)]",
+      )}
       onMouseEnter={() => setSobre(true)}
       onMouseLeave={() => setSobre(false)}
     >
       <button
         type="button"
-        onClick={onAbrir}
+        onClick={onUsarComoFundo}
+        aria-pressed={ativo}
+        title="Usar como fundo da letra"
         className={cn(
           "flex min-w-0 flex-1 items-center gap-2 rounded-md text-left",
           "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
@@ -188,6 +257,12 @@ function Cartao({
         </MenuTrigger>
         <MenuContent>
           <MenuItem onSelect={onAbrir}>Abrir no editor</MenuItem>
+          <MenuItem onSelect={onUsarComoFundo}>
+            <span className="flex items-center gap-2">
+              <Wallpaper className="size-3.5" aria-hidden />
+              Usar como fundo da letra
+            </span>
+          </MenuItem>
           <MenuItem onSelect={onDuplicar}>
             <span className="flex items-center gap-2">
               <Copy className="size-3.5" aria-hidden />

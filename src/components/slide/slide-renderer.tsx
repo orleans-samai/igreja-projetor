@@ -10,7 +10,9 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { ChurchLogo } from "@/components/logo";
-import { tamanhoValido } from "@/lib/logo-no-telao";
+import { fundoDaLogoValido, tamanhoValido, type FundoDaLogo as FundoDaLogoEscolhido } from "@/lib/logo-no-telao";
+import { avisoPisca, corpoDoAviso } from "@/lib/aviso-no-telao";
+import { midiaDoTelao, type MidiaNoTelao } from "@/lib/trilha";
 import { stripChords } from "@/lib/lyrics";
 import { fontScaleDe } from "@/lib/font-scale";
 import { relatarLocal } from "@/lib/media-local";
@@ -175,10 +177,82 @@ function AlertBar({ alert }: { alert: LiveFrame["alert"] }) {
         alert.position === "top" ? "top-10" : "bottom-10",
       )}
     >
-      <div className="rounded-md bg-accent px-8 py-3 font-display text-3xl font-semibold text-accent-fg">
+      {/* Em pixels do telão de 1920×1080, que depois se encaixa na tela: o
+          mesmo tamanho no projetor, no palco e na prévia da cabine. */}
+      <div
+        data-aviso-no-telao
+        className={cn(
+          "max-w-full rounded-[0.18em] bg-accent px-[0.7em] py-[0.28em] text-center font-display font-semibold leading-tight text-accent-fg [overflow-wrap:anywhere]",
+          avisoPisca(alert.piscar) && "lumen-aviso-pisca",
+        )}
+        style={{ fontSize: corpoDoAviso(alert.tamanho) }}
+      >
         {alert.text}
       </div>
     </div>
+  );
+}
+
+function MidiaDoQuadro({
+  midia,
+  fitMode,
+  variant,
+}: {
+  midia: MidiaNoTelao;
+  fitMode: FitMode;
+  variant: "audience" | "stage" | "preview";
+}) {
+  if (!midia.mediaSrc) return null;
+  return (
+    <MediaStage
+      src={midia.mediaSrc}
+      type={midia.mediaType}
+      title={midia.title}
+      fitMode={fitMode}
+      variant={variant}
+      acao={midia.mediaAcao}
+      loop={midia.mediaLoop}
+      cmdSeq={midia.mediaSeq}
+      tempo={midia.mediaTempo}
+      busca={midia.mediaBusca}
+      velocidade={midia.mediaVelocidade}
+      volume={midia.mediaVolume}
+      mudo={midia.mediaMudo}
+      oculta={midia.oculta}
+    />
+  );
+}
+
+/**
+ * O vídeo ou a imagem que a igreja escolheu para ficar atrás da logo.
+ *
+ * Ocupa a tela inteira, por cima do fundo do tema e sem o véu escuro dele:
+ * é a abertura do culto que a igreja montou, e escurecê-la estragaria o que
+ * ela escolheu. Em modo leve, o vídeo não roda — é o mesmo acordo do vídeo
+ * de fundo do tema.
+ */
+function FundoDaLogo({ fundo, leve }: { fundo: FundoDaLogoEscolhido; leve: boolean }) {
+  if (fundo.tipo === "video") {
+    if (leve) return null;
+    return (
+      <video
+        key={fundo.url}
+        data-fundo-da-logo="video"
+        className="absolute inset-0 size-full object-cover"
+        src={fundo.url}
+        autoPlay
+        loop
+        muted
+        playsInline
+      />
+    );
+  }
+  return (
+    <div
+      data-fundo-da-logo="imagem"
+      className="absolute inset-0 bg-cover bg-center bg-no-repeat"
+      style={{ backgroundImage: `url("${fundo.url}")` }}
+    />
   );
 }
 
@@ -415,12 +489,15 @@ function MediaStage({
   velocidade,
   volume,
   mudo,
+  oculta = false,
 }: {
   src: string;
   type?: "image" | "video" | "audio";
   title: string;
   fitMode: FitMode;
   variant: "audience" | "stage" | "preview";
+  /** Toca sem aparecer: é o som de um vídeo que saiu da tela ("Tirar vídeo"). */
+  oculta?: boolean;
   /** Comando de reprodução do vídeo — ver `Deck.mediaAcao`. */
   acao?: "tocar" | "pausar" | "parar";
   loop?: boolean;
@@ -460,16 +537,18 @@ function MediaStage({
   }, [velocidade, type]);
 
   /**
-   * O som sai daqui, e só daqui.
+   * O som sai do telão, e só dele.
    *
-   * O palco é monitor de quem canta: se ele também tocasse, a igreja ouviria
-   * o mesmo louvor duas vezes, defasado. Por isso o palco entra sempre mudo,
-   * e o volume que o operador (ou o celular) escolhe vale para a plateia.
+   * O palco é monitor de quem canta, e a prévia da cabine é espelho para o
+   * operador: se qualquer um dos dois também tocasse, a igreja ouviria o
+   * mesmo louvor duas vezes, defasado. A prévia nascia muda, mas este efeito
+   * tirava o mudo dela — era o "som saindo por duas fontes" ao tocar vídeo.
+   * O volume que o operador (ou o celular) escolhe vale para a plateia.
    */
   useEffect(() => {
     const el = videoRef.current;
     if (!el || (type !== "video" && type !== "audio")) return;
-    el.muted = variant === "stage" || mudo === true;
+    el.muted = variant !== "audience" || mudo === true;
     el.volume = Math.min(1, Math.max(0, volume ?? 1));
   }, [volume, mudo, type, variant]);
 
@@ -584,7 +663,8 @@ function MediaStage({
         onProgress={(e) => relatarAndando(e.currentTarget)}
         onLoadedMetadata={(e) => relatar(e.currentTarget, e.currentTarget.paused ? "pausado" : "tocando")}
         onSeeked={(e) => relatar(e.currentTarget, e.currentTarget.paused ? "pausado" : "tocando")}
-        className={cn("absolute inset-0 z-10 size-full", fit)}
+        data-midia-oculta={oculta || undefined}
+        className={cn("absolute inset-0 z-10 size-full", fit, oculta && "invisible")}
       />
     );
   }
@@ -623,6 +703,8 @@ export function SlideCanvas({
   // nada mudar.
   const isLogo = status === "logo" || (status === "idle" && frame.settings.showIdleLogo !== false);
   const hideText = status === "black" || status === "clear" || isLogo;
+  const fundoDaLogo = fundoDaLogoValido(frame.settings.logoFundo);
+  const midia = midiaDoTelao(frame.deck, frame.trilha, hideText);
   const showWallpaper = frame.settings.showWallpaper !== false && !frame.settings.lowPerformance;
   const baseFill = frame.settings.baseFill ?? "dark";
   const fitMode = frame.settings.fitMode ?? "contain";
@@ -681,9 +763,13 @@ export function SlideCanvas({
 
       {status === "black" && <div className="absolute inset-0 z-30 bg-stage" />}
 
+      {isLogo && fundoDaLogo && <FundoDaLogo fundo={fundoDaLogo} leve={!!frame.settings.lowPerformance} />}
+
+      {/* Sem quadro escurecido em volta: a igreja pediu só a logo sobre o
+          fundo que escolheu. O véu antigo deixava um retângulo apagado no
+          meio da imagem de fundo. */}
       {isLogo && (
         <div className="relative z-10 flex h-full items-center justify-center">
-          <div className="absolute inset-0 bg-stage/55" />
           <div className="relative">
             <ChurchLogo
               url={frame.logoUrl}
@@ -718,24 +804,14 @@ export function SlideCanvas({
       )}
 
       {/* Mídia ocupa o telão inteiro. Antes o baralho de mídia caía no
-          desenho de texto e o culto via o nome do arquivo escrito na tela. */}
-      {!hideText && frame.deck?.kind === "media" && frame.deck.mediaSrc && (
-        <MediaStage
-          src={frame.deck.mediaSrc}
-          type={frame.deck.mediaType}
-          title={frame.deck.title}
-          fitMode={fitMode}
-          variant={variant}
-          acao={frame.deck.mediaAcao}
-          loop={frame.deck.mediaLoop}
-          cmdSeq={frame.deck.mediaSeq}
-          tempo={frame.deck.mediaTempo}
-          busca={frame.deck.mediaBusca}
-          velocidade={frame.deck.mediaVelocidade}
-          volume={frame.deck.mediaVolume}
-          mudo={frame.deck.mediaMudo}
-        />
+          desenho de texto e o culto via o nome do arquivo escrito na tela.
+          A principal é a única com som, e mora sempre neste mesmo lugar:
+          "Tirar vídeo" e "Mostrar vídeo" trocam só a visibilidade, e o som
+          não corta nem recomeça. */}
+      {midia.principal && (
+        <MidiaDoQuadro key="midia-principal" midia={midia.principal} fitMode={fitMode} variant={variant} />
       )}
+      {midia.imagem && <MidiaDoQuadro key="midia-imagem" midia={midia.imagem} fitMode={fitMode} variant={variant} />}
 
       {status === "presenting" && frame.deck?.kind === "countdown" && (
         <div className="relative z-10 h-full text-stage-fg" style={textStyle(paint)}>

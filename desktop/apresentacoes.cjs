@@ -170,6 +170,27 @@ async function lerPdf(nome) {
 }
 
 /**
+ * Os bytes de um .pptx/.ppsx recebido, para a janela desenhar os slides
+ * quando o computador não tem PowerPoint nem LibreOffice.
+ *
+ * Quem abre o ZIP e lê o XML é a janela, que não toca em disco nem em
+ * nada além destes bytes: um arquivo malfeito vindo da rede estoura lá,
+ * longe do processo que pode escrever no computador da igreja.
+ */
+async function lerPptxBruto(nome) {
+  const caminho = recebido(nome);
+  const ext = caminho ? path.extname(caminho).toLowerCase() : "";
+  if (!caminho || (ext !== ".pptx" && ext !== ".ppsx")) {
+    return { ok: false, error: "Apresentação fora da pasta de recebidos." };
+  }
+  try {
+    return { ok: true, bytes: await lerComTeto(caminho) };
+  } catch (erro) {
+    return { ok: false, error: erro?.message || "Não consegui ler a apresentação." };
+  }
+}
+
+/**
  * Grava as páginas que a janela desenhou de um PDF.
  *
  * O desenho é na janela porque é lá que o pdf.js tem canvas; a gravação é
@@ -227,6 +248,7 @@ module.exports = {
   converterParaPdf,
   conversor,
   lerPdf,
+  lerPptxBruto,
   salvarPaginas,
   resolver,
   remover,

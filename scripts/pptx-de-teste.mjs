@@ -18,6 +18,7 @@ const REL = "http://schemas.openxmlformats.org/officeDocument/2006/relationships
 const TIPO = "application/vnd.openxmlformats-officedocument";
 const XML = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
 
+/** @param {[string, string, string][]} lista */
 function rels(lista) {
   return (
     XML +
@@ -62,10 +63,12 @@ const LAYOUT =
   `<p:sldLayout ${NS} type="blank" preserve="1"><p:cSld name="Em branco">${ARVORE_VAZIA}</p:cSld>` +
   "<p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sldLayout>";
 
+/** @param {string} texto */
 function escapar(texto) {
   return String(texto).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
+/** @param {{ texto: string, fundo: string }} s */
 function slide({ texto, fundo }) {
   return (
     XML +
@@ -91,6 +94,7 @@ export function pptxDeVerdade(slides, { exibicao = false } = {}) {
   const principal = exibicao
     ? `${TIPO}.presentationml.slideshow.main+xml`
     : `${TIPO}.presentationml.presentation.main+xml`;
+  /** @type {Record<string, string>} */
   const partes = {
     "[Content_Types].xml":
       XML +
@@ -115,7 +119,7 @@ export function pptxDeVerdade(slides, { exibicao = false } = {}) {
     "ppt/_rels/presentation.xml.rels": rels([
       ["rId1", "slideMaster", "slideMasters/slideMaster1.xml"],
       ["rId2", "theme", "theme/theme1.xml"],
-      ...slides.map((_, i) => [`rId${i + 3}`, "slide", `slides/slide${i + 1}.xml`]),
+      ...slides.map((_, i) => /** @type {[string, string, string]} */ ([`rId${i + 3}`, "slide", `slides/slide${i + 1}.xml`])),
     ]),
     "ppt/slideMasters/slideMaster1.xml": MESTRE,
     "ppt/slideMasters/_rels/slideMaster1.xml.rels": rels([

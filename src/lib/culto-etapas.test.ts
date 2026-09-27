@@ -1,6 +1,6 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { etapaDoItem, indiceNaProgramacao } from "./culto-etapas.ts";
+import { enviadoPor, etapaDoItem, indiceNaProgramacao } from "./culto-etapas.ts";
 
 describe("etapaDoItem", () => {
   test("antes do culto começar, o primeiro item é o próximo", () => {
@@ -42,6 +42,14 @@ describe("indiceNaProgramacao", () => {
   test("item só do repertório não está na programação", () => {
     assert.equal(indiceNaProgramacao(itens, "song", "s9"), -1);
     assert.equal(indiceNaProgramacao([], "song", "s1"), -1);
+  });
+
+  test("o que veio de fora diz de quem veio, no lugar do Pendente", () => {
+    assert.equal(enviadoPor("Pastor Elias"), "Enviado por Pastor Elias");
+    assert.equal(enviadoPor("  Pastor   Elias "), "Enviado por Pastor Elias");
+    assert.equal(enviadoPor(""), null);
+    assert.equal(enviadoPor(undefined), null);
+    assert.ok((enviadoPor("x".repeat(200)) ?? "").length <= "Enviado por ".length + 40);
   });
 
   test("id igual em acervos diferentes não se confunde", () => {

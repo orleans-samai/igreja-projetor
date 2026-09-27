@@ -22,18 +22,18 @@ export type AcaoRemota =
   | "parar-midia";
 
 /**
- * O que cada aparelho pode fazer.
- *
- * Em ordem: quem pode editar também conversa, quem controla também edita. O
- * PIN prova que a pessoa está na sala; a permissão é o que a cabine concede
- * depois de ver o nome do aparelho na lista.
+ * O que cada aparelho pode fazer: partes (culto, mídia, letras, controle),
+ * uma ou mais, ou o acesso completo — ver `./permissoes.ts`. A lista vazia
+ * é só o chat. A permissão é o que a cabine concede depois de ver o nome do
+ * aparelho na lista.
  */
-export type PermissaoRemota = "chat" | "editor" | "controle";
+export type { CapacidadeRemota, PermissoesRemotas } from "./permissoes";
+import type { PermissoesRemotas } from "./permissoes";
 
 export interface DispositivoRemoto {
   id: string;
   nome: string;
-  permissao: PermissaoRemota;
+  permissoes: PermissoesRemotas;
   /** A equipe que o aparelho escolheu no chat (ou a da conta dele). */
   equipe?: "" | "som" | "louvor" | "pastor";
   /** Entrou com usuário e senha, não pelo acesso rápido. */
@@ -50,7 +50,7 @@ export interface DispositivoRemoto {
 export interface ContaRemota {
   id: string;
   usuario: string;
-  permissao: PermissaoRemota;
+  permissoes: PermissoesRemotas;
   equipe: "" | "som" | "louvor" | "pastor";
   criadaEm: number;
   /** Quantos aparelhos entraram com ela. */
@@ -62,7 +62,7 @@ export interface ContaParaSalvar {
   usuario: string;
   /** Obrigatória na conta nova; vazia ao mudar, mantém a antiga. */
   senha?: string;
-  permissao: PermissaoRemota;
+  permissoes: PermissoesRemotas;
   equipe: "" | "som" | "louvor" | "pastor";
 }
 
@@ -169,6 +169,8 @@ export type EventoRemoto =
       de?: string;
       kind: "video" | "audio" | "image" | null;
       id: string | null;
+      /** Endereço do arquivo na pasta de mídia, quando é mídia. */
+      url?: string | null;
       projetavel: boolean;
     };
 
@@ -232,18 +234,6 @@ export interface MidiaRemota {
   segundos?: number;
 }
 
-export const ROTULO_PERMISSAO: Record<PermissaoRemota, string> = {
-  controle: "Controle completo",
-  editor: "Editor",
-  chat: "Só chat",
-};
-
-export const AJUDA_PERMISSAO: Record<PermissaoRemota, string> = {
-  controle: "Muda slides e comanda a projeção",
-  editor: "Cria e edita músicas",
-  chat: "Só envia mensagens",
-};
-
 export interface RemoteStatus {
   ligado: boolean;
   porta: number | null;
@@ -256,7 +246,7 @@ export interface RemoteStatus {
   temSenhaDirigente?: boolean;
   sessoesAtivas: number;
   dispositivos?: DispositivoRemoto[];
-  permissaoPadrao?: PermissaoRemota;
+  permissoesPadrao?: PermissoesRemotas;
   contas?: ContaRemota[];
 }
 

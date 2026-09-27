@@ -64,6 +64,25 @@
     min-height: 100dvh;
     padding: max(14px, env(safe-area-inset-top)) 14px calc(16px + env(safe-area-inset-bottom));
   }
+  /* Conectado, a página tem a altura da tela: marca, "No ar" e abas ficam
+     parados, e só o painel de baixo rola. Rolar a página inteira levava
+     embora as abas e o que está no ar, e para trocar de aba era preciso
+     subir tudo de novo. 100vh primeiro: celular antigo não conhece dvh. */
+  .app.fixa {
+    height: 100vh; height: 100dvh; min-height: 0;
+    overflow: hidden;
+    padding-bottom: 0;
+  }
+  .app.fixa > #conectado > .cabecalho,
+  .app.fixa > #conectado > .noar,
+  .app.fixa > #conectado > .abas { flex: none; }
+  .app.fixa .painel {
+    overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
+    /* A barra de rolagem encosta na borda da tela, não no meio do conteúdo. */
+    margin: 0 -14px; padding: 2px 14px calc(16px + env(safe-area-inset-bottom));
+  }
+  /* No chat quem rola é a conversa; o campo de escrever fica embaixo. */
+  .app.fixa #painelChat { overflow: hidden; padding-bottom: calc(10px + env(safe-area-inset-bottom)); }
 
   /* ── cabeçalho ───────────────────────────────────────────────── */
   .cabecalho { display: flex; align-items: center; gap: 10px; }
@@ -786,11 +805,27 @@
 
   var es = null;
   var token = null;
-  var permissao = "chat";
+  // O que este aparelho pode, por parte: "culto", "midia", "letras",
+  // "controle", ou "completo" (tudo). Vazio é só o chat.
+  var permissoes = [];
+  function pode(parte) {
+    return permissoes.indexOf("completo") >= 0 || permissoes.indexOf(parte) >= 0;
+  }
+  // A lista nova, ou o degrau antigo de uma cabine ainda não atualizada.
+  function lerPermissoes(p) {
+    if (p && typeof p === "object" && typeof p.length === "number") return p.slice(0);
+    if (p === "controle") return ["completo"];
+    if (p === "editor") return ["culto", "midia", "letras"];
+    return [];
+  }
+  // Tocar, pausar e sair do vídeo também são do mini-player da aba Mídia.
+  var ACOES_DA_MIDIA = { tocar: true, pausar: true, "parar-midia": true };
   var reconectarEm = null;
   var tentativas = 0;
   var naoLidas = 0;
   var abaAtual = "controle";
+  /** O aparelho já tinha alguma parte além do chat? */
+  var tinhaAlemDoChat = false;
   var musicaAberta = null;
   /** A música cuja grade de slides está aberta, e o tema dela. */
   var musicaEmSlides = null;
@@ -804,6 +839,9 @@
 
   function mostrarPareamento(msg) {
     fecharFluxo();
+    // A tela de entrar rola inteira: com o teclado aberto, o botão precisa
+    // poder subir.
+    document.querySelector(".app").className = "app";
     $("conectado").hidden = true;
     $("pareamento").hidden = false;
     $("erroPin").textContent = msg || "";
@@ -813,6 +851,7 @@
   function mostrarPainel() {
     $("pareamento").hidden = true;
     $("conectado").hidden = false;
+    document.querySelector(".app").className = "app fixa";
   }
 
   function fecharFluxo() {
@@ -888,13 +927,14 @@
       if (d.nome) $("quem").textContent = "Você entrou como " + d.nome + ".";
       if (d.nome) meuNome = d.nome;
       mostrarEnderecoFixo(d.enderecoFixo);
-      definirPermissao(d.permissao);
+      definirPermissoes(d.permissoes !== undefined ? d.permissoes : d.permissao);
       aplicarEstado(d.estado);
       chat.inicio(d);
       return;
     }
     if (d.tipo === "estado") return aplicarEstado(d.estado);
-    if (d.tipo === "permissao") return definirPermissao(d.permissao);
+    if (d.tipo === "permissoes") return definirPermissoes(d.permissoes);
+    if (d.tipo === "permissao") return definirPermissoes(d.permissao);
     // Recados, quem está no chat, quem digita, recado apagado, silêncio.
     if (chat.evento(d)) return;
     // A pasta de mídia da cabine mudou: quem está olhando a lista vê o
@@ -937,27 +977,60 @@
     bloco.hidden = false;
   }
 
-  function definirPermissao(p) {
-    permissao = p || "chat";
-    var podeControlar = permissao === "controle";
-    var podeEditar = permissao === "controle" || permissao === "editor";
-    $("semControle").hidden = podeControlar;
-    $("semEditor").hidden = podeEditar;
-    document.querySelectorAll("[data-acao]").forEach(function (b) { b.disabled = !podeControlar; });
-    $("novaMusica").disabled = !podeEditar;
-    $("edSalvar").disabled = !podeEditar;
-    $("semMidia").hidden = podeEditar;
-    document.querySelectorAll(".volume-telao, .mudo-telao").forEach(function (el) {
-      el.disabled = !podeControlar;
+  function definirPermissoes(p) {
+    permissoes = lerPermissoes(p);
+    var podeControlar = pode("controle");
+    var podeLetras = pode("letras");
+    var podeMidia = pode("midia");
+    var podeCulto = pode("culto");
+    // Só aparece a aba que o aparelho pode usar. Com só o chat, nem a barra
+    // de abas nem o "No ar": a tela é só o chat, sem aba bloqueada pedindo
+    // licença na cabine.
+    var abas = { controle: podeControlar, letras: podeLetras, midia: podeMidia, culto: podeCulto, chat: true };
+    var ids = { controle: "abaControle", letras: "abaLetras", midia: "abaMidia", culto: "abaCulto", chat: "abaChat" };
+    var visiveis = 0;
+    Object.keys(abas).forEach(function (k) {
+      $(ids[k]).hidden = !abas[k];
+      if (abas[k]) visiveis += 1;
     });
-    $("buscarWeb").disabled = !podeEditar;
-    $("buscaWeb").disabled = !podeEditar;
+    var alemDoChat = visiveis > 1;
+    document.querySelector(".abas").hidden = !alemDoChat;
+    document.querySelector(".abas").style.gridTemplateColumns = "repeat(" + visiveis + ", 1fr)";
+    $("noar").hidden = !alemDoChat;
+    $("semControle").hidden = podeControlar;
+    $("semEditor").hidden = podeLetras;
+    document.querySelectorAll("[data-acao]").forEach(function (b) {
+      b.disabled = !(podeControlar || (podeMidia && ACOES_DA_MIDIA[b.dataset.acao]));
+    });
+    $("novaMusica").disabled = !podeLetras;
+    $("edSalvar").disabled = !podeLetras;
+    $("semMidia").hidden = podeMidia;
+    document.querySelectorAll(".volume-telao, .mudo-telao").forEach(function (el) {
+      el.disabled = !(podeControlar || podeMidia);
+    });
+    $("buscarWeb").disabled = !podeLetras;
+    $("buscaWeb").disabled = !podeLetras;
+    $("semCulto").hidden = podeCulto;
+    // Quem só tinha o chat estava nele por falta de escolha. Liberada uma
+    // parte, a tela vai para ela — é para usar que o operador liberou —, a
+    // não ser que a pessoa esteja escrevendo um recado agora.
+    var estavaSoNoChat = !tinhaAlemDoChat;
+    tinhaAlemDoChat = alemDoChat;
+    if (estavaSoNoChat && alemDoChat && abaAtual === "chat" && document.activeElement !== $("chatTexto")) {
+      trocarAba(["controle", "letras", "midia", "culto"].filter(function (k) { return abas[k]; })[0]);
+      return;
+    }
+    // A aba em que o aparelho estava pode ter acabado de sumir: vai para a
+    // primeira que ele ainda pode usar — o chat, no mínimo.
+    if (!abas[abaAtual]) {
+      trocarAba(["controle", "letras", "midia", "culto", "chat"].filter(function (k) { return abas[k]; })[0]);
+      return;
+    }
     // A grade já desenhada precisa saber: o operador acabou de liberar (ou
-    // tirar) o controle, e os quadradinhos ligam ou apagam com isso.
+    // tirar) a parte, e os quadradinhos ligam ou apagam com isso.
     if (musicaEmSlides) desenharSlides();
-    if (podeEditar && abaAtual === "letras" && !musicaAberta && !musicaEmSlides) carregarRepertorio();
-    if (podeEditar && abaAtual === "midia") carregarMidia();
-    $("semCulto").hidden = podeEditar;
+    if (podeLetras && abaAtual === "letras" && !musicaAberta && !musicaEmSlides) carregarRepertorio();
+    if (podeMidia && abaAtual === "midia") carregarMidia();
     if (abaAtual === "culto") carregarCulto(true);
   }
 
@@ -1096,7 +1169,7 @@
         token = d.token;
         localStorage.setItem(CHAVE, d.token);
         if (nome) localStorage.setItem(CHAVE_NOME, nome);
-        definirPermissao(d.permissao);
+        definirPermissoes(d.permissoes !== undefined ? d.permissoes : d.permissao);
         tentativas = 0;
         conectar();
       })
@@ -1149,7 +1222,7 @@
         token = d.token;
         localStorage.setItem(CHAVE, d.token);
         localStorage.setItem(CHAVE_USUARIO, usuario);
-        definirPermissao(d.permissao);
+        definirPermissoes(d.permissoes !== undefined ? d.permissoes : d.permissao);
         tentativas = 0;
         conectar();
       })
@@ -1207,7 +1280,7 @@
   var relogioDoArmado = 0;
 
   function carregarCulto(silencioso) {
-    if (permissao !== "editor" && permissao !== "controle") {
+    if (!pode("culto")) {
       $("cultoLista").innerHTML = "";
       $("cultoNome").textContent = "—";
       $("cultoEstado").textContent = "";
@@ -1268,7 +1341,7 @@
       // O item inteiro é o botão: tocar projeta. O "Projetar" à parte era um
       // alvo pequeno para acertar no meio do culto, e a igreja pediu que o
       // toque no item bastasse. Sem o controle do telão, o item é só leitura.
-      var controla = permissao === "controle";
+      var controla = pode("culto");
       var principal = document.createElement(controla ? "button" : "span");
       principal.className = "principal";
       if (controla) {
@@ -1383,7 +1456,7 @@
   }
 
   function carregarRepertorio() {
-    if (permissao !== "editor" && permissao !== "controle") return;
+    if (!pode("letras")) return;
     fetch("/repertorio?token=" + encodeURIComponent(token))
       .then(function (r) { return r.json(); })
       .then(function (d) {
@@ -1424,7 +1497,7 @@
   var midiaTipo = "todos";
 
   function carregarMidia(silencioso) {
-    if (permissao !== "editor" && permissao !== "controle") return;
+    if (!pode("midia")) return;
     if (!silencioso) $("midiaEstado").textContent = "Lendo a pasta…";
     fetch("/midia?token=" + encodeURIComponent(token))
       .then(function (r) { return r.json(); })
@@ -1496,7 +1569,7 @@
     lista.slice(0, 300).forEach(function (m) {
       var li = document.createElement("li");
       var b = document.createElement("button");
-      b.disabled = permissao !== "controle";
+      b.disabled = !pode("midia");
       b.dataset.id = m.id;
 
       var capa = document.createElement("span");
@@ -1554,7 +1627,7 @@
       $("midiaEstado").textContent = midia.length
         ? "Nada com esse nome"
         : "A pasta está vazia — ou ainda não foi escolhida na cabine";
-    } else if (permissao !== "controle") {
+    } else if (!pode("midia")) {
       $("midiaEstado").textContent = lista.length + " de " + midia.length + " · só para ver";
     } else {
       $("midiaEstado").textContent = lista.length + " de " + midia.length;
@@ -1721,7 +1794,7 @@
     $("slidesQuantos").textContent =
       slides.length === 1 ? "1 slide" : slides.length + " slides";
     $("slidesEstado").textContent = slides.length
-      ? (permissao === "controle"
+      ? (pode("letras")
           ? "Toque numa estrofe para pôr no telão."
           : "Só para ver — peça controle na cabine.")
       : "Esta música ainda não tem letra.";
@@ -1731,7 +1804,7 @@
     slides.forEach(function (sl, i) {
       var li = document.createElement("li");
       var b = document.createElement("button");
-      b.disabled = permissao !== "controle";
+      b.disabled = !pode("letras");
       if (i === slideNoAr) b.setAttribute("aria-current", "true");
 
       var quadro = document.createElement("span");

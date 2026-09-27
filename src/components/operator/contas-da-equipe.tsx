@@ -3,53 +3,16 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/cn";
-import {
-  AJUDA_PERMISSAO,
-  NOME_DA_EQUIPE,
-  ROTULO_PERMISSAO,
-  type ContaParaSalvar,
-  type ContaRemota,
-  type PermissaoRemota,
-  type RemoteStatus,
-} from "@/lib/remote-control";
+import { SeletorDePermissoes } from "@/components/operator/seletor-de-permissoes";
+import { type PermissoesRemotas } from "@/lib/permissoes";
+import { NOME_DA_EQUIPE, type ContaParaSalvar, type ContaRemota, type RemoteStatus } from "@/lib/remote-control";
 
 type EquipeDaConta = ContaRemota["equipe"];
 
-const PERMISSOES: PermissaoRemota[] = ["chat", "editor", "controle"];
 const EQUIPES: EquipeDaConta[] = ["", "som", "louvor", "pastor"];
 
 function nomeDaEquipe(e: EquipeDaConta): string {
   return e ? NOME_DA_EQUIPE[e] : "Sem equipe";
-}
-
-function Permissoes({
-  valor,
-  aoEscolher,
-}: {
-  valor: PermissaoRemota;
-  aoEscolher: (p: PermissaoRemota) => void;
-}) {
-  return (
-    <>
-      {PERMISSOES.map((p) => (
-        <button
-          key={p}
-          type="button"
-          title={AJUDA_PERMISSAO[p]}
-          aria-pressed={valor === p}
-          onClick={() => aoEscolher(p)}
-          className={cn(
-            "rounded-md px-2 py-0.5 text-caption font-medium",
-            "transition-colors duration-[var(--motion-fast)] ease-[var(--ease-out)]",
-            "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring",
-            valor === p ? "bg-primary text-primary-fg" : "bg-raised text-muted hover:text-fg",
-          )}
-        >
-          {ROTULO_PERMISSAO[p]}
-        </button>
-      ))}
-    </>
-  );
 }
 
 function Equipe({
@@ -89,7 +52,7 @@ function LinhaDaConta({
   const [trocando, setTrocando] = useState(false);
   const [senha, setSenha] = useState("");
   const [confirmando, setConfirmando] = useState(false);
-  const atual = { id: conta.id, usuario: conta.usuario, permissao: conta.permissao, equipe: conta.equipe };
+  const atual = { id: conta.id, usuario: conta.usuario, permissoes: conta.permissoes, equipe: conta.equipe };
 
   // Apagar pede um segundo clique, que vale por alguns segundos: é a conta de
   // uma pessoa, e os aparelhos dela saem junto.
@@ -132,7 +95,12 @@ function LinhaDaConta({
         </Button>
       </div>
       <div className="mt-1 flex flex-wrap items-center gap-1">
-        <Permissoes valor={conta.permissao} aoEscolher={(p) => void salvar({ ...atual, permissao: p })} />
+        <SeletorDePermissoes
+          compacto
+          rotulo={`Permissões de ${conta.usuario}`}
+          valor={conta.permissoes}
+          aoMudar={(p) => void salvar({ ...atual, permissoes: p })}
+        />
         <Equipe
           valor={conta.equipe}
           rotulo={`Equipe de ${conta.usuario}`}
@@ -183,7 +151,7 @@ function NovaConta({ salvar }: { salvar: (dados: ContaParaSalvar) => Promise<boo
   const [usuario, setUsuario] = useState("");
   const [senha, setSenha] = useState("");
   // Começa no mínimo: dar mais é escolha do operador, com a pessoa na frente.
-  const [permissao, setPermissao] = useState<PermissaoRemota>("chat");
+  const [permissoes, setPermissoes] = useState<PermissoesRemotas>([]);
   const [equipe, setEquipe] = useState<EquipeDaConta>("");
   const pronto = usuario.trim().length >= 2 && senha.trim().length >= 4;
 
@@ -193,10 +161,10 @@ function NovaConta({ salvar }: { salvar: (dados: ContaParaSalvar) => Promise<boo
       onSubmit={async (ev: FormEvent) => {
         ev.preventDefault();
         if (!pronto) return;
-        if (await salvar({ usuario: usuario.trim(), senha: senha.trim(), permissao, equipe })) {
+        if (await salvar({ usuario: usuario.trim(), senha: senha.trim(), permissoes, equipe })) {
           setUsuario("");
           setSenha("");
-          setPermissao("chat");
+          setPermissoes([]);
           setEquipe("");
         }
       }}
@@ -222,8 +190,8 @@ function NovaConta({ salvar }: { salvar: (dados: ContaParaSalvar) => Promise<boo
         />
       </div>
       <div className="flex flex-wrap items-center gap-1">
-        <span className="mr-0.5 text-caption text-subtle">Entra como</span>
-        <Permissoes valor={permissao} aoEscolher={setPermissao} />
+        <span className="mr-0.5 text-caption text-subtle">Entra com</span>
+        <SeletorDePermissoes compacto rotulo="Permissões da nova conta" valor={permissoes} aoMudar={setPermissoes} />
         <Equipe valor={equipe} rotulo="Equipe da nova conta" aoEscolher={setEquipe} />
       </div>
       <div className="flex items-center gap-2">

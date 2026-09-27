@@ -1,33 +1,36 @@
+import { Plus } from "lucide-react";
 import { useState } from "react";
+import { CriarTemaDialog } from "@/components/operator/criar-tema";
 import { Empty } from "@/components/ui/panel";
 import { Segmented } from "@/components/ui/segmented";
 import { PainelDinamicos } from "@/features/vfx/componentes/painel-dinamicos";
 import { PainelVideos } from "@/features/vfx/componentes/painel-videos";
 import { useVfxStore } from "@/features/vfx/store";
 import { themeSwatch } from "@/lib/theme-swatch";
+import { destinoDoTema } from "@/lib/destino-do-tema";
 import { cn } from "@/lib/cn";
 import type { Theme } from "@/lib/types";
 import { useLumenStore } from "@/store/lumen-store";
 
 /**
- * Coluna da direita: temas, vídeos prontos e vídeos dinâmicos.
+ * Coluna da direita: os temas — o que vai atrás da letra.
  *
- * Já foi "Anotações", com quatro coisas sem relação dentro. Depois foi só
- * temas, e a coluna fazia uma coisa bem feita. Agora são três abas, e a
- * razão é que as três respondem à mesma pergunta na hora do culto: o que
- * vai atrás da letra?
+ * Já foi "Anotações", com quatro coisas sem relação dentro. Depois foi
+ * temas, vídeos para projetar e vídeos dinâmicos, cada aba fazendo uma
+ * coisa diferente com o clique. A igreja pediu a coluna inteira de temas,
+ * dividida pelo tipo de fundo: imagens, vídeos e dinâmicos (o VFX). Em
+ * qualquer uma das três, um clique põe aquele fundo atrás da letra.
  *
- * "Vídeos" e "Vídeos dinâmicos" ficam lado a lado porque são o antes e o
- * depois da mesma coisa — a composição se monta na segunda e se projeta da
- * primeira. "Temas" continua onde estava, com o mesmo filtro de sempre:
- * trinta e sete fundos da casa não iam sumir por causa de uma aba nova.
+ * "Criar tema" fica ao lado do título, em dourado, porque criar o próprio
+ * fundo era a coisa mais escondida do app.
  */
 
-type Aba = "temas" | "videos" | "dinamicos";
+type Aba = "imagens" | "videos" | "dinamicos";
 
 export function ThemeRail() {
   const themes = useLumenStore((s) => s.themes);
-  const [aba, setAba] = useState<Aba>("temas");
+  const [aba, setAba] = useState<Aba>("imagens");
+  const [criando, setCriando] = useState(false);
   const vfxLigado = useVfxStore((s) => s.modo) !== "desligado";
   // Mudar de aba para recarregar a pasta: quando um vídeo acaba de ser
   // renderizado, ele tem que aparecer sem o operador procurar como atualizar.
@@ -37,14 +40,26 @@ export function ThemeRail() {
     <aside className="flex h-full min-h-0 flex-col bg-surface">
       <div className="panel-head">
         <h2>
-          {aba === "temas" ? "Temas" : aba === "videos" ? "Vídeos" : "Vídeos dinâmicos"}{" "}
-          {aba === "temas" && <span className="tnum text-subtle">{themes.length}</span>}
+          Temas{" "}
+          {aba === "imagens" && (
+            <span className="tnum text-subtle">{themes.filter((t) => t.backgroundType !== "video").length}</span>
+          )}
         </h2>
+        {/* Botão simples, não o <Button>: a variante pintaria o fundo por
+            cima do dourado. */}
+        <button
+          type="button"
+          onClick={() => setCriando(true)}
+          className="ouro ml-auto inline-flex h-6 shrink-0 items-center gap-1 rounded-md px-2 text-caption font-semibold whitespace-nowrap focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
+        >
+          <Plus className="size-3" aria-hidden /> Criar tema
+        </button>
       </div>
+      <CriarTemaDialog open={criando} onOpenChange={setCriando} />
 
       <div className="border-b border-border p-2">
         <Segmented
-          label="O que mostrar na coluna"
+          label="Tipo de fundo do tema"
           full
           value={aba}
           onChange={(v) => {
@@ -54,17 +69,16 @@ export function ThemeRail() {
           // Sem ícone e com "Dinâmicos" no lugar de "Vídeos dinâmicos": a
           // coluna tem uns duzentos pixels, e com o nome inteiro as duas
           // abas de vídeo apareciam as duas como "Víde…" — indistinguíveis
-          // justamente uma da outra. O nome completo vive no cabeçalho do
-          // painel e no cursor parado em cima.
+          // justamente uma da outra. O nome completo fica no cursor parado.
           items={[
-            { value: "temas", label: "Temas", title: "Temas da casa" },
-            { value: "videos", label: "Vídeos", title: "Vídeos prontos para projetar" },
+            { value: "imagens", label: "Imagens", title: "Temas com fundo de imagem ou cor" },
+            { value: "videos", label: "Vídeos", title: "Vídeos da pasta como fundo da letra" },
             {
               value: "dinamicos",
               label: "Dinâmicos",
               disabled: !vfxLigado,
               title: vfxLigado
-                ? "Vídeos dinâmicos: o editor de VFX"
+                ? "Vídeos dinâmicos (VFX) como fundo da letra"
                 : "Os vídeos dinâmicos estão desativados para melhorar o desempenho.",
             },
           ]}
@@ -72,7 +86,7 @@ export function ThemeRail() {
       </div>
 
       <div className="lumen-scroll min-h-0 flex-1 overflow-y-auto p-2">
-        {aba === "temas" && <Temas />}
+        {aba === "imagens" && <Temas />}
         {aba === "videos" && <PainelVideos recarregarEm={recarga} />}
         {aba === "dinamicos" &&
           (vfxLigado ? (
@@ -88,20 +102,27 @@ export function ThemeRail() {
   );
 }
 
-/** Os temas da casa, com o filtro que sempre existiu. */
+/**
+ * Os temas de imagem e cor, com o filtro que sempre existiu. Os de vídeo
+ * moram na aba Vídeos, junto do arquivo que os originou.
+ */
 function Temas() {
   const themes = useLumenStore((s) => s.themes);
   const songThemeId = useLumenStore((s) => s.songThemeId);
   const bibleThemeId = useLumenStore((s) => s.bibleThemeId);
   const applyThemeLive = useLumenStore((s) => s.applyThemeLive);
+  const live = useLumenStore((s) => s.live);
   const preview = useLumenStore((s) => s.preview);
   const [scope, setScope] = useState<"todos" | "tipo">("todos");
 
-  const kind = preview?.kind === "bible" ? "bible" : "songs";
+  // O mesmo critério do clique: o tema aceso é o que está no telão agora.
+  const kind = destinoDoTema(live, preview);
+  const noTelao = kind === "bible" ? bibleThemeId : songThemeId;
+  const deImagem = themes.filter((t) => t.backgroundType !== "video");
   const shown =
     scope === "tipo"
-      ? themes.filter((t) => t.applyTo === "both" || t.applyTo === kind)
-      : themes;
+      ? deImagem.filter((t) => t.applyTo === "both" || t.applyTo === kind)
+      : deImagem;
 
   return (
     <div className="grid gap-2">
@@ -126,7 +147,7 @@ function Temas() {
             <ThemeThumb
               key={theme.id}
               theme={theme}
-              active={theme.id === songThemeId || theme.id === bibleThemeId}
+              active={theme.id === noTelao}
               onClick={() => applyThemeLive(theme.id)}
             />
           ))}
@@ -163,7 +184,19 @@ export function ThemeThumb({
           : "shadow-[var(--shadow-border)] hover:shadow-[var(--shadow-border-hover)]",
       )}
     >
-      <div className={cn("aspect-video w-full", swatch.className)} style={swatch.style} />
+      {theme.backgroundType === "video" ? (
+        // Um quadro parado do vídeo, sem tocar: vinte temas de vídeo rodando
+        // juntos na coluna gastariam o processador da cabine que projeta.
+        <video
+          className="aspect-video w-full bg-stage object-cover"
+          src={`${theme.backgroundValue}#t=0.5`}
+          muted
+          preload="metadata"
+          aria-hidden
+        />
+      ) : (
+        <div className={cn("aspect-video w-full", swatch.className)} style={swatch.style} />
+      )}
       {!compact && (
         <p
           className={cn(

@@ -420,13 +420,17 @@ async function receber(nomeBruto, dados) {
     }
   }
   await fsp.writeFile(destino, dados);
+  const final = path.basename(destino);
   return {
     ok: true,
-    nome: path.basename(destino),
+    nome: final,
     caminho: destino,
     kind,
     projetavel: Boolean(kind),
-    id: kind ? idFor(kind, path.basename(destino)) : null,
+    id: kind ? idFor(kind, final) : null,
+    // O mesmo endereço que a listagem da pasta dá: a cabine registra a
+    // mídia com ele antes de pôr o item no culto.
+    url: kind ? `lumen://app/__midia/${kind}/${encodeURIComponent(final)}` : null,
   };
 }
 

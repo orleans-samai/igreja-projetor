@@ -5,6 +5,7 @@ import {
   TAMANHO_PADRAO,
   alturaDaLogo,
   corpoDoNome,
+  fundoDaLogoValido,
   tamanhoValido,
 } from "./logo-no-telao.ts";
 
@@ -39,5 +40,27 @@ describe("a logo no telão", () => {
     assert.match(alturaDaLogo("pequeno"), /vmin$/);
     assert.match(alturaDaLogo("pequeno", "cqmin"), /cqmin$/);
     assert.match(corpoDoNome("medio", "cqmin"), /cqmin$/);
+  });
+});
+
+describe("o fundo atrás da logo", () => {
+  it("aceita vídeo e imagem da pasta de mídia", () => {
+    const video = { tipo: "video", url: "lumen://app/__midia/video/Abertura.mp4", titulo: "Abertura" };
+    assert.deepEqual(fundoDaLogoValido(video), video);
+    const imagem = { tipo: "imagem", url: "lumen://app/__midia/image/Cruz.jpg", titulo: "Cruz" };
+    assert.deepEqual(fundoDaLogoValido(imagem), imagem);
+  });
+
+  it("sem escolha, ou com escolha estragada, fica o fundo do tema", () => {
+    assert.equal(fundoDaLogoValido(undefined), null);
+    assert.equal(fundoDaLogoValido(null), null);
+    assert.equal(fundoDaLogoValido({ tipo: "audio", url: "lumen://app/__midia/audio/a.mp3" }), null);
+  });
+
+  it("vídeo embutido no quadro não entra: engasgaria a projeção a cada verso", () => {
+    assert.equal(fundoDaLogoValido({ tipo: "video", url: "data:video/mp4;base64,AAAA", titulo: "x" }), null);
+    assert.equal(fundoDaLogoValido({ tipo: "imagem", url: "https://exemplo.com/foto.jpg", titulo: "x" }), null);
+    // O tipo tem de bater com a pasta: imagem na pasta de vídeo é engano.
+    assert.equal(fundoDaLogoValido({ tipo: "imagem", url: "lumen://app/__midia/video/a.mp4", titulo: "x" }), null);
   });
 });

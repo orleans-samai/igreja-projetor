@@ -89,6 +89,9 @@
      tungstênio sem se confundir com ele — mais amarelo, menos aceso — porque
      "no ar" não pode dividir cor com nada. */
   --color-web: #cfa94e;
+  /* Amarelo do "Enviado por": o que o dirigente mandou precisa saltar aos
+     olhos na programação, e não se confundir com o âmbar do "no ar". */
+  --color-enviado: #f2c94c;
 
   /* -- superfícies de projeção -------------------------------------------- */
   --color-paper: #f3efe6;
@@ -604,6 +607,21 @@
 .slide-text {
   paint-order: stroke fill;
   text-wrap: balance;
+}
+
+/* O aviso do telão pisca para chamar a atenção de quem está longe. Uma
+   vez por segundo, bem abaixo do ritmo de flash que incomoda. */
+@keyframes lumen-aviso-pisca {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+.lumen-aviso-pisca {
+  animation: lumen-aviso-pisca 1s ease-in-out infinite;
 }
 
 /* Transição do telão: um slide dissolve no outro (Ajustes → Transição). */

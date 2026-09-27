@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, EyeOff, Image as ImageIcon, Send, Square } from "lucide-react";
+import { ChevronLeft, ChevronRight, EyeOff, Image as ImageIcon, Send, Square, Zap } from "lucide-react";
 import { useState } from "react";
 import { SlideStage } from "@/components/slide/slide-renderer";
 import { Button } from "@/components/ui/button";
@@ -7,6 +7,13 @@ import { Hint } from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
 import type { LiveFrame } from "@/lib/types";
 import { cn } from "@/lib/cn";
+import {
+  NOME_DO_TAMANHO_DO_AVISO,
+  TAMANHOS_DO_AVISO,
+  avisoPisca,
+  tamanhoDoAvisoValido,
+  type TamanhoDoAviso,
+} from "@/lib/aviso-no-telao";
 import { useLumenStore } from "@/store/lumen-store";
 
 /**
@@ -31,6 +38,11 @@ export function ControlBar({ outputFrame }: { outputFrame: LiveFrame }) {
   const nextPlaylistItem = useLumenStore((s) => s.nextPlaylistItem);
   const [alertText, setAlertText] = useState("");
   const [sent, setSent] = useState(false);
+  // O tamanho e o piscar ficam guardados: a igreja escolhe uma vez o jeito
+  // dela, e o próximo aviso já sai assim.
+  const tamanhoDoAviso = useLumenStore((s) => tamanhoDoAvisoValido(s.settings.avisoTamanho));
+  const piscarAviso = useLumenStore((s) => avisoPisca(s.settings.avisoPiscar));
+  const updateSettings = useLumenStore((s) => s.updateSettings);
 
   const slides = live?.slides ?? [];
   const neighbors = [-1, 0, 1].map((d) => liveIndex + d);
@@ -164,7 +176,7 @@ export function ControlBar({ outputFrame }: { outputFrame: LiveFrame }) {
         onSubmit={(e) => {
           e.preventDefault();
           if (!alertText.trim()) return;
-          setAlert(alertText.trim(), 10, "bottom");
+          setAlert(alertText.trim(), 10, "bottom", { tamanho: tamanhoDoAviso, piscar: piscarAviso });
           setAlertText("");
           setSent(true);
           window.setTimeout(() => setSent(false), 700);
@@ -177,6 +189,30 @@ export function ControlBar({ outputFrame }: { outputFrame: LiveFrame }) {
           aria-label="Aviso no rodapé do telão"
           className="min-w-0"
         />
+        <select
+          className="field h-8 w-auto shrink-0 px-2 text-secondary"
+          aria-label="Tamanho do aviso no telão"
+          value={tamanhoDoAviso}
+          onChange={(e) => updateSettings({ avisoTamanho: e.target.value as TamanhoDoAviso })}
+        >
+          {TAMANHOS_DO_AVISO.map((t) => (
+            <option key={t} value={t}>
+              {NOME_DO_TAMANHO_DO_AVISO[t]}
+            </option>
+          ))}
+        </select>
+        <Hint label={piscarAviso ? "O aviso pisca no telão" : "O aviso fica parado no telão"}>
+          <Button
+            size="iconSm"
+            variant={piscarAviso ? "secondary" : "ghost"}
+            type="button"
+            aria-label="Piscar o aviso"
+            aria-pressed={piscarAviso}
+            onClick={() => updateSettings({ avisoPiscar: !piscarAviso })}
+          >
+            <Zap className={cn(!piscarAviso && "opacity-40")} />
+          </Button>
+        </Hint>
         <Hint label="Mostra o aviso por 10 segundos">
           <Button
             size="iconSm"

@@ -2,6 +2,7 @@ const nodeCrypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
 const { EQUIPES_DE_APARELHO, dobrar } = require("./chat-regras.cjs");
+const { normalizarPermissoes } = require("./permissoes.cjs");
 
 /**
  * O que o celular da equipe precisa que NÃO mude entre um culto e outro.
@@ -89,7 +90,7 @@ function senhaCozida(s) {
     : null;
 }
 
-function saneia(bruto, agora = Date.now(), permissoes = ["chat", "editor", "controle"]) {
+function saneia(bruto, agora = Date.now()) {
   const d = bruto && typeof bruto === "object" && !Array.isArray(bruto) ? bruto : {};
   const porta =
     Number.isInteger(d.porta) && d.porta > 1024 && d.porta <= 65535 ? d.porta : PORTA_PADRAO;
@@ -107,7 +108,8 @@ function saneia(bruto, agora = Date.now(), permissoes = ["chat", "editor", "cont
       token: x.token,
       id: x.id,
       nome: texto(x.nome, 32) || "Celular",
-      permissao: permissoes.includes(x.permissao) ? x.permissao : permissoes[0],
+      // O degrau antigo ("editor", "controle") vira a lista de partes.
+      permissoes: normalizarPermissoes(x.permissoes ?? x.permissao),
       // A equipe escolhida no celular volta com ele: antes ela se perdia
       // ao fechar o Lúmen, e todo mundo reabria em "Nenhuma".
       equipe: EQUIPES_DE_APARELHO.includes(x.equipe) ? x.equipe : "",
@@ -126,7 +128,7 @@ function saneia(bruto, agora = Date.now(), permissoes = ["chat", "editor", "cont
       id: x.id.slice(0, 64),
       usuario: texto(x.usuario, 32).trim(),
       senha: senhaCozida(x.senha),
-      permissao: permissoes.includes(x.permissao) ? x.permissao : permissoes[0],
+      permissoes: normalizarPermissoes(x.permissoes ?? x.permissao),
       equipe: EQUIPES_DE_APARELHO.includes(x.equipe) ? x.equipe : "",
       criadaEm: instante(x.criadaEm, agora),
     }))

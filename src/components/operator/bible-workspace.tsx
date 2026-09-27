@@ -10,7 +10,7 @@ import {
   Search,
   Star,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { SlideStage } from "@/components/slide/slide-renderer";
 import { OptimizeButton } from "@/components/operator/optimize-bar";
@@ -43,10 +43,11 @@ import { BibleReferencePopup } from "@/components/operator/bible-reference-popup
 import { ParteDaBibliaArrastavel } from "@/components/operator/reorganize";
 import { arranjoValido, type ParteDaBiblia } from "@/lib/paineis-da-biblia";
 import {
+  degrauAbaixo,
   escalaDaBiblia,
   escalaMaxima,
-  escalaMinima,
-  rotuloDaEscala,
+  maiorEscalaQueCabe,
+  proximaEscala,
 } from "@/lib/tamanho-da-biblia";
 import type { LiveFrame } from "@/lib/types";
 import { useLumenStore } from "@/store/lumen-store";
@@ -136,8 +137,11 @@ export function BibleWorkspace({
   const cursor = useLumenStore((s) => s.bibleCursor);
   const versionId = useLumenStore((s) => s.bibleVersionId);
   const arranjo = arranjoValido(useOpsStore((s) => s.arranjoBiblia));
-  const tamanho = escalaDaBiblia(useOpsStore((s) => s.tamanhoBiblia));
-  const mudarTamanho = useOpsStore((s) => s.bumpTamanhoBiblia);
+  const tamanhoMaximo = escalaDaBiblia(useOpsStore((s) => s.tamanhoMaximoBiblia));
+  const setTamanhoMaximo = useOpsStore((s) => s.setTamanhoMaximoBiblia);
+  // O tamanho que está na tela: o maior até o máximo em que tudo cabe.
+  const [naTela, setNaTela] = useState(tamanhoMaximo);
+  const navegacao = useRef<HTMLDivElement>(null);
   const extra = useLumenStore((s) => s.extraVersionIds);
   const addExtraVersion = useLumenStore((s) => s.addExtraVersion);
   const arquivoDeVersao = useRef<HTMLInputElement>(null);
@@ -207,6 +211,36 @@ export function BibleWorkspace({
       (b) => fold(b.name).includes(alvo) || fold(bookShort(b)).includes(alvo),
     );
   }, [filtro]);
+  /**
+   * Livros, capítulos e versículos cabendo inteiros na tela: sem barra de
+   * rolagem e sem cortar, como a igreja pediu. Mede antes de pintar — a
+   * escala é trocada direto na caixa enquanto a busca procura, e só a
+   * escolhida chega à tela. Mede de novo quando muda o livro, o capítulo,
+   * o filtro, o máximo ou o tamanho da própria caixa.
+   */
+  useLayoutEffect(() => {
+    const caixa = navegacao.current;
+    if (!caixa) return;
+    const ajustar = () => {
+      const escala = maiorEscalaQueCabe(tamanhoMaximo, (e) => {
+        caixa.style.setProperty("--biblia-escala", String(e));
+        return caixa.scrollHeight <= caixa.clientHeight + 1;
+      });
+      caixa.style.setProperty("--biblia-escala", String(escala));
+      setNaTela((antes) => (Math.abs(antes - escala) < 0.002 ? antes : escala));
+    };
+    ajustar();
+    const observador = new ResizeObserver(ajustar);
+    observador.observe(caixa);
+    // A fonte que termina de carregar depois muda a altura dos números.
+    let vivo = true;
+    void document.fonts?.ready.then(() => vivo && ajustar());
+    return () => {
+      vivo = false;
+      observador.disconnect();
+    };
+  }, [tamanhoMaximo, chapters, verseTotal, livros.length, ready]);
+  const cabeMais = !escalaMaxima(tamanhoMaximo) && naTela >= tamanhoMaximo - 0.001;
   const currentRef = meta ? `${meta.name} ${cursor.chapter}:${cursor.verse}` : "";
   const livroFalta = ready && !versaoTemLivro(versionId, cursor.bookId);
   const nomeDaVersao = listVersions().find((v) => v.id === versionId);
@@ -430,8 +464,10 @@ export function BibleWorkspace({
   );
   const parteNavegacao = (
     <div
+      ref={navegacao}
+      data-navegacao-da-biblia
       className="lumen-scroll flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto bg-bg p-3"
-      style={{ "--biblia-escala": tamanho } as React.CSSProperties}
+      style={{ "--biblia-escala": naTela } as React.CSSProperties}
     >
       <div className="flex items-center gap-2">
         <div className="relative min-w-0 flex-1">
@@ -467,22 +503,29 @@ export function BibleWorkspace({
               size="iconSm"
               variant="ghost"
               aria-label="Diminuir os quadrados da Bíblia"
-              disabled={escalaMinima(tamanho)}
-              onClick={() => mudarTamanho(-1)}
+              disabled={degrauAbaixo(naTela) === null}
+              onClick={() => {
+                const abaixo = degrauAbaixo(naTela);
+                if (abaixo !== null) setTamanhoMaximo(abaixo);
+              }}
             >
               <Minus />
             </Button>
           </Hint>
-          <span className="tnum w-10 text-center text-caption text-subtle" aria-live="polite">
-            {rotuloDaEscala(tamanho)}
+          <span
+            className="tnum w-10 text-center text-caption text-subtle"
+            aria-live="polite"
+            data-escala-da-biblia={naTela}
+          >
+            {Math.round(naTela * 100)}%
           </span>
-          <Hint label="Aumentar os quadrados">
+          <Hint label={cabeMais ? "Aumentar os quadrados" : "Já é o maior tamanho que cabe na tela"}>
             <Button
               size="iconSm"
               variant="ghost"
               aria-label="Aumentar os quadrados da Bíblia"
-              disabled={escalaMaxima(tamanho)}
-              onClick={() => mudarTamanho(1)}
+              disabled={!cabeMais}
+              onClick={() => setTamanhoMaximo(proximaEscala(tamanhoMaximo, 1))}
             >
               <Plus />
             </Button>

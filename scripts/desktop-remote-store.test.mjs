@@ -48,10 +48,22 @@ test("grava e lê de volta o que a equipe precisa que não mude", async () => {
     assert.equal(lido.porta, 9123);
     assert.equal(lido.dispositivos.length, 1);
     assert.equal(lido.dispositivos[0].nome, "Celular do Pastor");
-    assert.equal(lido.dispositivos[0].permissao, "controle");
+    // O remote.json de antes guardava o degrau: "controle" vira o acesso completo.
+    assert.deepEqual(lido.dispositivos[0].permissoes, ["completo"]);
   } finally {
     await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
   }
+});
+
+test("as permissões por parte voltam do arquivo na ordem de sempre, sem repetição nem invenção", () => {
+  const agora = Date.now();
+  const r = saneia({
+    dispositivos: [
+      { token: "t".repeat(36), id: "a", nome: "Mídia", permissoes: ["midia", "culto", "midia", "root"], criadoEm: agora, ultimoVisto: agora },
+      { token: "u".repeat(36), id: "b", nome: "Tudo", permissoes: ["completo"], criadoEm: agora, ultimoVisto: agora - 1 },
+    ],
+  }, agora);
+  assert.deepEqual(r.dispositivos.map((d) => d.permissoes), [["culto", "midia"], ["completo"]]);
 });
 
 test("uma semana parado ainda entra; três meses não", () => {
@@ -86,8 +98,8 @@ test("conteúdo estranho no arquivo não vira estado do servidor", () => {
   assert.equal(limpo.porta, PORTA_PADRAO);
   // Token curto, aparelho sem id e linha que não é objeto ficam de fora.
   assert.equal(limpo.dispositivos.length, 1);
-  // Permissão inventada cai para a mais fraca, nunca para a mais forte.
-  assert.equal(limpo.dispositivos[0].permissao, "chat");
+  // Permissão inventada vira só o chat, nunca mais que isso.
+  assert.deepEqual(limpo.dispositivos[0].permissoes, []);
 });
 
 test("a lista de aparelhos não cresce sem fim", () => {
@@ -144,8 +156,8 @@ test("conta guardada leva a senha cozida; sem senha cozida ou repetida, não ent
     ],
   });
   assert.deepEqual(
-    r.contas.map((c) => [c.id, c.usuario, c.permissao, c.equipe]),
-    [["a", "Bia", "editor", "louvor"], ["d", "Caio", "chat", ""]],
+    r.contas.map((c) => [c.id, c.usuario, c.permissoes, c.equipe]),
+    [["a", "Bia", ["culto", "midia", "letras"], "louvor"], ["d", "Caio", [], ""]],
   );
   assert.ok(senhaConfere(r.contas[0].senha, "louvor-2026"));
 });

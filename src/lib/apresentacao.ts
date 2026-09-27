@@ -6,13 +6,15 @@ import type { Apresentacao } from "./types";
  * - **PDF** é desenhado aqui, página por página, pelo pdf.js — o mesmo
  *   motor do Firefox. Sai idêntico ao original.
  * - **PowerPoint** (.pptx, .ppsx, .ppt, .pps) e **OpenDocument** (.odp) são
- *   desenhados pelo PowerPoint ou pelo LibreOffice do computador, que
- *   devolvem um PDF — e dali é o caminho do PDF: o slide sai como no
+ *   desenhados pelo PowerPoint do computador; sem ele, pelo LibreOffice. Os
+ *   dois devolvem um PDF — e dali é o caminho do PDF: o slide sai como no
  *   PowerPoint, com posição, fonte, cor e fundo. A igreja via o .pptx
  *   "totalmente desconfigurado" quando só o leitor próprio o lia.
- * - Sem PowerPoint nem LibreOffice, o .pptx/.ppsx cai no leitor próprio
- *   (texto e imagem de cada slide), e a cabine avisa como deixar igual.
- *   .ppt e .odp não têm leitor próprio: sem conversor, diz o que fazer.
+ * - Sem PowerPoint nem LibreOffice (ou quando os dois recusam o arquivo), o
+ *   .pptx/.ppsx é desenhado pelo próprio Lúmen (`./pptx/`): posição, fonte,
+ *   cor, fundo, formas e imagens, em Full HD. Se até esse desenho falhar, o
+ *   leitor simplificado tira o texto e a imagem de cada slide.
+ *   .ppt e .odp não têm desenho próprio: sem conversor, diz o que fazer.
  */
 
 /** Largura em que cada página de PDF é desenhada: Full HD, a do telão. */
@@ -20,9 +22,12 @@ const LARGURA_DA_PAGINA = 1920;
 /** O mesmo teto do processo principal. */
 const MAX_PAGINAS = 300;
 
+/** Quem desenhou os slides: a cabine diz, para a igreja saber o que esperar. */
+export type QuemDesenhou = "PowerPoint" | "LibreOffice" | "Lúmen";
+
 export type ResultadoDaImportacao =
   /** `aviso`: entrou, mas com uma ressalva que o operador precisa ler. */
-  | { ok: true; apresentacao: Apresentacao; aviso?: string }
+  | { ok: true; apresentacao: Apresentacao; aviso?: string; desenhadaPor?: QuemDesenhou }
   | { ok: false; erro: string };
 
 /** O que o PowerPoint ou o LibreOffice desenham para o Lúmen. */
@@ -55,6 +60,31 @@ export function avisoDoLeitorProprio(motivo: { semConversor?: boolean; error: st
   return motivo.semConversor
     ? "Entrou simplificada (texto e imagem de cada slide): este computador não tem PowerPoint nem LibreOffice. Instale o LibreOffice, gratuito, para ficar igual ao PowerPoint."
     : `Entrou simplificada (texto e imagem de cada slide): ${motivo.error}`;
+}
+
+/**
+ * O aviso do desenho do próprio Lúmen, ou nada quando não há o que dizer.
+ *
+ * Fala só do que a igreja vai notar: a fonte que o autor usou e este
+ * computador não tem (foi trocada por uma parecida) e o que o desenho não
+ * sabe fazer (gráfico, SmartArt sem desenho, imagem EMF). Sem nada disso,
+ * basta o "desenhados pelo Lúmen" do aviso de sucesso.
+ */
+export function avisoDoDesenhoProprio(
+  motivo: { semConversor?: boolean; error: string },
+  fontesTrocadas: string[],
+  faltas: string[],
+): string | undefined {
+  const partes: string[] = [];
+  if (!motivo.semConversor && motivo.error) partes.push(`${motivo.error} O Lúmen desenhou do jeito dele.`);
+  if (fontesTrocadas.length) {
+    const lista = fontesTrocadas.slice(0, 4).join(", ") + (fontesTrocadas.length > 4 ? "…" : "");
+    partes.push(`Fontes que este computador não tem foram trocadas por parecidas: ${lista}.`);
+  }
+  if (faltas.length) partes.push(`Ficou de fora: ${faltas.join(", ")}.`);
+  if (!partes.length) return undefined;
+  if (motivo.semConversor) partes.push("Para ficar idêntica ao PowerPoint, instale o LibreOffice (gratuito).");
+  return partes.join(" ");
 }
 
 /**
@@ -118,10 +148,17 @@ export async function importarRecebido(nome: string, de?: string): Promise<Resul
   const ext = extensao(nome);
   if (DE_APRESENTACAO.includes(ext)) {
     const convertido = await d.apresentacaoConverter(nome);
-    if (convertido.ok) return apresentacaoDoPdf(convertido.bytes, base, de, "pptx");
+    if (convertido.ok) {
+      const r = await apresentacaoDoPdf(convertido.bytes, base, de, "pptx");
+      return r.ok ? { ...r, desenhadaPor: convertido.com } : r;
+    }
+    // Com senha, ninguém abre: nem o desenho do Lúmen, nem o leitor simples.
+    if (convertido.comSenha) return { ok: false, erro: convertido.error };
     if (!LEITOR_PROPRIO.includes(ext)) {
       return { ok: false, erro: convertido.semConversor ? motivoDeNaoImportar(nome) : convertido.error };
     }
+    const desenhada = await desenharPeloLumen(nome, base, de, convertido);
+    if (desenhada.ok) return desenhada;
     const r = await d.apresentacaoPptx(nome);
     if (!r.ok) return { ok: false, erro: r.error };
     return {
@@ -141,6 +178,46 @@ export async function importarRecebido(nome: string, de?: string): Promise<Resul
   const lido = await d.apresentacaoPdf(nome);
   if (!lido.ok) return { ok: false, erro: lido.error };
   return apresentacaoDoPdf(lido.bytes, base, de, "pdf");
+}
+
+/**
+ * O .pptx/.ppsx desenhado pelo próprio Lúmen, slide a slide, em Full HD.
+ *
+ * O desenho é carregado só aqui, na primeira apresentação que precisa dele:
+ * a cabine que sempre tem PowerPoint não paga por ele no começo do culto.
+ */
+async function desenharPeloLumen(
+  nome: string,
+  titulo: string,
+  de: string | undefined,
+  motivo: { semConversor?: boolean; error: string },
+): Promise<ResultadoDaImportacao> {
+  const d = window.lumenDesktop;
+  if (!d?.apresentacaoBruto) return { ok: false, erro: "Este Lúmen não lê a apresentação por conta própria." };
+  const bruto = await d.apresentacaoBruto(nome);
+  if (!bruto.ok) return { ok: false, erro: bruto.error };
+  try {
+    const { desenharPptx } = await import("./pptx/desenho");
+    const desenho = await desenharPptx(bruto.bytes);
+    if (desenho.paginas.length === 0) return { ok: false, erro: "A apresentação não tem slides." };
+    const salvo = await d.apresentacaoPaginas(desenho.paginas);
+    if (!salvo.ok) return { ok: false, erro: salvo.error };
+    return {
+      ok: true,
+      apresentacao: {
+        id: salvo.id,
+        titulo: desenho.titulo || titulo,
+        origem: "pptx",
+        slides: salvo.urls.map((imagem) => ({ texto: "", imagem })),
+        de,
+        criadoEm: Date.now(),
+      },
+      desenhadaPor: "Lúmen",
+      aviso: avisoDoDesenhoProprio(motivo, desenho.fontesTrocadas, desenho.faltas),
+    };
+  } catch (e) {
+    return { ok: false, erro: e instanceof Error ? e.message : String(e) };
+  }
 }
 
 /** As páginas de um PDF viram os slides da apresentação, uma imagem por página. */

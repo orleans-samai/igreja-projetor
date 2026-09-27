@@ -83,7 +83,7 @@ test("entrar exige um nome, e o nome é o que a cabine lê", async () => {
     const corpo = await ok.json();
     assert.ok(corpo.token);
     // Entra no chat e nada além: a barreira é o que se pode fazer, não a porta.
-    assert.equal(corpo.permissao, "chat");
+    assert.deepEqual(corpo.permissoes, []);
     assert.equal(ctx.rc.status().dispositivos[0].nome, "Celular do Pastor");
   } finally {
     await derrubar(ctx);
@@ -179,7 +179,9 @@ test("estado (SSE) exige token e recebe o que a cabine publica", async () => {
     const semToken = await fetch(ctx.base + "/estado");
     assert.equal(semToken.status, 401);
 
-    const token = await parear(ctx.base);
+    // O que está no ar vai para quem tem mais que o chat (ver o teste do fluxo
+    // por parte); aqui, um aparelho com a parte do culto.
+    const token = await comPermissao(ctx, ["culto"]);
     const controlador = new AbortController();
     const resposta = await fetch(ctx.base + "/estado?token=" + token, { signal: controlador.signal });
     assert.equal(resposta.status, 200);
@@ -213,7 +215,7 @@ test("quem pareia entra sem controle do telão, e a cabine é quem promove", asy
     const token = await parear(ctx.base, "Celular do João");
     const disp = ctx.rc.listarDispositivos()[0];
     assert.equal(disp.nome, "Celular do João");
-    assert.equal(disp.permissao, "chat");
+    assert.deepEqual(disp.permissoes, []);
 
     // Sem permissão: nem telão, nem repertório.
     const semControle = await fetch(ctx.base + "/comando", {
@@ -294,8 +296,8 @@ test("chat vai do celular para a cabine e volta, com quem e quando", async () =>
     assert.ok(mensagem.em > 0);
     assert.equal(eventos.filter((e) => e.tipo === "chat").length, 1);
 
-    // Chat é a permissão mais fraca: até quem só tem chat consegue falar.
-    assert.equal(ctx.rc.listarDispositivos()[0].permissao, "chat");
+    // O chat é de todo mundo que entrou: até quem só tem o chat consegue falar.
+    assert.deepEqual(ctx.rc.listarDispositivos()[0].permissoes, []);
 
     // E a cabine responde.
     const resposta = ctx.rc.mensagemDaCabine("Repetindo agora.", "Cabine");
@@ -366,11 +368,21 @@ test("o SSE abre com o retrato inteiro: estado, permissão e chat de antes", asy
     const linha = bruto.split("\n").find((l) => l.startsWith("data: "));
     const payload = JSON.parse(linha.slice(6));
     assert.equal(payload.tipo, "inicio");
-    assert.equal(payload.estado.titulo, "Hino");
-    assert.equal(payload.permissao, "chat");
+    // Quem só tem o chat vê só o chat: o que está no ar não vai para ele.
+    assert.equal(payload.estado, null);
+    assert.deepEqual(payload.permissoes, []);
     assert.equal(payload.nome, "Celular");
     assert.equal(payload.chat.length, 1);
     await leitor.cancel();
+
+    ctx.rc.definirPermissao(ctx.rc.listarDispositivos()[0].id, ["culto"]);
+    const r2 = await fetch(`${ctx.base}/estado?token=${token}`);
+    const leitor2 = r2.body.getReader();
+    const bruto2 = new TextDecoder().decode((await leitor2.read()).value);
+    const inicio2 = JSON.parse(bruto2.split("\n").find((l) => l.startsWith("data: ")).slice(6));
+    assert.equal(inicio2.estado.titulo, "Hino");
+    assert.deepEqual(inicio2.permissoes, ["culto"]);
+    await leitor2.cancel();
   } finally {
     await derrubar(ctx);
   }
@@ -386,9 +398,10 @@ test("a permissão padrão do pareamento é escolha da cabine", async () => {
       body: JSON.stringify({ token, acao: "proximo" }),
     });
     assert.equal(r.status, 200);
-    // Valor fora da lista é ignorado em vez de virar permissão inventada.
+    assert.deepEqual(ctx.rc.status().permissoesPadrao, ["completo"]);
+    // Valor fora da lista vira só o chat, nunca uma permissão inventada.
     ctx.rc.definirPermissaoPadrao("dono-do-mundo");
-    assert.equal(ctx.rc.status().permissaoPadrao, "controle");
+    assert.deepEqual(ctx.rc.status().permissoesPadrao, []);
   } finally {
     await derrubar(ctx);
   }
@@ -503,15 +516,62 @@ test("porta ocupada não impede abrir, e a nova vira a preferida", async () => {
  * item manda para o telão, buscar letra na internet é a cabine quem faz.
  */
 async function comPermissao(ctx, permissao) {
+  // Nome único: dois pareamentos no mesmo milissegundo não confundem quem
+  // recebe a permissão.
+  const nome = `Celular ${Math.random().toString(36).slice(2, 8)}`;
   const r = await fetch(`${ctx.base}/parear`, {
     method: "POST",
-    body: JSON.stringify({ nome: "Celular" }),
+    body: JSON.stringify({ nome }),
   });
   const { token } = await r.json();
-  const id = ctx.rc.status().dispositivos[0].id;
+  const id = ctx.rc.status().dispositivos.find((d) => d.nome === nome).id;
   ctx.rc.definirPermissao(id, permissao);
   return token;
 }
+
+test("cada parte abre só o que é dela; o acesso completo abre tudo", async () => {
+  const ctx = await subir();
+  try {
+    ctx.rc.atualizarRepertorio([{ id: "s1", titulo: "Hino", artista: "", letra: "x" }]);
+    ctx.rc.atualizarMidia([{ id: "v1", tipo: "video", titulo: "Chamada" }]);
+    ctx.rc.atualizarCulto({ nome: "Domingo", itens: [{ id: "i1", titulo: "Hino", tipo: "song", detalhe: "", etapa: "proximo" }] });
+    const pedidos = async (token) => ({
+      letras: (await fetch(`${ctx.base}/repertorio?token=${token}`)).status,
+      midia: (await fetch(`${ctx.base}/midia?token=${token}`)).status,
+      culto: (await fetch(`${ctx.base}/culto?token=${token}`)).status,
+      proximo: (await postar(ctx, "/comando", { token, acao: "proximo" })).status,
+      pausar: (await postar(ctx, "/comando", { token, acao: "pausar" })).status,
+      volume: (await postar(ctx, "/volume", { token, valor: 50 })).status,
+    });
+    assert.deepEqual(await pedidos(await comPermissao(ctx, [])), { letras: 403, midia: 403, culto: 403, proximo: 403, pausar: 403, volume: 403 });
+    assert.deepEqual(await pedidos(await comPermissao(ctx, ["midia"])), { letras: 403, midia: 200, culto: 403, proximo: 403, pausar: 200, volume: 200 });
+    assert.deepEqual(await pedidos(await comPermissao(ctx, ["letras", "culto"])), { letras: 200, midia: 403, culto: 200, proximo: 403, pausar: 403, volume: 403 });
+    assert.deepEqual(await pedidos(await comPermissao(ctx, ["controle"])), { letras: 403, midia: 403, culto: 403, proximo: 200, pausar: 200, volume: 200 });
+    assert.deepEqual(await pedidos(await comPermissao(ctx, ["completo"])), { letras: 200, midia: 200, culto: 200, proximo: 200, pausar: 200, volume: 200 });
+    // A recusa diz qual parte falta.
+    const semLetras = await (await fetch(`${ctx.base}/repertorio?token=${await comPermissao(ctx, ["midia"])}`)).json();
+    assert.match(semLetras.erro, /letras/);
+  } finally {
+    await derrubar(ctx);
+  }
+});
+
+test("o que está no ar só vai pelo fluxo para quem tem mais que o chat", async () => {
+  const ctx = await subir();
+  try {
+    const soChat = await fluxo(ctx, await comPermissao(ctx, []));
+    const comCulto = await fluxo(ctx, await comPermissao(ctx, ["culto"]));
+    ctx.rc.atualizarEstado({ titulo: "Hino", slideAtual: 1, slideTotal: 3, noAr: true, preto: false });
+    assert.ok(await comCulto.esperar((e) => e.tipo === "estado" && e.estado.titulo === "Hino"));
+    ctx.rc.mensagemDaCabine("marcador", "Cabine");
+    assert.ok(await soChat.esperar((e) => e.tipo === "chat"));
+    assert.ok(!soChat.eventos.some((e) => e.tipo === "estado"), "o aparelho só de chat recebeu o que está no ar");
+    soChat.fechar();
+    comCulto.fechar();
+  } finally {
+    await derrubar(ctx);
+  }
+});
 
 test("a mídia da cabine chega ao celular, e ver não é mandar para o telão", async () => {
   const ctx = await subir();
@@ -521,17 +581,23 @@ test("a mídia da cabine chega ao celular, e ver não é mandar para o telão", 
       { id: "a1", tipo: "audio", titulo: "Playback", detalhe: "Áudio" },
       { id: "x", tipo: "inventado", titulo: "Estranho" },
     ]);
-    const token = await comPermissao(ctx, "editor");
+    const token = await comPermissao(ctx, ["midia"]);
     const lista = await (await fetch(`${ctx.base}/midia?token=${token}`)).json();
     assert.equal(lista.ok, true);
     assert.equal(lista.midia.length, 3);
     // Tipo que não existe vira vídeo em vez de vazar para o celular.
     assert.equal(lista.midia[2].tipo, "video");
-
-    // Editor vê a pasta, mas não muda o que a igreja está vendo.
-    const negado = await fetch(`${ctx.base}/projetar`, {
+    // Quem tem a mídia projeta dela; quem tem só as letras nem vê a pasta.
+    const projetou = await fetch(`${ctx.base}/projetar`, {
       method: "POST",
       body: JSON.stringify({ token, tipo: "media", refId: "v1" }),
+    });
+    assert.equal(projetou.status, 200);
+    const soLetras = await comPermissao(ctx, ["letras"]);
+    assert.equal((await fetch(`${ctx.base}/midia?token=${soLetras}`)).status, 403);
+    const negado = await fetch(`${ctx.base}/projetar`, {
+      method: "POST",
+      body: JSON.stringify({ token: soLetras, tipo: "media", refId: "v1" }),
     });
     assert.equal(negado.status, 403);
   } finally {
@@ -1228,7 +1294,7 @@ test("mudou a programação, o celular é avisado; a mesma reenviada, não", asy
   }
 });
 
-test("excluir do culto pelo celular é de editor e só vale para item que está lá", async () => {
+test("excluir do culto pelo celular é da parte do culto e só vale para item que está lá", async () => {
   const ctx = await subir();
   const vistos = [];
   // Parear também avisa a cabine ("dispositivos"); aqui só interessa o culto.
@@ -1257,20 +1323,22 @@ test("excluir do culto pelo celular é de editor e só vale para item que está 
   }
 });
 
-test("projetar um item do culto pelo celular exige o controle do telão", async () => {
+test("projetar um item do culto pelo celular é da parte do culto (ou do controle)", async () => {
   const ctx = await subir();
   const vistos = [];
   // Parear também avisa a cabine ("dispositivos"); aqui só interessa o culto.
   ctx.rc.onEvento = (e) => e.tipo.startsWith("culto-") && vistos.push(e);
   try {
     ctx.rc.atualizarCulto(CULTO);
-    const editor = await comPermissao(ctx, "editor");
-    assert.equal((await postar(ctx, "/culto/projetar", { token: editor, id: "i3" })).status, 403);
+    const soLetras = await comPermissao(ctx, ["letras"]);
+    assert.equal((await postar(ctx, "/culto/projetar", { token: soLetras, id: "i3" })).status, 403);
+    const culto = await comPermissao(ctx, ["culto"]);
+    assert.equal((await postar(ctx, "/culto/projetar", { token: culto, id: "i3" })).status, 200);
     const controle = await comPermissao(ctx, "controle");
-    assert.equal((await postar(ctx, "/culto/projetar", { token: controle, id: "i3" })).status, 200);
+    assert.equal((await postar(ctx, "/culto/projetar", { token: controle, id: "i2" })).status, 200);
     assert.deepEqual(
       vistos.map((e) => [e.tipo, e.id]),
-      [["culto-projetar", "i3"]],
+      [["culto-projetar", "i3"], ["culto-projetar", "i2"]],
     );
     // Projetar não tira nada da programação.
     assert.equal(ctx.rc.culto.itens.length, 3);
@@ -1539,8 +1607,9 @@ test("conta com senha entra já com a permissão e a equipe dela", async () => {
     // Maiúscula, acento e espaço sobrando não viram outro usuário.
     const r = await entrar(ctx.base, "  CÁIO ", "som-2026");
     assert.equal(r.status, 200);
-    const { token, permissao, nome } = await r.json();
-    assert.equal(permissao, "controle");
+    const { token, permissoes, nome } = await r.json();
+    // A conta criada com o degrau antigo "controle" entra com o acesso completo.
+    assert.deepEqual(permissoes, ["completo"]);
     assert.equal(nome, "Caio");
     // Já comanda o telão: ninguém precisou promover o aparelho.
     const comando = await fetch(ctx.base + "/comando", {
@@ -1559,7 +1628,7 @@ test("conta com senha entra já com a permissão e a equipe dela", async () => {
       method: "POST",
       body: JSON.stringify({ nome: "Visitante" }),
     }).then((x) => x.json());
-    assert.equal(rapido.permissao, "chat");
+    assert.deepEqual(rapido.permissoes, []);
   } finally {
     await derrubar(ctx);
   }
@@ -1573,8 +1642,8 @@ test("a senha da conta não sai do servidor, nem cozida", async () => {
     assert.equal(texto.includes("louvor-2026"), false);
     assert.equal(/"sal"|"chave"|"senha"/.test(texto), false, "o status levou a senha cozida");
     assert.deepEqual(
-      ctx.rc.status().contas.map((c) => [c.usuario, c.permissao, c.equipe, c.aparelhos]),
-      [["Bia", "editor", "louvor", 0]],
+      ctx.rc.status().contas.map((c) => [c.usuario, c.permissoes, c.equipe, c.aparelhos]),
+      [["Bia", ["culto", "midia", "letras"], "louvor", 0]],
     );
   } finally {
     await derrubar(ctx);
@@ -1605,8 +1674,10 @@ test("mudar a conta alcança quem já entrou; senha trocada ou conta apagada tir
     const f = await fluxo(ctx, token);
     try {
       // Promovida a conta, o aparelho sabe na hora.
-      ctx.rc.salvarConta({ id: conta.id, usuario: "Caio", permissao: "controle", equipe: "som" });
-      assert.ok(await f.esperar((e) => e.tipo === "permissao" && e.permissao === "controle"));
+      ctx.rc.salvarConta({ id: conta.id, usuario: "Caio", permissoes: ["midia", "culto"], equipe: "som" });
+      assert.ok(
+        await f.esperar((e) => e.tipo === "permissoes" && JSON.stringify(e.permissoes) === JSON.stringify(["culto", "midia"])),
+      );
       // Mudar sem mandar senha mantém a senha.
       assert.equal((await entrar(ctx.base, "Caio", "som-2026")).status, 200);
       // Senha trocada é senha que vazou: quem entrou com a antiga sai.
@@ -1663,7 +1734,7 @@ test("as contas e a equipe do aparelho sobrevivem a fechar e abrir o app", async
         senha: "louvor-2026",
       });
       assert.equal(r.status, 200, "a conta foi esquecida no fechar");
-      assert.equal(r.corpo.permissao, "editor");
+      assert.deepEqual(r.corpo.permissoes, ["culto", "midia", "letras"]);
       // Antes a equipe escolhida no celular se perdia ao reabrir o Lúmen.
       assert.equal(segunda.listarDispositivos().find((d) => d.nome === "Zé").equipe, "pastor");
     } finally {

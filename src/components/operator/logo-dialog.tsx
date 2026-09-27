@@ -1,5 +1,5 @@
-import { ImageUp, Trash2 } from "lucide-react";
-import { useId, useRef, useState } from "react";
+import { Film, ImageUp, Trash2 } from "lucide-react";
+import { useEffect, useId, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ChurchLogo } from "@/components/logo";
 import { Button } from "@/components/ui/button";
@@ -15,7 +15,14 @@ import {
   pesoLegivel,
 } from "@/lib/logo-imagem";
 import { Segmented } from "@/components/ui/segmented";
-import { NOME_DO_TAMANHO, TAMANHOS_DA_LOGO, tamanhoValido } from "@/lib/logo-no-telao";
+import {
+  NOME_DO_TAMANHO,
+  TAMANHOS_DA_LOGO,
+  fundoDaLogoValido,
+  tamanhoValido,
+  type FundoDaLogo,
+} from "@/lib/logo-no-telao";
+import { hasMediaFolders, listMedia, type MediaFile } from "@/lib/media-library";
 import { useLumenStore } from "@/store/lumen-store";
 
 function lerComo(file: File, modo: "dataUrl"): Promise<string> {
@@ -66,6 +73,115 @@ async function prepararLogo(file: File): Promise<string> {
   }
 }
 
+type ModoDoFundo = "tema" | FundoDaLogo["tipo"];
+
+/**
+ * O que fica atrás da logo no telão: o fundo do tema, ou um vídeo ou uma
+ * imagem da pasta de mídia.
+ *
+ * Da pasta, e não de um seletor de arquivo qualquer, pelo mesmo motivo do
+ * vídeo de fundo do tema: o telão lê o arquivo do disco pelo endereço, e o
+ * quadro publicado a cada troca de slide leva só esse endereço.
+ */
+function FundoAtrasDaLogo() {
+  // O objeto é montado fora do seletor: um seletor que devolve objeto novo a
+  // cada leitura faz o React redesenhar sem parar — e o app inteiro caía
+  // no instante em que alguém escolhia o vídeo.
+  const fundoGuardado = useLumenStore((s) => s.settings.logoFundo);
+  const fundo = fundoDaLogoValido(fundoGuardado);
+  const logoAoAbrir = useLumenStore((s) => s.settings.showIdleLogo !== false);
+  const update = useLumenStore((s) => s.updateSettings);
+  const [modo, setModo] = useState<ModoDoFundo>(fundo?.tipo ?? "tema");
+  const [arquivos, setArquivos] = useState<Record<FundoDaLogo["tipo"], MediaFile[] | null>>({
+    video: null,
+    imagem: null,
+  });
+  const naPasta = hasMediaFolders();
+
+  useEffect(() => {
+    if (!naPasta || modo === "tema" || arquivos[modo]) return;
+    let vivo = true;
+    void listMedia(modo === "video" ? "video" : "image").then((r) => {
+      if (vivo) setArquivos((a) => ({ ...a, [modo]: r.items ?? [] }));
+    });
+    return () => {
+      vivo = false;
+    };
+  }, [naPasta, modo, arquivos]);
+
+  const trocarModo = (m: ModoDoFundo) => {
+    setModo(m);
+    // Voltar ao tema vale na hora; vídeo e imagem esperam o arquivo escolhido.
+    if (m === "tema") update({ logoFundo: null });
+  };
+  const lista = modo === "tema" ? null : arquivos[modo];
+  const atual = fundo && fundo.tipo === modo ? fundo.url : "";
+
+  return (
+    <div className="space-y-2 rounded-lg border border-border p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="text-body font-medium text-fg">Fundo atrás da logo</span>
+        <Segmented
+          label="Fundo atrás da logo"
+          value={modo}
+          onChange={trocarModo}
+          items={[
+            { value: "tema", label: "Do tema" },
+            { value: "video", label: "Vídeo" },
+            { value: "imagem", label: "Imagem" },
+          ]}
+        />
+      </div>
+      {modo !== "tema" &&
+        (!naPasta ? (
+          <p className="text-secondary text-muted">
+            Fundo da pasta de mídia só existe no app do Windows.
+          </p>
+        ) : lista === null ? (
+          <p className="text-secondary text-muted">Lendo a pasta de mídia…</p>
+        ) : lista.length === 0 ? (
+          <p className="text-secondary text-muted">
+            {modo === "video"
+              ? "Nenhum vídeo na pasta de vídeo. Coloque o arquivo lá e ele aparece aqui."
+              : "Nenhuma imagem na pasta de imagens. Coloque o arquivo lá e ela aparece aqui."}
+          </p>
+        ) : (
+          <select
+            className="field w-full"
+            aria-label={modo === "video" ? "Vídeo atrás da logo" : "Imagem atrás da logo"}
+            value={atual}
+            onChange={(e) => {
+              const escolhido = lista.find((f) => f.url === e.target.value);
+              if (escolhido) update({ logoFundo: { tipo: modo, url: escolhido.url, titulo: escolhido.title } });
+            }}
+          >
+            <option value="">{modo === "video" ? "Escolher um vídeo…" : "Escolher uma imagem…"}</option>
+            {lista.map((f) => (
+              <option key={f.id} value={f.url}>
+                {f.title}
+              </option>
+            ))}
+          </select>
+        ))}
+      {modo === "video" && (
+        <p className="flex items-start gap-1.5 text-caption text-subtle">
+          <Film className="mt-0.5 size-3 shrink-0" aria-hidden />
+          Roda em laço e sem som, na tela inteira. Em modo leve, o vídeo não roda.
+        </p>
+      )}
+      <label className="flex cursor-pointer items-center gap-2 text-secondary text-fg">
+        <input
+          type="checkbox"
+          checked={logoAoAbrir}
+          onChange={(e) => update({ showIdleLogo: e.target.checked })}
+          className="size-4 accent-[var(--color-accent)]"
+        />
+        Começar com a logo no telão sempre que o Lúmen abrir
+      </label>
+    </div>
+  );
+}
+
 /**
  * A identidade visual da igreja num lugar só: a logo e o nome.
  *
@@ -105,6 +221,7 @@ export function IdentidadeDaIgreja() {
   };
 
   const peso = pesoDoDataUrl(settings.logoUrl);
+  const fundo = fundoDaLogoValido(settings.logoFundo);
 
   return (
     <div className="space-y-3">
@@ -114,10 +231,28 @@ export function IdentidadeDaIgreja() {
       {/* Um telão em miniatura, 16:9, medindo a logo pela própria caixa: o
           que se vê aqui é a proporção que a igreja vai ver na parede. */}
       <div
-        className="flex aspect-video w-full items-center justify-center rounded-lg bg-stage shadow-[var(--shadow-border)]"
+        className="relative flex aspect-video w-full items-center justify-center overflow-hidden rounded-lg bg-stage shadow-[var(--shadow-border)]"
         style={{ containerType: "size" }}
       >
+        {fundo?.tipo === "video" && (
+          <video
+            key={fundo.url}
+            className="absolute inset-0 size-full object-cover"
+            src={fundo.url}
+            autoPlay
+            loop
+            muted
+            playsInline
+          />
+        )}
+        {fundo?.tipo === "imagem" && (
+          <div
+            className="absolute inset-0 bg-cover bg-center bg-no-repeat"
+            style={{ backgroundImage: `url("${fundo.url}")` }}
+          />
+        )}
         <ChurchLogo
+          className="relative"
           url={settings.logoUrl || undefined}
           name={settings.churchName || "Sua igreja"}
           tamanho={tamanhoValido(settings.logoTamanho)}
@@ -145,6 +280,8 @@ export function IdentidadeDaIgreja() {
           </label>
         </div>
       )}
+
+      <FundoAtrasDaLogo />
 
       <div className="flex flex-wrap items-center gap-2">
         <Button variant="secondary" loading={ocupado} onClick={() => entrada.current?.click()}>

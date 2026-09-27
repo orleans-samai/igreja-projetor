@@ -529,6 +529,7 @@ handle("lumen:apresentacao-pptx", (nome) => apresentacoes.importarPptx(nome));
 handle("lumen:apresentacao-converter", (nome) => apresentacoes.converterParaPdf(nome));
 handle("lumen:apresentacao-conversor", () => apresentacoes.conversor());
 handle("lumen:apresentacao-pdf", (nome) => apresentacoes.lerPdf(nome));
+handle("lumen:apresentacao-bruto", (nome) => apresentacoes.lerPptxBruto(nome));
 handle("lumen:apresentacao-paginas", (paginas) => apresentacoes.salvarPaginas(paginas));
 handle("lumen:apresentacao-remover", (id) => apresentacoes.remover(id));
 handle("lumen:artes-imagem-salvar", (dados) => artesImagens.salvar(dados));

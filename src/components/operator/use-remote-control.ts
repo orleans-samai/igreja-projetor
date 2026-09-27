@@ -15,7 +15,7 @@ import {
   type TemaRemoto,
 } from "@/lib/remote-control";
 import { temaDaMusica, temasUsados } from "@/lib/tema-remoto";
-import { etapaDoItem } from "@/lib/culto-etapas";
+import { enviadoPor, etapaDoItem } from "@/lib/culto-etapas";
 import { useChatStore } from "@/store/chat-store";
 import { chegouRecado, recadoApagado } from "@/store/chat-historico-store";
 import { useLumenStore, type LumenState } from "@/store/lumen-store";
@@ -51,6 +51,11 @@ const ACOES: Record<AcaoRemota, (s: LumenState) => void> = {
   // no ar (uma letra, um versículo), não faz nada: o botão mora sempre na
   // tela do celular, e um toque sem querer não pode apagar a letra do culto.
   "parar-midia": (s) => {
+    // Com o som de um vídeo tocando sem imagem, sair do vídeo é calar o som.
+    if (s.trilha) {
+      s.pararTrilha();
+      return;
+    }
     if (s.status === "idle" || s.live?.kind !== "media") return;
     s.comandarMedia({ mediaAcao: "parar" });
     if (s.status !== "clear") s.goClear();
@@ -214,7 +219,7 @@ export function useRemoteControl() {
         id: it.id,
         titulo: it.title,
         tipo: it.type as CultoRemoto["itens"][number]["tipo"],
-        detalhe: it.subtitle ?? "",
+        detalhe: enviadoPor(it.enviadoPor) ?? it.subtitle ?? "",
         etapa: etapaDoItem(i, noAr),
       })),
     };
@@ -313,6 +318,7 @@ export function useRemoteControl() {
             refId: evento.refId,
             notes: "",
             title: titulo,
+            enviadoPor: evento.de || undefined,
           });
           toast(`${evento.de} pôs “${titulo}” no culto.`);
         };
@@ -349,12 +355,22 @@ export function useRemoteControl() {
           // Vídeo, áudio e imagem já servem para projetar, então entram na
           // programação do culto de hoje — que é o que o dirigente pediu ao
           // apertar "enviar para o culto".
-          st.addToPlaylist({
+          //
+          // A mídia entra na biblioteca antes do item: o item da programação
+          // aponta para ela, e sem ela o clique não tinha o que tocar — o
+          // "não está abrindo" do que o dirigente mandava.
+          const titulo = evento.nome.replace(/\.[^.]+$/, "") || evento.nome;
+          const url = evento.url || `lumen://app/__midia/${evento.kind}/${encodeURIComponent(evento.nome)}`;
+          if (!st.media.some((m) => m.id === evento.id)) {
+            st.addMedia({ id: evento.id, type: evento.kind, title: titulo, path: url });
+          }
+          useLumenStore.getState().addToPlaylist({
             type: "media",
             refId: evento.id,
             notes: "",
-            title: evento.nome,
+            title: titulo,
             subtitle: "Recebido",
+            enviadoPor: evento.de || undefined,
           });
           toast(
             evento.de
@@ -389,9 +405,11 @@ export function useRemoteControl() {
               notes: "",
               title: r.apresentacao.titulo,
               subtitle: `${r.apresentacao.slides.length} slides · Recebido`,
+              enviadoPor: evento.de || undefined,
             });
+            const desenhados = r.desenhadaPor ? `, desenhados pelo ${r.desenhadaPor}` : "";
             toast.success(
-              `“${r.apresentacao.titulo}”${quem} entrou na programação do culto — ${r.apresentacao.slides.length} slides.`,
+              `“${r.apresentacao.titulo}”${quem} entrou na programação do culto — ${r.apresentacao.slides.length} slides${desenhados}.`,
               { id: `apres-${evento.nome}` },
             );
             if (r.aviso) toast.warning(r.aviso, { duration: 15000 });

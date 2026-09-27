@@ -102,6 +102,8 @@ export interface PlaylistItem {
   notes: string;
   title: string;
   subtitle?: string;
+  /** Quem mandou de fora da cabine: o dirigente pela página dele, ou a equipe pelo celular. */
+  enviadoPor?: string;
 }
 
 export interface Playlist {
@@ -171,6 +173,12 @@ export interface Settings {
   logoTamanho?: import("./logo-no-telao").TamanhoDaLogo;
   /** Nome da igreja debaixo da logo, no telão. Ausente = desligado. */
   logoComNome?: boolean;
+  /** Vídeo ou imagem da pasta de mídia atrás da logo. Ausente = o fundo do tema. */
+  logoFundo?: import("./logo-no-telao").FundoDaLogo | null;
+  /** Tamanho do aviso de rodapé, o último que o operador escolheu. Ausente = grande. */
+  avisoTamanho?: import("./aviso-no-telao").TamanhoDoAviso;
+  /** O aviso pisca para chamar a atenção. Ausente = pisca. */
+  avisoPiscar?: boolean;
   showClock: boolean;
   baseFill: "dark" | "light";
   clockPosition: ClockPosition;
@@ -193,6 +201,10 @@ export interface AlertState {
   text: string;
   position: "top" | "bottom";
   until: number;
+  /** Ausente = grande: o aviso antigo, de 30 px, ninguém via do fundo da igreja. */
+  tamanho?: import("./aviso-no-telao").TamanhoDoAviso;
+  /** Ausente = pisca. */
+  piscar?: boolean;
 }
 
 export interface CountdownState {
@@ -238,6 +250,30 @@ export interface Deck {
   mediaSeq?: number;
 }
 
+/** O estado de reprodução de uma mídia: o que o baralho e a trilha têm em comum. */
+export type CamposDeMidia = Pick<
+  Deck,
+  | "mediaSrc"
+  | "mediaType"
+  | "mediaAcao"
+  | "mediaLoop"
+  | "mediaTempo"
+  | "mediaBusca"
+  | "mediaVelocidade"
+  | "mediaVolume"
+  | "mediaMudo"
+  | "mediaSeq"
+>;
+
+/**
+ * O som de um vídeo tocando sem a imagem ("Tirar vídeo"). Sobrevive à troca
+ * do que está no ar — ver `src/lib/trilha.ts`.
+ */
+export interface TrilhaDeAudio extends CamposDeMidia {
+  refId: string;
+  title: string;
+}
+
 /** Snapshot sent from the operator to projection/stage windows. */
 export interface LiveFrame {
   v: 1;
@@ -246,6 +282,8 @@ export interface LiveFrame {
   stageTheme: Theme;
   deck: Deck | null;
   index: number;
+  /** O áudio de um vídeo que saiu da tela e continua tocando. */
+  trilha?: TrilhaDeAudio | null;
   alert: AlertState | null;
   countdown: CountdownState | null;
   churchName: string;
@@ -263,6 +301,7 @@ export interface LiveFrame {
     | "showIdleLogo"
     | "logoTamanho"
     | "logoComNome"
+    | "logoFundo"
     | "fontScale"
     | "showClock"
     | "baseFill"

@@ -272,12 +272,16 @@ declare global {
       apresentacaoPdf: (
         nome: string,
       ) => Promise<{ ok: true; bytes: Uint8Array } | { ok: false; error: string }>;
+      /** O .pptx/.ppsx recebido, cru, para o próprio Lúmen desenhar. Ausente em versões antigas. */
+      apresentacaoBruto?: (
+        nome: string,
+      ) => Promise<{ ok: true; bytes: Uint8Array } | { ok: false; error: string }>;
       /** PowerPoint ou ODP desenhado pelo PowerPoint/LibreOffice, como PDF. */
       apresentacaoConverter: (
         nome: string,
       ) => Promise<
         | { ok: true; bytes: Uint8Array; com: "PowerPoint" | "LibreOffice" }
-        | { ok: false; error: string; semConversor?: boolean }
+        | { ok: false; error: string; semConversor?: boolean; comSenha?: boolean }
       >;
       /** Quem desenha as apresentações neste computador. */
       apresentacaoConversor: () => Promise<"PowerPoint" | "LibreOffice" | null>;
@@ -321,10 +325,10 @@ declare global {
       remoteControlDevices: () => Promise<import("./remote-control").DispositivoRemoto[]>;
       remoteControlSetPermission: (
         id: string,
-        permissao: import("./remote-control").PermissaoRemota,
+        permissoes: import("./permissoes").PermissoesRemotas,
       ) => Promise<import("./remote-control").RemoteStatus>;
       remoteControlSetDefaultPermission: (
-        permissao: import("./remote-control").PermissaoRemota,
+        permissoes: import("./permissoes").PermissoesRemotas,
       ) => Promise<import("./remote-control").RemoteStatus>;
       remoteControlDisconnect: (
         id: string,

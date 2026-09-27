@@ -13,6 +13,10 @@ import {
 } from "@/lib/bible";
 import { bookById } from "@/lib/bible-books";
 import { FONT_SCALE_PASSO, fontScaleDe, limitarFontScale } from "@/lib/font-scale";
+import { avisoPisca, tamanhoDoAvisoValido } from "@/lib/aviso-no-telao";
+import { destinoDoTema } from "@/lib/destino-do-tema";
+import { temaDeVideo } from "@/lib/tema-de-video";
+import { camposDaTrilha, trilhaDoVideo, trilhaSobrevive } from "@/lib/trilha";
 import { indiceNaProgramacao } from "@/lib/culto-etapas";
 import { COPYRIGHT_DE_EXEMPLO } from "@/lib/seed";
 import { letraContem } from "@/lib/busca-trecho";
@@ -44,6 +48,7 @@ import type {
   OutputStatus,
   Playlist,
   PlaylistItem,
+  TrilhaDeAudio,
   ProjectionLog,
   Service,
   Settings,
@@ -161,6 +166,8 @@ export interface LumenState {
   bibleVersionId: string;
   bibleCursor: { bookId: number; chapter: number; verse: number };
   alert: AlertState | null;
+  /** O som de um vídeo que saiu da tela ("Tirar vídeo"). Só da sessão. */
+  trilha: TrilhaDeAudio | null;
   countdown: CountdownState | null;
   hydrated: boolean;
   editingSlide: boolean;
@@ -191,6 +198,8 @@ export interface LumenState {
   applyThemeLive: (themeId: string) => void;
   updateTheme: (theme: Theme) => void;
   addTheme: (theme: Theme) => void;
+  /** Um vídeo da pasta (um dinâmico, por exemplo) passa a ser o fundo das letras. */
+  usarVideoComoFundoDaLetra: (video: { url: string; titulo: string }) => Theme;
   saveSong: (song: Song) => void;
   deleteSong: (id: string) => void;
   updatePreviewSlide: (slideId: string, patch: Partial<Slide>) => void;
@@ -230,7 +239,19 @@ export interface LumenState {
   ) => void;
   /** Ir para um ponto do vídeo no telão, em segundos. */
   buscarMedia: (tempo: number) => void;
-  setAlert: (text: string, seconds: number, position: "top" | "bottom") => void;
+  /** Tira a imagem do vídeo no ar e deixa o som tocando, livre da troca de slide. */
+  tirarVideo: () => void;
+  /** Traz o vídeo da trilha de volta à tela, do ponto em que o som está. */
+  mostrarVideo: () => void;
+  /** Cala a trilha. */
+  pararTrilha: () => void;
+  /** Sem `estilo`, o aviso sai do tamanho e com o piscar que o operador escolheu por último. */
+  setAlert: (
+    text: string,
+    seconds: number,
+    position: "top" | "bottom",
+    estilo?: Pick<AlertState, "tamanho" | "piscar">,
+  ) => void;
   clearAlert: () => void;
   startCountdown: (label: string, seconds: number) => void;
   clearCountdown: () => void;
@@ -259,6 +280,7 @@ export type LiveFrameInput = Pick<
   | "preview"
   | "liveIndex"
   | "alert"
+  | "trilha"
   | "countdown"
   | "songThemeId"
   | "bibleThemeId"
@@ -277,6 +299,7 @@ export function buildLiveFrame(s: LiveFrameInput): LiveFrame {
     stageTheme: themeById(s.themes, s.stageThemeId),
     deck: s.live,
     index: s.liveIndex,
+    trilha: s.trilha,
     alert: s.alert,
     countdown: s.countdown,
     churchName: s.settings.churchName,
@@ -293,6 +316,7 @@ export function buildLiveFrame(s: LiveFrameInput): LiveFrame {
       showIdleLogo: s.settings.showIdleLogo,
       logoTamanho: s.settings.logoTamanho,
       logoComNome: s.settings.logoComNome,
+      logoFundo: s.settings.logoFundo,
       fontScale: s.settings.fontScale,
       showClock: s.settings.showClock,
       baseFill: s.settings.baseFill,
@@ -315,6 +339,12 @@ function aplicarNaMidia(
   patch: Partial<Deck>,
   set: (fn: (st: LumenState) => LumenState) => void,
 ) {
+  // Com a trilha tocando, é ela que o operador comanda: o som que se ouve é
+  // o dela, mesmo com a letra no ar.
+  if (s.trilha) {
+    broadcast({ trilha: { ...s.trilha, ...patch, mediaSeq: (s.trilha.mediaSeq ?? 0) + 1 } }, set);
+    return;
+  }
   const atual = s.live;
   if (!atual || atual.mediaType !== "video") return;
   const seq = (atual.mediaSeq ?? 0) + 1;
@@ -330,7 +360,9 @@ function aplicarNaMidia(
 
 function broadcast(partial: Partial<LumenState> | ((s: LumenState) => LumenState), set: (fn: (s: LumenState) => LumenState) => void) {
   set((s) => {
-    const next = typeof partial === "function" ? partial(s) : { ...s, ...partial };
+    let next = typeof partial === "function" ? partial(s) : { ...s, ...partial };
+    // Outro vídeo ou áudio no ar encerra a trilha: dois sons juntos nunca.
+    if (next.trilha && !trilhaSobrevive(next.trilha, next.live)) next = { ...next, trilha: null };
     queueMicrotask(() => publishLiveFrame(buildLiveFrame(next)));
     return next;
   });
@@ -416,6 +448,7 @@ const empty = (): Omit<
   | "applyThemeLive"
   | "updateTheme"
   | "addTheme"
+  | "usarVideoComoFundoDaLetra"
   | "saveSong"
   | "deleteSong"
   | "updatePreviewSlide"
@@ -448,6 +481,9 @@ const empty = (): Omit<
   | "removeMedia"
   | "comandarMedia"
   | "buscarMedia"
+  | "tirarVideo"
+  | "mostrarVideo"
+  | "pararTrilha"
   | "setAlert"
   | "clearAlert"
   | "startCountdown"
@@ -498,6 +534,7 @@ const empty = (): Omit<
   bibleVersionId: "almeida-1819",
   bibleCursor: { bookId: 43, chapter: 3, verse: 16 },
   alert: null,
+  trilha: null,
   countdown: null,
   hydrated: false,
   editingSlide: false,
@@ -773,10 +810,17 @@ export const useLumenStore = create<LumenState>()(
       },
 
       applyThemeLive: (themeId) => {
-        const theme = get().themes.find((t) => t.id === themeId);
-        if (!theme) return;
-        if (theme.applyTo === "bible") get().setThemeForKind("bible", themeId);
-        else get().setThemeForKind("songs", themeId);
+        const s = get();
+        if (!s.themes.some((t) => t.id === themeId)) return;
+        const destino = destinoDoTema(s.live, s.preview);
+        get().setThemeForKind(destino, themeId);
+        // Música com tema fixado voltaria ao fixado na próxima vez que fosse
+        // aberta, e o clique pareceria não ter pegado: o clique troca o fixado.
+        const deck = s.live ?? s.preview;
+        if (destino === "songs" && deck?.kind === "song") {
+          const song = s.songs.find((x) => x.id === deck.refId);
+          if (song?.themeId && song.themeId !== themeId) get().pinSongTheme(song.id, themeId);
+        }
       },
 
       updateTheme: (theme) =>
@@ -786,6 +830,16 @@ export const useLumenStore = create<LumenState>()(
         }), set),
 
       addTheme: (theme) => set((s) => ({ themes: [...s.themes, theme] })),
+
+      usarVideoComoFundoDaLetra: (video) => {
+        const s = get();
+        const tema = temaDeVideo(themeById(s.themes, s.songThemeId), video, s.themes);
+        if (!s.themes.some((t) => t.id === tema.id)) set((st) => ({ themes: [...st.themes, tema] }));
+        // Com o papel de parede desligado, o vídeo escolhido não apareceria.
+        if (s.settings.showWallpaper === false) get().updateSettings({ showWallpaper: true });
+        get().setThemeForKind("songs", tema.id);
+        return tema;
+      },
 
       saveSong: (song) => {
         const slides = parseLyrics(song.lyricsRaw, get().settings.maxLines);
@@ -1249,7 +1303,7 @@ export const useLumenStore = create<LumenState>()(
        */
       buscarMedia: (tempo) => {
         const s = get();
-        const atual = s.live;
+        const atual = s.trilha ?? s.live;
         if (!atual || atual.mediaType !== "video") return;
         aplicarNaMidia(
           s,
@@ -1261,10 +1315,46 @@ export const useLumenStore = create<LumenState>()(
         );
       },
 
-      setAlert: (text, seconds, position) =>
+      tirarVideo: () => {
+        const s = get();
+        const trilha = trilhaDoVideo(s.status === "idle" ? null : s.live);
+        if (trilha) broadcast({ trilha }, set);
+      },
+
+      mostrarVideo: () => {
+        const s = get();
+        const t = s.trilha;
+        if (!t) return;
+        const campos = camposDaTrilha(t);
+        if (s.live?.kind === "media" && s.live.mediaSrc === t.mediaSrc) {
+          broadcast({ trilha: null, live: { ...s.live, ...campos }, status: "presenting" }, set);
+          return;
+        }
+        // Outra coisa no ar (a letra, a logo): o vídeo volta a ser o que está
+        // no ar, do ponto em que o som está — o elemento é o mesmo.
+        const deck: Deck = {
+          kind: "media",
+          refId: t.refId,
+          title: t.title,
+          subtitle: "video",
+          slides: [{ id: `${t.refId}-0`, label: "Mídia", text: t.title, sortOrder: 0 }],
+          ...campos,
+        };
+        broadcast({ trilha: null, live: deck, liveIndex: 0, status: "presenting" }, set);
+      },
+
+      pararTrilha: () => broadcast({ trilha: null }, set),
+
+      setAlert: (text, seconds, position, estilo) =>
         broadcast(
           {
-            alert: { text, position, until: Date.now() + seconds * 1000 },
+            alert: {
+              text,
+              position,
+              until: Date.now() + seconds * 1000,
+              tamanho: tamanhoDoAvisoValido(estilo?.tamanho ?? get().settings.avisoTamanho),
+              piscar: avisoPisca(estilo?.piscar ?? get().settings.avisoPiscar),
+            },
           },
           set,
         ),

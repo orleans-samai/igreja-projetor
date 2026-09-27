@@ -15,7 +15,7 @@ import { Empty, Tally } from "@/components/ui/panel";
 import { Hint } from "@/components/ui/tooltip";
 import { ThemeThumb } from "@/components/operator/theme-rail";
 import { cn } from "@/lib/cn";
-import { etapaDoItem, type Etapa } from "@/lib/culto-etapas";
+import { enviadoPor, etapaDoItem, type Etapa } from "@/lib/culto-etapas";
 import type { PlaylistItem } from "@/lib/types";
 import { useLumenStore } from "@/store/lumen-store";
 import {
@@ -314,9 +314,14 @@ export function PlaylistPanel({ showThemes = false }: { showThemes?: boolean }) 
                   <span className="tnum shrink-0 text-caption text-subtle">{i + 1}</span>
                   <span className="truncate text-body text-fg">{item.title}</span>
                 </span>
-                <span className="mt-0.5 flex items-center gap-1.5">
-                  <EtapaTag etapa={etapa} />
-                  <span className="text-caption text-subtle">{labelType(item.type)}</span>
+                <span className="mt-0.5 flex min-w-0 items-center gap-1.5">
+                  {(etapa !== "pendente" || !enviadoPor(item.enviadoPor)) && <EtapaTag etapa={etapa} />}
+                  {enviadoPor(item.enviadoPor) && (
+                    <span className="truncate text-caption font-semibold text-enviado">
+                      {enviadoPor(item.enviadoPor)}
+                    </span>
+                  )}
+                  <span className="shrink-0 text-caption text-subtle">{labelType(item.type)}</span>
                 </span>
               </button>
               <div className="flex shrink-0 items-center opacity-0 transition-opacity duration-[var(--motion-fast)] group-hover/item:opacity-100 focus-within:opacity-100">

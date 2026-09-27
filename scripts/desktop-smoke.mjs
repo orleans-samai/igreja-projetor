@@ -179,29 +179,68 @@ try {
     null,
     { timeout: 10000 },
   );
-  // Os quadrados de livros, capítulos e versículos têm − e +: cada tela e
-  // cada vista pede um tamanho. O tamanho volta ao padrão no fim.
-  const alturaDoLivro = () =>
-    page.getByRole("button", { name: "Mateus", exact: true }).evaluate((b) => b.getBoundingClientRect().height);
-  const esperarTamanho = (rotulo) =>
+  // Livros, capítulos e versículos cabem inteiros no painel: sem barra de
+  // rolagem e sem cortar, do maior tamanho que couber. O − e o + mudam o
+  // máximo, e o capítulo grande encolhe sozinho.
+  const navegacaoDaBiblia = page.locator("[data-navegacao-da-biblia]");
+  const semRolar = () => navegacaoDaBiblia.evaluate((n) => n.scrollHeight <= n.clientHeight + 1);
+  const escalaNaTela = () =>
+    page.locator("[data-escala-da-biblia]").evaluate((s) => Number(s.dataset.escalaDaBiblia));
+  const esperarEscala = (condicao, referencia) =>
     page.waitForFunction(
-      (r) => (document.querySelector('[aria-label="Tamanho dos quadrados da Bíblia"]')?.textContent ?? "").includes(r),
-      rotulo,
+      ([c, r]) => {
+        const e = Number(document.querySelector("[data-escala-da-biblia]")?.dataset.escalaDaBiblia);
+        return c === "menor" ? e < r - 0.005 : e > r + 0.005;
+      },
+      [condicao, referencia],
       { timeout: 10000 },
     );
-  await esperarTamanho("100%");
-  const alturaPadrao = await alturaDoLivro();
-  await page.getByRole("button", { name: "Aumentar os quadrados da Bíblia", exact: true }).click();
-  await esperarTamanho("115%");
-  assert.ok((await alturaDoLivro()) > alturaPadrao, "o + não aumentou os quadrados da Bíblia");
+  const alturaDoLivro = () =>
+    page.getByRole("button", { name: "Mateus", exact: true }).evaluate((b) => b.getBoundingClientRect().height);
+  assert.ok(await semRolar(), "Mateus 17 não coube: a Bíblia rolou");
+  // Com os 66 livros, a janela do teste já pede quadrados pequenos; filtrado
+  // a um livro sobra espaço, e o − e o + têm o que fazer.
+  const buscaDeLivro = page.getByLabel("Buscar livro");
+  await buscaDeLivro.fill("Mateus");
+  await page.waitForFunction(() => !document.querySelector('[aria-label^="Gênesis"]'), null, { timeout: 10000 });
+  await page.waitForTimeout(300);
+  const escalaDeMateus = await escalaNaTela();
+  const alturaDeMateus = await alturaDoLivro();
   await page.getByRole("button", { name: "Diminuir os quadrados da Bíblia", exact: true }).click();
-  await esperarTamanho("100%");
-  await page.getByRole("button", { name: "Diminuir os quadrados da Bíblia", exact: true }).click();
-  await esperarTamanho("90%");
-  assert.ok((await alturaDoLivro()) < alturaPadrao, "o − não diminuiu os quadrados da Bíblia");
+  await esperarEscala("menor", escalaDeMateus);
+  const escalaMenor = await escalaNaTela();
+  const alturaMenor = await alturaDoLivro();
+  assert.ok(alturaMenor < alturaDeMateus, "o − não diminuiu os quadrados da Bíblia");
+  assert.ok(await semRolar(), "a Bíblia rolou depois do −");
   await page.getByRole("button", { name: "Aumentar os quadrados da Bíblia", exact: true }).click();
-  await esperarTamanho("100%");
+  await esperarEscala("maior", escalaMenor);
+  assert.ok((await alturaDoLivro()) > alturaMenor, "o + não voltou a crescer os quadrados");
+  assert.ok(await semRolar(), "a Bíblia rolou depois do +");
+  await buscaDeLivro.fill("");
+  await page.waitForFunction(() => document.querySelector('[aria-label^="Gênesis"]'), null, { timeout: 10000 });
+  await page.waitForTimeout(300);
+  assert.ok(await semRolar(), "a lista inteira de livros não coube de novo: a Bíblia rolou");
   await page.screenshot({ animations: "disabled", path: path.join(evidence, "biblia.png") });
+  // Lucas 1, com 80 versículos: o último versículo aparece inteiro, sem rolar.
+  await irPara("Lucas", 1);
+  await page.waitForFunction(() => document.querySelectorAll(".bible-num-vs").length === 80, null, { timeout: 10000 });
+  await page.waitForTimeout(300);
+  assert.ok(await semRolar(), "Lucas 1 não coube: a Bíblia rolou");
+  const ultimoVisivel = await navegacaoDaBiblia.evaluate((n) => {
+    const caixa = n.getBoundingClientRect();
+    const ultimo = n.querySelector('[aria-label="Versículo 80"]').getBoundingClientRect();
+    return ultimo.bottom <= caixa.bottom + 1 && ultimo.top >= caixa.top;
+  });
+  assert.ok(ultimoVisivel, "o versículo 80 de Lucas 1 ficou cortado");
+  await page.screenshot({ animations: "disabled", path: path.join(evidence, "biblia-lucas-1.png") });
+  // De volta a Mateus 17:22, onde o resto do teste espera a Bíblia.
+  await irPara("Mateus", 17);
+  await page.getByRole("button", { name: "Versículo 22", exact: true }).click();
+  await page.waitForFunction(
+    () => [...document.querySelectorAll("h2")].some((h) => h.textContent.includes("Mateus 17:22")),
+    null,
+    { timeout: 10000 },
+  );
   // A letra fica no meio do telão, na vertical — nunca lá embaixo nem lá em
   // cima, com ou sem a referência no rodapé.
   const desvioDoCentro = await page.evaluate(() => {
@@ -312,7 +351,7 @@ try {
   assert.equal(pareado.ok, true);
   // O PIN sozinho não comanda o telão: quem pareia entra como "chat" e a
   // cabine promove. Aqui isso passa pelo IPC de verdade, como no app.
-  assert.equal(pareado.permissao, "chat");
+  assert.deepEqual(pareado.permissoes, []);
   const semPermissao = await fetch(`${remoteBase}/comando`, { method: "POST", body: JSON.stringify({ token: pareado.token, acao: "preto" }) });
   assert.equal(semPermissao.status, 403);
   const aparelhos = await page.evaluate(() => window.lumenDesktop.remoteControlDevices());
@@ -590,13 +629,56 @@ try {
     { timeout: 10000 },
   );
 
+  // A coluna é de temas: um clique na composição põe o vídeo que ela gerou
+  // atrás da letra — o dinâmico é um tipo de fundo, como imagem e vídeo.
+  await page.locator('button[title="Usar como fundo da letra"]', { hasText: "Fundo do ensaio" }).click();
+  await esperarAsync(
+    page,
+    async () => {
+      const st = JSON.parse(await window.lumenDesktop.storageGet("lumen-v2")).state;
+      const t = st.themes.find((x) => x.id === st.songThemeId);
+      return t?.backgroundType === "video" && t.backgroundValue.includes("Fundo%20do%20ensaio");
+    },
+    undefined,
+    { oQue: "o vídeo dinâmico virar o fundo da letra" },
+  );
+
+  // "Criar tema", em dourado ao lado do título: o tema novo já vai ao telão.
+  await page.getByRole("button", { name: "Criar tema", exact: true }).click();
+  const dialogoTema = page.getByRole("dialog", { name: "Criar tema" });
+  await dialogoTema.waitFor({ timeout: 10000 });
+  await dialogoTema.getByLabel("Nome do tema").fill("Tema do ensaio");
+  // Fundo de imagem do computador: entra reduzida a JPEG de telão, não a
+  // foto crua dentro do tema.
+  await dialogoTema.getByRole("tab", { name: "Imagem", exact: true }).click();
+  const fotoDoTema = path.join(profile, "fundo-do-tema.png");
+  // Um PNG de 1×1 que o navegador decodifica (o PNG_MINIMO lá de baixo
+  // não decodifica: serve para ZIP, não para imagem de verdade).
+  await writeFile(
+    fotoDoTema,
+    Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64"),
+  );
+  await dialogoTema.locator('input[type="file"]').setInputFiles(fotoDoTema);
+  await dialogoTema.getByRole("button", { name: "Criar tema", exact: true }).click();
+  await dialogoTema.waitFor({ state: "hidden", timeout: 10000 });
+  await esperarAsync(
+    page,
+    async () => {
+      const st = JSON.parse(await window.lumenDesktop.storageGet("lumen-v2")).state;
+      const t = st.themes.find((x) => x.id === st.songThemeId);
+      return t?.name === "Tema do ensaio" && t.backgroundType === "image" && t.backgroundValue.startsWith("data:image/jpeg");
+    },
+    undefined,
+    { oQue: "o tema criado, com a imagem do computador, ir para o telão" },
+  );
+
   // Automático fica guardado, e a aba continua de pé.
   await abrirVfx();
   await dialogoVfx.getByRole("button", { name: /^Automático/ }).click();
   await page.keyboard.press("Escape");
   await dialogoVfx.waitFor({ state: "hidden", timeout: 10000 });
   assert.equal(await abaDinamicos.isDisabled(), false, "no automático a aba continua aberta");
-  await page.getByRole("tab", { name: "Temas" }).click();
+  await page.getByRole("tab", { name: "Imagens" }).click();
   await cdpVfx.send("Emulation.clearDeviceMetricsOverride");
   await page.waitForTimeout(400);
 
@@ -647,7 +729,8 @@ try {
   const novaConta = dialogoPerm.locator("form", { hasText: "Nova conta" });
   await novaConta.getByLabel("Usuário da nova conta").fill("Tecladista");
   await novaConta.getByLabel("Senha da nova conta").fill("tecla-2026");
-  await novaConta.getByRole("button", { name: "Editor", exact: true }).click();
+  // Permissão por parte: esta conta cuida só das letras.
+  await novaConta.getByRole("button", { name: "Letras", exact: true }).click();
   await novaConta.getByLabel("Equipe da nova conta").selectOption("louvor");
   await novaConta.getByRole("button", { name: "Criar conta", exact: true }).click();
   await dialogoPerm.getByText("Tecladista", { exact: true }).waitFor({ timeout: 10000 });
@@ -690,9 +773,47 @@ try {
     semEditor: document.querySelector("#semEditor").hidden,
     semControle: document.querySelector("#semControle").hidden,
   }));
-  assert.equal(avisosDaConta.semEditor, true, "a conta não trouxe a permissão de editor");
-  assert.equal(avisosDaConta.semControle, false, "a conta de editor comandou o telão");
+  assert.equal(avisosDaConta.semEditor, true, "a conta não trouxe a permissão das letras");
+  assert.equal(avisosDaConta.semControle, false, "a conta só das letras comandou o telão");
+  // Só aparecem as abas que ela pode usar: Letras e o chat, nenhuma
+  // bloqueada pedindo licença.
+  const abasVisiveis = () =>
+    celularDaConta.evaluate(() =>
+      ["abaControle", "abaLetras", "abaMidia", "abaCulto", "abaChat"].filter((id) => !document.getElementById(id).hidden),
+    );
+  assert.deepEqual(await abasVisiveis(), ["abaLetras", "abaChat"]);
+  // O topo fica parado: a página não rola, quem rola é o painel.
+  const topoFixo = await celularDaConta.evaluate(() => ({
+    fixa: document.querySelector(".app").classList.contains("fixa"),
+    semRolarAPagina: document.documentElement.scrollHeight <= window.innerHeight + 1,
+    painelRola: getComputedStyle(document.getElementById("painelLetras")).overflowY,
+  }));
+  assert.equal(topoFixo.fixa, true, "a página do celular não ficou com o topo fixo");
+  assert.equal(topoFixo.semRolarAPagina, true, "a página do celular inteira rola, levando as abas junto");
+  assert.equal(topoFixo.painelRola, "auto");
   await celularDaConta.close();
+
+  // Pelo acesso rápido, só o chat: nem as abas, nem o que está no ar.
+  const janelaSoChat = app.waitForEvent("window");
+  await app.evaluate(({ BrowserWindow }, url) => {
+    const w = new BrowserWindow({ width: 420, height: 860, show: true, webPreferences: { partition: "celular-so-chat" } });
+    void w.loadURL(url);
+  }, `${remoteBase}/`);
+  const celularSoChat = await janelaSoChat;
+  await celularSoChat.waitForLoadState("domcontentloaded");
+  await celularSoChat.fill("#nome", "Visitante do chat");
+  await celularSoChat.click("#entrar");
+  await celularSoChat.waitForSelector("#conectado:not([hidden])", { timeout: 15000 });
+  await celularSoChat.waitForFunction(() => !document.getElementById("painelChat").hidden, null, { timeout: 10000 });
+  const soChat = await celularSoChat.evaluate(() => ({
+    abas: document.querySelector(".abas").hidden,
+    noar: document.getElementById("noar").hidden,
+    visiveis: ["painelControle", "painelLetras", "painelMidia", "painelCulto", "painelChat"].filter(
+      (id) => !document.getElementById(id).hidden,
+    ),
+  }));
+  assert.deepEqual(soChat, { abas: true, noar: true, visiveis: ["painelChat"] }, JSON.stringify(soChat));
+  await celularSoChat.close();
 
   // ---- Logo e nome da igreja, à mão na barra de cima ----
   // Era a primeira coisa que alguém faz ao instalar o Lúmen, e a mais
@@ -706,6 +827,23 @@ try {
   const campoNome = dialogoLogo.getByLabel("Nome da igreja");
   await campoLimpar(campoNome);
   await campoNome.fill("Igreja da Vila");
+  // Fundo atrás da logo: um vídeo da pasta, e a logo abre com o Lúmen.
+  await dialogoLogo.getByRole("tab", { name: "Vídeo", exact: true }).click();
+  await dialogoLogo.getByLabel("Vídeo atrás da logo").selectOption({ label: "Fundo do ensaio" });
+  assert.equal(
+    await dialogoLogo.getByLabel("Começar com a logo no telão sempre que o Lúmen abrir").isChecked(),
+    true,
+    "a logo devia abrir com o Lúmen por padrão",
+  );
+  await esperarAsync(
+    page,
+    async () => {
+      const st = JSON.parse(await window.lumenDesktop.storageGet("lumen-v2")).state;
+      return (st.settings.logoFundo?.url ?? "").includes("__midia/video/Fundo%20do%20ensaio");
+    },
+    undefined,
+    { oQue: "o vídeo atrás da logo ficar guardado" },
+  );
   await page.keyboard.press("Escape");
   // Esperar o diálogo sair de cena, não só a tecla: enquanto ele está aberto
   // o Radix prende o foco e bloqueia cliques no resto da cabine.
@@ -715,6 +853,31 @@ try {
     null,
     { timeout: 10000 },
   );
+
+  // ---- O aviso: grande e piscando por padrão; o tamanho se escolhe antes ----
+  // Era uma faixinha de 30 px que ninguém via do fundo da igreja. Aqui se
+  // confere o que vai no quadro; o desenho, no telão de verdade, mais abaixo.
+  const mandarAviso = async (texto) => {
+    await page.locator('input[aria-label="Aviso no rodapé do telão"]:visible').first().fill(texto);
+    await page.locator('button[aria-label="Mostrar aviso por 10 segundos"]:visible').first().click();
+    await page.waitForFunction(
+      (t) => JSON.parse(localStorage.getItem("lumen-live-frame") ?? "null")?.alert?.text === t,
+      texto,
+      { timeout: 10000 },
+    );
+    return page.evaluate(() => JSON.parse(localStorage.getItem("lumen-live-frame") ?? "null").alert);
+  };
+  let aviso = await mandarAviso("Vamos orar");
+  assert.equal(aviso.tamanho, "grande", `o aviso não nasceu grande: ${aviso.tamanho}`);
+  assert.equal(aviso.piscar, true, "o aviso não pisca por padrão");
+  await page.locator('select[aria-label="Tamanho do aviso no telão"]:visible').first().selectOption("medio");
+  await page.locator('button[aria-label="Piscar o aviso"]:visible').first().click();
+  aviso = await mandarAviso("Ofertas");
+  assert.equal(aviso.tamanho, "medio", `o tamanho escolhido não foi para o telão: ${aviso.tamanho}`);
+  assert.equal(aviso.piscar, false, "o aviso piscou com o piscar desligado");
+  // Volta ao padrão da igreja: grande e piscando.
+  await page.locator('select[aria-label="Tamanho do aviso no telão"]:visible').first().selectOption("grande");
+  await page.locator('button[aria-label="Piscar o aviso"]:visible').first().click();
 
   // ---- Celular: pasta de mídia espelhada, projetar item, buscar na internet ----
   const midiaNoCelular = await fetch(`${remoteBase}/midia?token=${pareado.token}`).then((r) => r.json());
@@ -837,6 +1000,11 @@ try {
   await celular.waitForFunction(() => !document.querySelector("#tocarPausar").disabled, null, {
     timeout: 10000,
   });
+  // Entrou só com o nome (só o chat) e acabou de ganhar o controle: a tela
+  // sai do chat e vai para a parte liberada, sem ninguém procurar a aba.
+  await celular.waitForFunction(() => !document.getElementById("painelControle").hidden, null, {
+    timeout: 10000,
+  });
 
   const leBotao = () =>
     celular.evaluate(() => {
@@ -924,6 +1092,58 @@ try {
   await celular.click('#painelControle [data-acao="parar-midia"]');
   await page.waitForTimeout(800);
   assert.equal((await quadroNoTelao()).status, "presenting", "Sair do vídeo apagou a letra do telão");
+
+  // ---- "Tirar vídeo": a imagem sai do telão, o som continua ----
+  // E a letra entra por cima do som: a igreja toca o clipe do louvor e
+  // projeta a própria letra.
+  assert.equal((await projetarPeloCelular("media", "midia:video:Fundo do ensaio.webm")).ok, true);
+  await page.waitForFunction(
+    () => {
+      const q = JSON.parse(localStorage.getItem("lumen-live-frame") ?? "null");
+      return q?.deck?.mediaType === "video" && q.status === "presenting";
+    },
+    null,
+    { timeout: 10000 },
+  );
+  // Som só no telão: a prévia da cabine tocava junto, e a igreja ouvia o
+  // vídeo "saindo por duas fontes".
+  await page.waitForFunction(() => document.querySelectorAll("video").length > 0, null, { timeout: 10000 });
+  assert.equal(
+    await page.evaluate(() => [...document.querySelectorAll("video")].every((v) => v.muted)),
+    true,
+    "a cabine tocou o som do vídeo junto com o telão",
+  );
+  await page.locator("button:visible", { hasText: "Tirar vídeo" }).first().click();
+  await page.waitForFunction(
+    () => (JSON.parse(localStorage.getItem("lumen-live-frame") ?? "null")?.trilha?.mediaSrc ?? "").includes("Fundo%20do%20ensaio"),
+    null,
+    { timeout: 10000 },
+  );
+  await page.waitForSelector("video[data-midia-oculta]", { state: "attached", timeout: 10000 });
+  assert.equal((await projetarPeloCelular("song", escolhida.id)).ok, true);
+  await page.waitForFunction(
+    (titulo) => {
+      const q = JSON.parse(localStorage.getItem("lumen-live-frame") ?? "null");
+      return q?.deck?.title === titulo && Boolean(q.trilha);
+    },
+    escolhida.titulo,
+    { timeout: 10000 },
+  );
+  await page.locator("button:visible", { hasText: "Mostrar vídeo" }).first().click();
+  await page.waitForFunction(
+    () => {
+      const q = JSON.parse(localStorage.getItem("lumen-live-frame") ?? "null");
+      return !q?.trilha && q?.deck?.mediaType === "video" && q.status === "presenting";
+    },
+    null,
+    { timeout: 10000 },
+  );
+  await celular.click('#painelControle [data-acao="parar-midia"]');
+  await page.waitForFunction(
+    () => JSON.parse(localStorage.getItem("lumen-live-frame") ?? "null")?.status === "clear",
+    null,
+    { timeout: 10000 },
+  );
 
   // ---- A grade de slides: tocar numa estrofe põe ela no telão ----
   // É o caminho inteiro num teste só: a cabine manda os slides prontos, a
@@ -1220,6 +1440,48 @@ try {
     null,
     { timeout: 10000 },
   );
+  // A mídia do dirigente entra na biblioteca antes de entrar no culto: sem
+  // ela, o item ficava "Pendente" e não abria. E diz, em amarelo, de quem veio.
+  await esperarAsync(
+    page,
+    async () => {
+      const st = JSON.parse(await window.lumenDesktop.storageGet("lumen-v2")).state;
+      const item = st.playlists
+        .find((pl) => pl.id === st.activePlaylistId)
+        .items.find((i) => i.title === "fundo-do-dirigente");
+      return Boolean(
+        item &&
+          item.enviadoPor === "Pastor Elias" &&
+          st.media.some((m) => m.id === item.refId && m.path.includes("__midia/image/fundo-do-dirigente.png")),
+      );
+    },
+    undefined,
+    { oQue: "a mídia do dirigente entrar na biblioteca e no culto dizendo de quem veio" },
+  );
+  await page.waitForFunction(
+    () => [...document.querySelectorAll(".text-enviado")].some((e) => e.textContent === "Enviado por Pastor Elias"),
+    null,
+    { timeout: 10000 },
+  );
+  // E abre: dois cliques no item põem a imagem no telão.
+  await page
+    .locator('button[title^="Um clique seleciona"]:visible', { hasText: "fundo-do-dirigente" })
+    .first()
+    .dblclick();
+  await page.waitForFunction(
+    () => {
+      const q = JSON.parse(localStorage.getItem("lumen-live-frame") ?? "null");
+      return q?.deck?.kind === "media" && (q.deck.mediaSrc ?? "").includes("fundo-do-dirigente.png");
+    },
+    null,
+    { timeout: 10000 },
+  );
+  await page.locator("footer button:visible", { hasText: "Parar" }).first().click();
+  await page.waitForFunction(
+    () => JSON.parse(localStorage.getItem("lumen-live-frame") ?? "null")?.status === "idle",
+    null,
+    { timeout: 10000 },
+  );
 
   // O chat: o dirigente escreve, e o recado chega ao mural da cabine.
   await dirigente.click('[data-aba="chat"]');
@@ -1318,7 +1580,14 @@ try {
       `<p:sld><p:cSld><p:bg><p:bgPr><a:blipFill><a:blip r:embed="rId9"/></a:blipFill></p:bgPr></p:bg>` +
       `<p:spTree><p:sp><p:txBody><a:p><a:r><a:t>Bem-vindos à Santa Ceia</a:t></a:r></a:p></p:txBody></p:sp></p:spTree></p:cSld></p:sld>`,
     "ppt/slides/_rels/slide1.xml.rels": `<Relationships><Relationship Id="rId9" Type="${REL}/image" Target="../media/fundo.png"/></Relationships>`,
-    "ppt/slides/slide2.xml": `<p:sld><p:cSld><p:spTree><p:sp><p:txBody><a:p><a:r><a:t>Oferta</a:t></a:r></a:p></p:txBody></p:sp></p:spTree></p:cSld></p:sld>`,
+    // Fundo verde e o título branco no meio: é o que o desenho do próprio
+    // Lúmen tem de pôr no lugar certo quando o PowerPoint e o LibreOffice
+    // recusam o arquivo (este não tem nem os tipos de conteúdo).
+    "ppt/slides/slide2.xml":
+      `<p:sld><p:cSld><p:bg><p:bgPr><a:solidFill><a:srgbClr val="1F6B3B"/></a:solidFill></p:bgPr></p:bg><p:spTree>` +
+      `<p:sp><p:spPr><a:xfrm><a:off x="1219200" y="2743200"/><a:ext cx="9753600" cy="1371600"/></a:xfrm></p:spPr>` +
+      `<p:txBody><a:bodyPr anchor="ctr"/><a:p><a:pPr algn="ctr"/><a:r><a:rPr sz="6000" b="1"><a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill></a:rPr>` +
+      `<a:t>Oferta</a:t></a:r></a:p></p:txBody></p:sp></p:spTree></p:cSld></p:sld>`,
     "ppt/media/fundo.png": PNG_MINIMO,
   });
   const pdfDoEstudo = (() => {
@@ -1373,7 +1642,44 @@ try {
   const doPdf = apresentacoes.find((a) => a.origem === "pdf");
   assert.ok(doPptx && doPdf, "faltou o PowerPoint ou o PDF na biblioteca");
   assert.equal(doPptx.slides.length, 2);
-  assert.equal(doPptx.slides[0].texto, "Bem-vindos à Santa Ceia");
+  // Nem o PowerPoint nem o LibreOffice abrem este arquivo: quem desenha é o
+  // próprio Lúmen, em Full HD, e o slide chega como imagem — como o PDF.
+  assert.ok(
+    doPptx.slides.every((sl) => sl.texto === "" && sl.imagem),
+    "o PowerPoint que ninguém abre não foi desenhado pelo próprio Lúmen",
+  );
+  const desenhoProprio = await page.evaluate(async (endereco) => {
+    const img = await createImageBitmap(await (await fetch(endereco)).blob());
+    const tela = new OffscreenCanvas(img.width, img.height);
+    const ctx = tela.getContext("2d");
+    ctx.drawImage(img, 0, 0);
+    const px = (x, y) => [...ctx.getImageData(Math.round(x), Math.round(y), 1, 1).data.slice(0, 3)];
+    const brancos = (x0, y0, x1, y1) => {
+      const d = ctx.getImageData(x0, y0, x1 - x0, y1 - y0).data;
+      let n = 0;
+      for (let i = 0; i < d.length; i += 4) if (d[i] > 220 && d[i + 1] > 220 && d[i + 2] > 220) n += 1;
+      return n;
+    };
+    const w = img.width;
+    const h = img.height;
+    return {
+      largura: w,
+      altura: h,
+      fundo: px(w * 0.05, h * 0.05),
+      // A caixa do título vai de 10% a 90% na largura e de 40% a 60% na altura.
+      brancosNoTitulo: brancos(Math.round(w * 0.1), Math.round(h * 0.4), Math.round(w * 0.9), Math.round(h * 0.6)),
+      brancosEmCima: brancos(0, 0, w, Math.round(h * 0.3)),
+    };
+  }, doPptx.slides[1].imagem);
+  assert.equal(desenhoProprio.largura, 1920, "o desenho do Lúmen não saiu em Full HD");
+  assert.equal(desenhoProprio.altura, 1080);
+  const [fr, fg, fb] = desenhoProprio.fundo;
+  assert.ok(
+    Math.abs(fr - 0x1f) < 6 && Math.abs(fg - 0x6b) < 6 && Math.abs(fb - 0x3b) < 6,
+    `o fundo do slide desenhado pelo Lúmen não veio verde: ${desenhoProprio.fundo}`,
+  );
+  assert.ok(desenhoProprio.brancosNoTitulo > 2000, `o título branco não apareceu na caixa dele: ${desenhoProprio.brancosNoTitulo}`);
+  assert.equal(desenhoProprio.brancosEmCima, 0, "apareceu branco fora da caixa do título");
   assert.equal(doPdf.slides.length, 2, "o pdf.js não desenhou as duas páginas");
   // Toda imagem de slide chega pelo protocolo — a rota escrita e a rota
   // atendida já discordaram uma vez, e toda imagem dava 404.
@@ -1697,9 +2003,29 @@ try {
 
   // O tema "Infantil" é o único do acervo que escreve o título da música no
   // telão — é com ele que dá para provar onde o texto fixo mora.
+  // E uma música longa, de 14 slides, para a faixa de letras passar da
+  // largura da tela — é com ela que se prova a faixa andando sozinha e os
+  // dois blocos.
   await page.evaluate(async () => {
     const guardado = JSON.parse(await window.lumenDesktop.storageGet("lumen-v2"));
     guardado.state.songThemeId = "theme-infantil";
+    const base = guardado.state.songs[0];
+    const agora = Date.now();
+    guardado.state.songs.push({
+      ...base,
+      id: "faixa-longa",
+      title: "Faixa longa do teste",
+      themeId: undefined,
+      lyricsRaw: "",
+      slides: Array.from({ length: 14 }, (_, k) => ({
+        id: `faixa-longa-${k}`,
+        label: `Verso ${k + 1}`,
+        text: `Linha ${k + 1} da faixa longa\nsegunda linha do verso ${k + 1}`,
+        sortOrder: k,
+      })),
+      createdAt: agora,
+      updatedAt: agora,
+    });
     await window.lumenDesktop.storageSet("lumen-v2", JSON.stringify(guardado));
   });
   await page.reload();
@@ -1721,8 +2047,44 @@ try {
   await page.waitForFunction(() => localStorage.getItem("lumen-smoke-ready") === "yes");
   await page.evaluate(() => { const channel = new BroadcastChannel("lumen-smoke"); channel.postMessage("ok"); channel.close(); });
   assert.equal(await received, true);
+  // A logo abre com o Lúmen, com o vídeo escolhido atrás, na tela inteira —
+  // e sem o quadro escurecido que ficava em volta dela.
+  await projector.waitForSelector('[data-fundo-da-logo="video"]', { state: "attached", timeout: 15000 });
+  assert.equal(
+    await projector.evaluate(() => document.querySelector(".bg-stage\\/55") === null),
+    true,
+    "voltou o quadro escurecido em volta da logo",
+  );
+  // O aviso no telão de verdade: 96 px no telão de 1920 e piscando.
+  await page.locator('input[aria-label="Aviso no rodapé do telão"]:visible').first().fill("Vamos orar");
+  await page.locator('button[aria-label="Mostrar aviso por 10 segundos"]:visible').first().click();
+  await projector.waitForFunction(
+    () => document.querySelector("[data-aviso-no-telao]")?.textContent === "Vamos orar",
+    null,
+    { timeout: 10000 },
+  );
+  const avisoNoTelao = await projector.evaluate(() => {
+    const a = document.querySelector("[data-aviso-no-telao]");
+    return { corpo: a.style.fontSize, pisca: a.classList.contains("lumen-aviso-pisca") };
+  });
+  assert.equal(avisoNoTelao.corpo, "96px", `o aviso não saiu grande no telão: ${avisoNoTelao.corpo}`);
+  assert.equal(avisoNoTelao.pisca, true, "o aviso não piscou no telão");
 
   // ---- Dois cliques no repertório mandam para o telão ----
+  // E a faixa de letras volta sozinha: recolhida sem querer, ela sumia justo
+  // na hora de pôr a letra no telão.
+  const faixaAberta = () =>
+    page.evaluate(
+      () => document.querySelector('section[aria-label="Letras do slide"] button[aria-expanded]')?.getAttribute("aria-expanded"),
+    );
+  if ((await faixaAberta()) === "true") {
+    await page.locator('section[aria-label="Letras do slide"] button[aria-expanded]').first().click();
+  }
+  await page.waitForFunction(
+    () => document.querySelector('section[aria-label="Letras do slide"] button[aria-expanded]')?.getAttribute("aria-expanded") === "false",
+    null,
+    { timeout: 10000 },
+  );
   const doisCliques = await page.evaluate(async () => {
     const esperar = (ms) => new Promise((r) => setTimeout(r, ms));
     const clicar = (txt) => {
@@ -1745,6 +2107,7 @@ try {
   });
   assert.ok(!doisCliques.erro, doisCliques.erro);
   assert.ok(doisCliques.titulo.length > 0, "a linha do repertório não tinha nome");
+  assert.equal(await faixaAberta(), "true", "a faixa de letras continuou recolhida com a letra no telão");
 
   // ---- Texto fixo do telão: sempre e apenas no rodapé ----
   // O título da música já foi desenhado no alto, à esquerda: a igreja lia o
@@ -1790,6 +2153,133 @@ try {
     `texto fixo a ${noTelao.alturas[0]}% e a letra a ${noTelao.letra}%: o fixo tem que ficar abaixo`,
   );
 
+  // ---- Faixa de letras: anda sozinha e pode ter dois blocos ----
+  // Avançando só pelas setas, o amarelo (e os dois seguintes, quando cabem)
+  // fica à vista sem ninguém ir à barra de rolagem. Janela de tamanho
+  // conhecido: a conta de quantos cartões cabem depende dela.
+  await app.evaluate(({ BrowserWindow }) => {
+    const win = BrowserWindow.getAllWindows().find((w) => w.webContents.getURL() === "lumen://app/");
+    win.setSize(1366, 768);
+    win.webContents.setZoomFactor(1);
+  });
+  const musicaLonga = "Faixa longa do teste";
+  await page.evaluate(async () => {
+    const esperar = (ms) => new Promise((r) => setTimeout(r, ms));
+    const clicar = (txt) =>
+      [...document.querySelectorAll("button,[role=tab]")].find((b) => (b.textContent || "").trim() === txt)?.click();
+    clicar("Biblioteca");
+    await esperar(300);
+    clicar("Letras");
+    await esperar(300);
+  });
+  const buscaDoRepertorio = page.locator('input[aria-label="Buscar no repertório"]:visible').first();
+  await buscaDoRepertorio.fill(musicaLonga);
+  await page.waitForTimeout(400);
+  const abriuALonga = await page.evaluate((t) => {
+    const linha = [...document.querySelectorAll('li > button[title^="Um clique seleciona"]')].find(
+      (b) => (b.querySelector("p")?.textContent ?? "").trim() === t,
+    );
+    linha?.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+    return Boolean(linha);
+  }, musicaLonga);
+  assert.ok(abriuALonga, "a música longa não apareceu no repertório");
+  await page.waitForFunction(
+    (t) => JSON.parse(localStorage.getItem("lumen-live-frame") ?? "null")?.deck?.title === t,
+    musicaLonga,
+    { timeout: 10000 },
+  );
+  await buscaDoRepertorio.fill("");
+  const vistoNaFaixa = () =>
+    page.evaluate(() => {
+      const secao = document.querySelector('section[aria-label="Letras do slide"]');
+      const i = JSON.parse(localStorage.getItem("lumen-live-frame") ?? "null")?.index ?? 0;
+      const cartoes = [...secao.querySelectorAll("[data-cartao]")];
+      const aparece = (n) => {
+        const c = secao.querySelector(`[data-cartao="${n}"]`);
+        if (!c) return false;
+        const caixa = c.closest("[data-bloco], .overflow-x-auto").getBoundingClientRect();
+        const r = c.getBoundingClientRect();
+        return r.left >= caixa.left - 1 && r.right <= caixa.right + 1;
+      };
+      // Quantos cabem lado a lado: numa faixa estreita, o atual vem antes
+      // dos seguintes.
+      const pista = secao.querySelector('[data-bloco="secundario"]') ?? secao.querySelector(".overflow-x-auto");
+      const largura = cartoes[0]?.getBoundingClientRect().width ?? 1;
+      const cabem = Math.max(1, Math.floor((pista.clientWidth - 16 + 8) / (largura + 8)));
+      const seguintes = [i + 1, i + 2].slice(0, Math.max(0, cabem - 1)).filter((n) => n < cartoes.length);
+      return { i, total: cartoes.length, atual: aparece(i), seguintes: seguintes.every(aparece) };
+    });
+  const andarPelaFaixa = async (quantos, botao) => {
+    for (let k = 0; k < quantos; k += 1) {
+      const antes = (await vistoNaFaixa()).i;
+      await page.locator(`button[aria-label="${botao}"]:visible`).first().click();
+      // A faixa rola logo depois. A janela do teste não aparece na tela, e
+      // sem quadros a rolagem suave não anda: quem leva a faixa até lá é a
+      // garantia do fim, que numa janela escondida pode levar um segundo.
+      let visto = await vistoNaFaixa();
+      for (let t = 0; t < 30 && (visto.i === antes || !visto.atual || !visto.seguintes); t += 1) {
+        await page.waitForTimeout(100);
+        visto = await vistoNaFaixa();
+      }
+      assert.notEqual(visto.i, antes, `"${botao}" não mudou o slide`);
+      assert.ok(visto.atual, `no slide ${visto.i + 1} de ${visto.total}, o amarelo ficou fora da faixa`);
+      assert.ok(visto.seguintes, `no slide ${visto.i + 1} de ${visto.total}, os seguintes ficaram fora da faixa`);
+    }
+  };
+  assert.equal((await vistoNaFaixa()).total, 14, "a faixa não mostrou os 14 slides da música longa");
+  await andarPelaFaixa(10, "Próximo slide");
+  await andarPelaFaixa(10, "Slide anterior");
+
+  // Dois blocos: a letra enche o de cima (só cartões inteiros, nunca rola)
+  // e continua no de baixo, que tem a barra de rolagem dele quando nem ali
+  // cabe tudo.
+  const botaoDoisBlocos = page.getByRole("button", { name: "2 blocos", exact: true }).first();
+  await botaoDoisBlocos.click();
+  await page.waitForSelector('section[aria-label="Letras do slide"] [data-bloco="secundario"]', { timeout: 10000 });
+  const blocos = await page.evaluate(() => {
+    const secao = document.querySelector('section[aria-label="Letras do slide"]');
+    const principal = secao.querySelector('[data-bloco="principal"]');
+    const secundario = secao.querySelector('[data-bloco="secundario"]');
+    const indices = (el) => [...el.querySelectorAll("[data-cartao]")].map((c) => Number(c.dataset.cartao));
+    const caixa = principal.getBoundingClientRect();
+    return {
+      emCima: indices(principal),
+      embaixo: indices(secundario),
+      inteiros: [...principal.querySelectorAll("[data-cartao]")].every((c) => {
+        const r = c.getBoundingClientRect();
+        return r.left >= caixa.left - 1 && r.right <= caixa.right + 1;
+      }),
+      rolaEmCima: principal.scrollWidth > principal.clientWidth + 1,
+      rolaEmbaixo: secundario.scrollWidth > secundario.clientWidth + 1,
+      barraEmbaixo: getComputedStyle(secundario).overflowX,
+      apertado: secao.querySelector('button[aria-pressed="true"]')?.textContent?.trim(),
+    };
+  });
+  assert.equal(blocos.apertado, "2 blocos", "o botão dos dois blocos não ficou marcado");
+  assert.ok(blocos.emCima.length > 1, `o bloco de cima levou ${blocos.emCima.length} cartão`);
+  assert.deepEqual(
+    [...blocos.emCima, ...blocos.embaixo],
+    Array.from({ length: 14 }, (_, k) => k),
+    `a letra não seguiu de cima para baixo: ${JSON.stringify(blocos)}`,
+  );
+  assert.equal(blocos.inteiros, true, "o bloco de cima cortou um cartão na borda");
+  assert.equal(blocos.rolaEmCima, false, "o bloco de cima rolou");
+  assert.equal(blocos.barraEmbaixo, "auto");
+  assert.equal(
+    blocos.rolaEmbaixo,
+    blocos.embaixo.length > blocos.emCima.length,
+    `a barra do bloco de baixo não bateu com o que sobrou: ${JSON.stringify(blocos)}`,
+  );
+  await andarPelaFaixa(13, "Próximo slide");
+  await page.screenshot({ animations: "disabled", path: path.join(evidence, "faixa-dois-blocos.png") });
+  await andarPelaFaixa(13, "Slide anterior");
+  await botaoDoisBlocos.click();
+  await page.waitForFunction(
+    () => !document.querySelector('section[aria-label="Letras do slide"] [data-bloco]'),
+    null,
+    { timeout: 10000 },
+  );
+
   // ---- Sem IA, sem YouTube e sem Auto-Slide: nada disso existe mais ----
   // A igreja pediu para tirar. Nem botão, nem item de menu, nem ponte.
   assert.equal(await page.getByRole("button", { name: "IA", exact: true }).count(), 0, "o botão de IA voltou");
@@ -1814,7 +2304,7 @@ try {
   assert.deepEqual(errors, []);
   const disk = JSON.parse(await readFile(path.join(profile, "data", "library.json"), "utf8"));
   assert.ok(disk.values["lumen-v2"]);
-  console.log(`PASS: offline, fonts, Bible (one click on a verse projects it, − and + resize the book, chapter and verse squares, gold buttons in and out of the Bible screen, five versions plus importing a licensed one, its three parts rearranged by dragging and swapping sides, New-Testament-only notice, omitted verse lands on the next), restart persistence, projector, media ranges, preflight, remote control (LAN, entrada por nome, nome fixo na rede, one click from the menu bar beside Permissões, accounts with username and password created in Permissões that sign in already holding their permission while the quick name-only access stays chat-only), update check, review before apply, 1366×768 at 100/125/150% and 800×600, no scroll and exactly one layout at ten sizes from 800×600 to 2560×1440, including every pixel around the 1280 cutover and the chat stays on screen, church logo and name reachable from the menu bar, art studio makes a batch of 8 distinct Konva designs from just a title and a Bible reference, opens one in the editor, saves it and exports PNG and JPEG at exactly 1920×1080 (Full HD is the default), VFX has three modes and a dynamic video becomes a real file in the Vídeos tab, no AI, no YouTube and no Auto-Slide anywhere in the app (and what Auto-Slide downloaded is deleted on start), dirigente page signs in, sends a file, chats and files a notice, and its PowerPoint and PDF become slides in the service programme, a real .ppsx drawn by LibreOffice or PowerPoint into Full HD slides with its own background colour (the simplified reader only when neither is installed), video as a theme background, find a song by a lyric excerpt, right-click on lyrics edits or removes, double-click to project, fixed text only in the footer and the verse always centred vertically, phone has one play/pause button, the screen volume and a Sair do vídeo that takes media off the screen but never a lyric, tapping a media item shows its controls right there in a mini-player, a chat keyboard with a wide text field, a small send arrow and one attach button for photo or voice, voice messages converted to WAV on the phone and arriving with their length, the team chat in bubbles with who is online and who each message is for on the phone and the dirigente page, kept per service in a searchable, exportable history in the cabine, every new chat message pops up in gold on the phone, the cabine and the dirigente page (never for its own author), sees the media folder, gets a file imported in the cabine or copied in by Explorer within 5 s, a library row dragged into the service programme, a right-click menu that deletes media, a Culto tab that mirrors the service programme, projects with a tap on the item and deletes (two taps) from it, a + beside songs, media and web results that puts them in the service programme, lyrics search results that appear while typing and mark songs already in the library, projects from it, opens a song as a grid of slides and puts one on the screen, and searches lyrics through the cabine. Evidence: ${evidence}`);
+  console.log(`PASS: offline, fonts, Bible (one click on a verse projects it, books, chapters and verses always fit the panel with no scrollbar and nothing cut, even Luke 1's 80 verses, − and + setting the largest size, gold buttons in and out of the Bible screen, five versions plus importing a licensed one, its three parts rearranged by dragging and swapping sides, New-Testament-only notice, omitted verse lands on the next), restart persistence, projector, media ranges, preflight, remote control (LAN, entrada por nome, nome fixo na rede, one click from the menu bar beside Permissões, accounts with username and password created in Permissões that sign in already holding their permission while the quick name-only access stays chat-only, permissions by part (only chat, culto, mídia, letras, controle or full access) with the phone showing only the tabs each person can use and nothing but the chat for chat-only, a chat-only phone given a part going straight to it, the phone's header, on-air bar and tabs fixed while only the panel scrolls), update check, review before apply, 1366×768 at 100/125/150% and 800×600, no scroll and exactly one layout at ten sizes from 800×600 to 2560×1440, including every pixel around the 1280 cutover and the chat stays on screen, church logo and name reachable from the menu bar, a folder video behind the logo on the real screen with no faded box around it and the logo opening with Lúmen, a big blinking notice by default with its size chosen before sending, art studio makes a batch of 8 distinct Konva designs from just a title and a Bible reference, opens one in the editor, saves it and exports PNG and JPEG at exactly 1920×1080 (Full HD is the default), VFX has three modes and a dynamic video becomes a real file in the Vídeos tab, a theme column of images, videos and dynamics where one click puts a dynamic behind the lyrics, a gold Criar tema that sends the new theme straight to the screen, no AI, no YouTube and no Auto-Slide anywhere in the app (and what Auto-Slide downloaded is deleted on start), dirigente page signs in, sends a file that lands in the library and opens from the programme marked in yellow with who sent it, chats and files a notice, and its PowerPoint and PDF become slides in the service programme, a real .ppsx drawn by PowerPoint (or LibreOffice) into Full HD slides with its own background colour, and a .pptx that neither opens drawn by Lúmen itself into Full HD with its background colour and the white title inside its own box, video as a theme background, find a song by a lyric excerpt, right-click on lyrics edits or removes, double-click to project, fixed text only in the footer and the verse always centred vertically, phone has one play/pause button, the screen volume and a Sair do vídeo that takes media off the screen but never a lyric, sound from the screen only (the cabine preview stays muted), Tirar vídeo keeps the sound playing under a lyric and Mostrar vídeo brings the picture back, tapping a media item shows its controls right there in a mini-player, a chat keyboard with a wide text field, a small send arrow and one attach button for photo or voice, voice messages converted to WAV on the phone and arriving with their length, the team chat in bubbles with who is online and who each message is for on the phone and the dirigente page, kept per service in a searchable, exportable history in the cabine, every new chat message pops up in gold on the phone, the cabine and the dirigente page (never for its own author), sees the media folder, gets a file imported in the cabine or copied in by Explorer within 5 s, a library row dragged into the service programme, a right-click menu that deletes media, the lyrics strip reopening by itself when a lyric goes to the screen and scrolling itself to keep the yellow slide and the next two in view, and a 2 blocos option where the lyrics fill the top block with whole cards and continue in the bottom one, which scrolls when even it can't hold the rest, a Culto tab that mirrors the service programme, projects with a tap on the item and deletes (two taps) from it, a + beside songs, media and web results that puts them in the service programme, lyrics search results that appear while typing and mark songs already in the library, projects from it, opens a song as a grid of slides and puts one on the screen, and searches lyrics through the cabine. Evidence: ${evidence}`);
 } finally {
   if (app) {
     // O fim do teste deixa uma música no ar, e a cabine (de propósito)

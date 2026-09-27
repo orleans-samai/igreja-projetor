@@ -7,6 +7,10 @@ import zlib from "node:zlib";
  * monta exatamente as peças que quer provar, e o arquivo que sai é lido
  * pelo mesmo leitor que lê o do dirigente.
  */
+/**
+ * @param {Record<string, string | Buffer>} arquivos
+ * @param {{ compactar?: boolean }} [opcoes]
+ */
 export function zip(arquivos, { compactar = true } = {}) {
   const locais = [];
   const centrais = [];

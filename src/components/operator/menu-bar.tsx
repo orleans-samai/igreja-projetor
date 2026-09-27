@@ -260,7 +260,8 @@ export function MenuBar({
       subtitle: `${n} slides`,
     });
     st.selectApresentacao(r.apresentacao.id);
-    toast.success(`“${r.apresentacao.titulo}” entrou na programação — ${n} slides.`, {
+    const quem = r.desenhadaPor ? `, desenhados pelo ${r.desenhadaPor}` : "";
+    toast.success(`“${r.apresentacao.titulo}” entrou na programação — ${n} slides${quem}.`, {
       id: "apres-cabine",
     });
     if (r.aviso) toast.warning(r.aviso, { duration: 15000 });

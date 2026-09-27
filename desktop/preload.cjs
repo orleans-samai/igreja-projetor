@@ -93,6 +93,7 @@ contextBridge.exposeInMainWorld("lumenDesktop", {
   apresentacaoConverter: (nome) => ipcRenderer.invoke("lumen:apresentacao-converter", nome),
   apresentacaoConversor: () => ipcRenderer.invoke("lumen:apresentacao-conversor"),
   apresentacaoPdf: (nome) => ipcRenderer.invoke("lumen:apresentacao-pdf", nome),
+  apresentacaoBruto: (nome) => ipcRenderer.invoke("lumen:apresentacao-bruto", nome),
   apresentacaoPaginas: (paginas) => ipcRenderer.invoke("lumen:apresentacao-paginas", paginas),
   artesImagemSalvar: (dados) => ipcRenderer.invoke("lumen:artes-imagem-salvar", dados),
   artesExportar: (nome, dados) => ipcRenderer.invoke("lumen:artes-exportar", nome, dados),

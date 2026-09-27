@@ -4,7 +4,7 @@ import { durableStorage } from "@/lib/durable-storage";
 import { nid } from "@/lib/fold";
 import { ORDEM_PADRAO, ordemValida, type PainelId } from "@/lib/paineis";
 import { ARRANJO_PADRAO, arranjoValido, type ArranjoDaBiblia } from "@/lib/paineis-da-biblia";
-import { ESCALA_PADRAO_DA_BIBLIA, proximaEscala } from "@/lib/tamanho-da-biblia";
+import { ESCALA_PADRAO_DA_BIBLIA, escalaDaBiblia, proximaEscala } from "@/lib/tamanho-da-biblia";
 import {
   publishOps,
   readInbox,
@@ -41,14 +41,23 @@ interface OpsState {
   /** Grade de letras: tamanho dos cartões (0 a 3) e se a faixa está aberta. */
   gridZoom: number;
   gridOpen: boolean;
+  /** A faixa em dois blocos: a letra enche o de cima e continua no de baixo. */
+  gridDoisBlocos: boolean;
   /** Slide que está sendo editado, venha o comando da grade ou do preview. */
   slideEditId: string | null;
   /** Ordem das colunas da cabine, escolhida pelo operador. */
   ordemPaineis: PainelId[];
   /** Onde fica cada parte da tela da Bíblia, também escolhido pelo operador. */
   arranjoBiblia: ArranjoDaBiblia;
-  /** Tamanho dos quadrados de livros, capítulos e versículos (1 = 100%). */
-  tamanhoBiblia: number;
+  /**
+   * O maior tamanho dos quadrados de livros, capítulos e versículos (1 =
+   * 100%). A tela usa o maior até ele em que tudo cabe sem rolar.
+   *
+   * Nome novo de propósito: o `tamanhoBiblia` antigo guardava o tamanho
+   * fixo (muita cabine ficou em 80%), e a igreja pediu que todos passassem
+   * a ir até o máximo.
+   */
+  tamanhoMaximoBiblia: number;
   /** Modo de arrastar painel para trocar de lugar. */
   reorganizando: boolean;
   voiceOn: boolean;
@@ -84,10 +93,12 @@ interface OpsState {
   setGridZoom: (v: number) => void;
   bumpGridZoom: (delta: number) => void;
   setGridOpen: (v: boolean) => void;
+  setGridDoisBlocos: (v: boolean) => void;
   setSlideEditId: (v: string | null) => void;
   setOrdemPaineis: (v: PainelId[]) => void;
   setArranjoBiblia: (v: ArranjoDaBiblia) => void;
   bumpTamanhoBiblia: (direcao: 1 | -1) => void;
+  setTamanhoMaximoBiblia: (escala: number) => void;
   setReorganizando: (v: boolean) => void;
   setVoiceOn: (v: boolean) => void;
   setAutoRun: (v: boolean) => void;
@@ -126,10 +137,11 @@ export const useOpsStore = create<OpsState>()(
       tourTab: null,
       gridZoom: 1,
       gridOpen: true,
+      gridDoisBlocos: false,
       slideEditId: null,
       ordemPaineis: [...ORDEM_PADRAO],
       arranjoBiblia: ARRANJO_PADRAO,
-      tamanhoBiblia: ESCALA_PADRAO_DA_BIBLIA,
+      tamanhoMaximoBiblia: ESCALA_PADRAO_DA_BIBLIA,
       reorganizando: false,
       voiceOn: false,
       autoRun: false,
@@ -170,6 +182,7 @@ export const useOpsStore = create<OpsState>()(
       // um só; o passo é calculado aqui, sobre o valor vivo.
       bumpGridZoom: (delta) => get().setGridZoom(get().gridZoom + delta),
       setGridOpen: (gridOpen) => set({ gridOpen }),
+      setGridDoisBlocos: (gridDoisBlocos) => set({ gridDoisBlocos }),
       setSlideEditId: (slideEditId) => set({ slideEditId }),
       // Sempre pelo saneador: o que entra aqui vai para o disco e volta numa
       // sessão futura, talvez de outra versão do app.
@@ -177,8 +190,9 @@ export const useOpsStore = create<OpsState>()(
       setArranjoBiblia: (v) => set({ arranjoBiblia: arranjoValido(v) }),
       // Sobre o valor vivo, como o zoom da grade: dois cliques rápidos são
       // dois degraus, não um.
+      setTamanhoMaximoBiblia: (escala) => set({ tamanhoMaximoBiblia: escalaDaBiblia(escala) }),
       bumpTamanhoBiblia: (direcao) =>
-        set({ tamanhoBiblia: proximaEscala(get().tamanhoBiblia, direcao) }),
+        set({ tamanhoMaximoBiblia: proximaEscala(get().tamanhoMaximoBiblia, direcao) }),
       setReorganizando: (reorganizando) => set({ reorganizando }),
       setVoiceOn: (voiceOn) => set({ voiceOn }),
       setAutoRun: (autoRun) => {
@@ -270,9 +284,10 @@ export const useOpsStore = create<OpsState>()(
         tourSeen: s.tourSeen,
         gridZoom: s.gridZoom,
         gridOpen: s.gridOpen,
+        gridDoisBlocos: s.gridDoisBlocos,
         ordemPaineis: s.ordemPaineis,
         arranjoBiblia: s.arranjoBiblia,
-        tamanhoBiblia: s.tamanhoBiblia,
+        tamanhoMaximoBiblia: s.tamanhoMaximoBiblia,
       }),
     },
   ),

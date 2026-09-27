@@ -147,6 +147,24 @@ test("só PDF é lido como PDF, e só de dentro dos recebidos", async () => {
   }
 });
 
+test("o .pptx cru só sai de dentro dos recebidos, e só se for .pptx ou .ppsx", async () => {
+  const dir = await ambiente();
+  try {
+    await writeFile(path.join(dir, "recebidos", "culto.pptx"), pptxSimples());
+    await writeFile(path.join(dir, "recebidos", "exibicao.ppsx"), pptxSimples());
+    await writeFile(path.join(dir, "recebidos", "estudo.pdf"), Buffer.from("%PDF-1.7"));
+    const lido = await ap.lerPptxBruto("culto.pptx");
+    assert.equal(lido.ok, true);
+    assert.deepEqual(Buffer.from(lido.bytes), pptxSimples());
+    assert.equal((await ap.lerPptxBruto("exibicao.ppsx")).ok, true);
+    for (const ruim of ["estudo.pdf", "../culto.pptx", "..\\culto.pptx", "a/culto.pptx", "", "nao-existe.pptx"]) {
+      assert.equal((await ap.lerPptxBruto(ruim)).ok, false, ruim);
+    }
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("remover só aceita um id de apresentação", async () => {
   const dir = await ambiente();
   try {

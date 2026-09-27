@@ -58,3 +58,29 @@ export function alturaDaLogo(tamanho: unknown, unidade: UnidadeDaLogo = "vmin"):
 export function corpoDoNome(tamanho: unknown, unidade: UnidadeDaLogo = "vmin"): string {
   return `${(FRACAO[tamanhoValido(tamanho)] * 100 * 0.2).toFixed(1)}${unidade}`;
 }
+
+/** O que fica atrás da logo no telão, escolhido da pasta de mídia. */
+export interface FundoDaLogo {
+  tipo: "video" | "imagem";
+  /** Endereço do arquivo na pasta de mídia, servido pelo protocolo do app. */
+  url: string;
+  titulo: string;
+}
+
+const PASTA_DO_FUNDO: Record<FundoDaLogo["tipo"], string> = { video: "video", imagem: "image" };
+
+/**
+ * O fundo da logo, conferido; ou null, que é o fundo do tema.
+ *
+ * Só vale endereço da pasta de mídia: o fundo viaja no quadro publicado a
+ * cada troca de slide, e um vídeo embutido como `data:` ali dentro seriam
+ * dezenas de megabytes copiados a cada avanço de verso — a projeção
+ * engasgaria no meio do louvor.
+ */
+export function fundoDaLogoValido(bruto: unknown): FundoDaLogo | null {
+  if (!bruto || typeof bruto !== "object") return null;
+  const f = bruto as Partial<FundoDaLogo>;
+  if (f.tipo !== "video" && f.tipo !== "imagem") return null;
+  if (typeof f.url !== "string" || !f.url.startsWith(`lumen://app/__midia/${PASTA_DO_FUNDO[f.tipo]}/`)) return null;
+  return { tipo: f.tipo, url: f.url, titulo: typeof f.titulo === "string" ? f.titulo : "" };
+}

@@ -3,7 +3,7 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { ContasDaEquipe } from "@/components/operator/contas-da-equipe";
 import { Dispositivos } from "@/components/operator/remote-control-dialog";
 import { useStatusRemoto } from "@/components/operator/use-status-remoto";
-import { AJUDA_PERMISSAO, ROTULO_PERMISSAO } from "@/lib/remote-control";
+import { AJUDA_CAPACIDADE, CAPACIDADES, ROTULO_CAPACIDADE } from "@/lib/permissoes";
 
 /**
  * Quem entrou pelo celular, e o que cada pessoa pode fazer.
@@ -40,13 +40,20 @@ export function PermissoesDialog({
           </p>
         ) : (
           <div className="space-y-4">
+            {/* Uma ou mais partes por pessoa, ou tudo: o celular mostra só as
+                abas que ela pode usar. */}
             <div className="space-y-1.5">
-              {(["chat", "editor", "controle"] as const).map((p) => (
-                <p key={p} className="text-secondary text-muted">
-                  <span className="font-medium text-fg">{ROTULO_PERMISSAO[p]}</span> —{" "}
-                  {AJUDA_PERMISSAO[p]}
+              <p className="text-secondary text-muted">
+                <span className="font-medium text-fg">Só chat</span> — o celular mostra só o chat
+              </p>
+              {CAPACIDADES.map((c) => (
+                <p key={c} className="text-secondary text-muted">
+                  <span className="font-medium text-fg">{ROTULO_CAPACIDADE[c]}</span> — {AJUDA_CAPACIDADE[c]}
                 </p>
               ))}
+              <p className="text-secondary text-muted">
+                <span className="font-medium text-fg">Acesso completo</span> — tudo, inclusive o que vier
+              </p>
             </div>
             <Dispositivos status={status} aoMudar={setStatus} />
             <p className="text-caption text-subtle">

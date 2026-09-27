@@ -1,4 +1,15 @@
-import { Image as ImageIcon, Music, Pause, Play, Repeat, RotateCcw, RotateCw, Square } from "lucide-react";
+import {
+  Image as ImageIcon,
+  Music,
+  Pause,
+  Play,
+  Repeat,
+  RotateCcw,
+  RotateCw,
+  Square,
+  Video,
+  VideoOff,
+} from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Hint } from "@/components/ui/tooltip";
@@ -49,13 +60,19 @@ export function MediaPlayer() {
   const status = useLumenStore((s) => s.status);
   const comandar = useLumenStore((s) => s.comandarMedia);
   const buscar = useLumenStore((s) => s.buscarMedia);
+  const trilha = useLumenStore((s) => s.trilha);
+  const tirarVideo = useLumenStore((s) => s.tirarVideo);
+  const mostrarVideo = useLumenStore((s) => s.mostrarVideo);
+  const pararTrilha = useLumenStore((s) => s.pararTrilha);
 
   // Vídeo é comandado quando está no ar, que é onde ele toca. Áudio aparece
   // já na seleção: o player é aqui, e ouvir antes de mandar é metade do uso.
+  // Com a trilha tocando, o player é dela — com a letra no ar, inclusive: o
+  // som que se ouve é o da trilha, e é ele que o operador precisa comandar.
   const noAr = status !== "idle" && live?.kind === "media" ? live : null;
-  const deck = noAr?.mediaType === "video" ? noAr : preview?.kind === "media" ? preview : null;
-  const ehVideo = deck?.mediaType === "video" && deck === noAr;
-  const ehAudio = deck?.mediaType === "audio";
+  const deck = trilha ?? (noAr?.mediaType === "video" ? noAr : preview?.kind === "media" ? preview : null);
+  const ehVideo = Boolean(trilha) || (deck?.mediaType === "video" && deck === noAr);
+  const ehAudio = !trilha && deck?.mediaType === "audio";
 
   const [estado, setEstado] = useState<Estado>(VAZIO);
   const [arrastando, setArrastando] = useState<number | null>(null);
@@ -175,6 +192,10 @@ export function MediaPlayer() {
   };
 
   const parar = () => {
+    if (trilha) {
+      pararTrilha();
+      return;
+    }
     if (ehVideo) {
       comandar({ mediaAcao: "parar" });
       setEstado((e) => ({ ...e, tempo: 0, terminou: false }));
@@ -240,7 +261,7 @@ export function MediaPlayer() {
         </span>
         <div className="min-w-0 flex-1">
           <p className="truncate text-caption uppercase tracking-wide text-subtle">
-            {ehVideo ? "Vídeo no telão" : "Áudio na cabine"}
+            {trilha ? "Só o áudio do vídeo" : ehVideo ? "Vídeo no telão" : "Áudio na cabine"}
           </p>
           <p className="truncate text-body font-medium text-fg">{deck.title}</p>
         </div>
@@ -380,11 +401,27 @@ export function MediaPlayer() {
             <RotateCw />
           </Button>
         </Hint>
-        <Hint label="Parar e voltar ao início">
-          <Button size="iconSm" variant="ghost" aria-label="Parar" onClick={parar}>
+        <Hint label={trilha ? "Parar o áudio" : "Parar e voltar ao início"}>
+          <Button size="iconSm" variant="ghost" aria-label={trilha ? "Parar o áudio" : "Parar"} onClick={parar}>
             <Square />
           </Button>
         </Hint>
+        {/* O som do vídeo sem a imagem: a igreja toca o clipe do louvor e
+            projeta a própria letra por cima do áudio. */}
+        {ehVideo &&
+          (trilha ? (
+            <Hint label="Traz a imagem do vídeo de volta ao telão, do ponto em que o som está">
+              <Button size="sm" variant="ghost" onClick={mostrarVideo}>
+                <Video /> Mostrar vídeo
+              </Button>
+            </Hint>
+          ) : (
+            <Hint label="Tira a imagem do telão e deixa só o som — a letra pode entrar por cima">
+              <Button size="sm" variant="ghost" onClick={tirarVideo}>
+                <VideoOff /> Tirar vídeo
+              </Button>
+            </Hint>
+          ))}
 
         {ehVideo && (
           <label className="ml-auto flex select-none items-center gap-1.5 text-caption text-muted">

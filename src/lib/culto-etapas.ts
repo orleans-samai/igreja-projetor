@@ -14,6 +14,18 @@
 export type Etapa = "no-ar" | "proximo" | "pendente";
 
 /**
+ * O "Enviado por" de um item que chegou de fora da cabine.
+ *
+ * Toma o lugar do "Pendente": para o que o dirigente mandou, "Pendente"
+ * parecia arquivo parado esperando alguma coisa — e o que a cabine precisa
+ * saber é de quem veio.
+ */
+export function enviadoPor(nome: string | undefined): string | null {
+  const limpo = (nome ?? "").replace(/\s+/g, " ").trim().slice(0, 40);
+  return limpo ? `Enviado por ${limpo}` : null;
+}
+
+/**
  * @param indice    posição do item na lista
  * @param indiceNoAr posição do que está no ar, ou -1 quando o culto não começou
  */
