@@ -50,10 +50,6 @@ contextBridge.exposeInMainWorld("lumenDesktop", {
     ipcRenderer.on("lumen:remote-event", listener);
     return () => ipcRenderer.removeListener("lumen:remote-event", listener);
   },
-  autoSlideStatus: () => ipcRenderer.invoke("lumen:auto-slide-status"),
-  autoSlideInstall: () => ipcRenderer.invoke("lumen:auto-slide-install"),
-  autoSlideTranscrever: (wav) => ipcRenderer.invoke("lumen:auto-slide-transcribe", wav),
-  autoSlideCancel: () => ipcRenderer.invoke("lumen:auto-slide-cancel"),
   preflight: (urls) => ipcRenderer.invoke("lumen:preflight", urls),
   selectDisplay: (id) => ipcRenderer.invoke("lumen:select-display", id),
   testDisplay: (on) => ipcRenderer.invoke("lumen:test-display", on),

@@ -753,23 +753,25 @@
 
 /* Livros, capítulos e versículos em tamanho de alvo de dedo e de leitura à
    distância: a igreja pediu esta parte maior, e é nela que se clica no meio
-   da pregação, com pressa. */
+   da pregação, com pressa. Tudo aqui é multiplicado por --biblia-escala, que
+   vem do − e do + do navegador (1 = 100%, já maior que o tamanho antigo):
+   quadrado, letra e espaço crescem juntos, e nada se deforma. */
 .bible-mosaic {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(4.6rem, 1fr));
-  gap: 3px;
+  grid-template-columns: repeat(auto-fill, minmax(calc(5.75rem * var(--biblia-escala, 1)), 1fr));
+  gap: calc(4px * var(--biblia-escala, 1));
 }
 
 .bible-tile {
   position: relative;
   display: flex;
   min-width: 0;
-  min-height: 3.4rem;
+  min-height: calc(4.25rem * var(--biblia-escala, 1));
   flex-direction: column;
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  border-radius: 4px;
+  border-radius: 6px;
   padding: 4px 5px 4px 9px;
   background: var(--color-elevated);
   color: var(--color-fg);
@@ -804,7 +806,7 @@
 }
 
 .bible-tile-abbr {
-  font-size: 1.1rem;
+  font-size: calc(1.4rem * var(--biblia-escala, 1));
   font-weight: 650;
   line-height: 1.1;
 }
@@ -814,7 +816,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 0.74rem;
+  font-size: calc(0.85rem * var(--biblia-escala, 1));
   line-height: 1.25;
   opacity: 0.65;
 }
@@ -823,15 +825,15 @@
    conforme descem na hierarquia. */
 .bible-nums {
   display: grid;
-  gap: 3px;
+  gap: calc(4px * var(--biblia-escala, 1));
 }
 
 .bible-nums-ch {
-  grid-template-columns: repeat(auto-fill, minmax(3.2rem, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(calc(4rem * var(--biblia-escala, 1)), 1fr));
 }
 
 .bible-nums-vs {
-  grid-template-columns: repeat(auto-fill, minmax(3rem, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(calc(3.75rem * var(--biblia-escala, 1)), 1fr));
 }
 
 .bible-num {
@@ -839,7 +841,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 3px;
+  border-radius: 5px;
   background: var(--color-elevated);
   color: var(--color-muted);
   font-variant-numeric: tabular-nums;
@@ -855,14 +857,14 @@
 }
 
 .bible-num-ch {
-  min-height: 2.8rem;
-  font-size: 1.05rem;
+  min-height: calc(3.4rem * var(--biblia-escala, 1));
+  font-size: calc(1.3rem * var(--biblia-escala, 1));
   font-weight: 600;
 }
 
 .bible-num-vs {
-  min-height: 2.6rem;
-  font-size: 0.95rem;
+  min-height: calc(3.2rem * var(--biblia-escala, 1));
+  font-size: calc(1.2rem * var(--biblia-escala, 1));
 }
 
 /* No pop-up "ir para referência" os números são alvos para ler de longe. */

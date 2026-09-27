@@ -211,10 +211,6 @@ declare global {
   interface Window {
     lumenDesktop?: {
       isDesktop: boolean;
-      autoSlideStatus: () => Promise<{ pronto: boolean; nome?: string; motivo?: string }>;
-      autoSlideInstall: () => Promise<{ ok: boolean; erro?: string }>;
-      autoSlideTranscrever: (wav: Uint8Array) => Promise<{ ok: boolean; texto?: string; erro?: string }>;
-      autoSlideCancel: () => Promise<void>;
       preflight: (urls: string[]) => Promise<PreflightReport>;
       selectDisplay: (id: number) => Promise<void>;
       testDisplay: (on: boolean) => Promise<void>;

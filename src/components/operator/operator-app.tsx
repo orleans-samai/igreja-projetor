@@ -25,10 +25,8 @@ import { SlideGrid } from "@/components/operator/slide-grid";
 import { ThemeRail } from "@/components/operator/theme-rail";
 import { BibleWorkspace } from "@/components/operator/bible-workspace";
 import { OpsLayer } from "@/components/operator/ops-layer";
-import { AutoSlideDialog, AutoSlidePanel } from "@/components/operator/auto-slide";
 import { RemoteControlDialog } from "@/components/operator/remote-control-dialog";
 import { useRemoteControl } from "@/components/operator/use-remote-control";
-import { useAutoSlide } from "@/components/operator/use-auto-slide";
 import { PainelArrastavel, ReorganizeBar } from "@/components/operator/reorganize";
 import { chatEhColuna } from "@/lib/chat-visivel";
 import { TourBanner } from "@/components/operator/tour";
@@ -45,7 +43,6 @@ import { importWebSong } from "@/lib/import-web-song";
 import { TAMANHO_PAINEL, type PainelId } from "@/lib/paineis";
 import type { LiveFrame } from "@/lib/types";
 import { buildLiveFrame, useLumenStore } from "@/store/lumen-store";
-import { useAutoSlideStore } from "@/store/auto-slide-store";
 import { useChatStore } from "@/store/chat-store";
 import { useOpsStore } from "@/store/ops-store";
 
@@ -72,7 +69,6 @@ export function OperatorApp() {
   const [webOpen, setWebOpen] = useState(false);
   const [display, setDisplay] = useState(false);
   const [bibleOpen, setBibleOpen] = useState(false);
-  const [autoSlide, setAutoSlide] = useState(false);
   const [remoteControl, setRemoteControl] = useState(false);
   const [logoAberto, setLogoAberto] = useState(false);
   const [permissoesAberto, setPermissoesAberto] = useState(false);
@@ -82,9 +78,6 @@ export function OperatorApp() {
   const liveMode = useOpsStore((s) => s.liveMode);
   const chatPosicao = useChatStore((s) => s.posicao);
 
-  // O Auto-Slide escuta e pede o slide; quem projeta continua sendo a
-  // apresentação de sempre.
-  useAutoSlide();
   useRemoteControl();
 
   // O tutorial aponta para painéis que, em tela estreita, moram em abas.
@@ -107,7 +100,6 @@ export function OperatorApp() {
       useLumenStore.getState().setHydrated();
     });
     void useLumenStore.persist.rehydrate();
-    void useAutoSlideStore.persist.rehydrate();
     return unsub;
   }, []);
 
@@ -361,8 +353,7 @@ export function OperatorApp() {
   if (liveMode) {
     return (
       <TooltipProvider>
-        <LiveMode outputFrame={outputFrame} previewFrame={previewFrame} onAutoSlide={() => setAutoSlide(true)} />
-        <AutoSlideDialog open={autoSlide} onOpenChange={setAutoSlide} />
+        <LiveMode outputFrame={outputFrame} previewFrame={previewFrame} />
         <OpsLayer />
         <HelpDialog open={help} onOpenChange={setHelp} />
       </TooltipProvider>
@@ -389,7 +380,6 @@ export function OperatorApp() {
           onSettings={() => setSettings(true)}
           onBible={() => setBibleOpen(true)}
           onDisplay={() => setDisplay(true)}
-          onAutoSlide={() => setAutoSlide(true)}
           onRemoteControl={() => setRemoteControl(true)}
           onLogo={() => setLogoAberto(true)}
           onPermissoes={() => setPermissoesAberto(true)}
@@ -399,7 +389,6 @@ export function OperatorApp() {
         />
         <WindowsRuntime />
         <UpdateBanner />
-        <AutoSlidePanel onConfig={() => setAutoSlide(true)} />
         <ReorganizeBar biblia={bibleOpen} />
         <TourBanner />
 
@@ -527,7 +516,6 @@ export function OperatorApp() {
       />
       <HelpDialog open={help} onOpenChange={setHelp} />
       <SettingsDialog open={settings} onOpenChange={setSettings} />
-      <AutoSlideDialog open={autoSlide} onOpenChange={setAutoSlide} />
       <RemoteControlDialog open={remoteControl} onOpenChange={setRemoteControl} />
       <LogoDialog open={logoAberto} onOpenChange={setLogoAberto} />
       <PermissoesDialog open={permissoesAberto} onOpenChange={setPermissoesAberto} />

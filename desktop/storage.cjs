@@ -10,7 +10,6 @@ const KEYS = new Set([
   "lumen-v2",
   "lumen-ops-v1",
   "lumen-bibles-v1",
-  "lumen-auto-slide-v1",
   "lumen-chat-v1",
   "lumen-chat-historico-v1",
   "lumen-artes-v1",
@@ -19,12 +18,13 @@ const KEYS = new Set([
 const LIMIT = 100 * 1024 * 1024;
 
 /**
- * Gavetas de recursos que saíram do app (a fila do YouTube). O arquivo de
+ * Gavetas de recursos que saíram do app (a fila do YouTube, o ajuste do
+ * Auto-Slide). O arquivo de
  * quem já usava o Lúmen ainda as tem: são aceitas e descartadas na leitura.
  * Recusá-las faria a biblioteca inteira parecer corrompida na abertura — e
  * o repertório da igreja cair para a cópia de segurança ou sumir.
  */
-const APOSENTADAS = new Set(["lumen-youtube-v1"]);
+const APOSENTADAS = new Set(["lumen-youtube-v1", "lumen-auto-slide-v1"]);
 
 function validate(data) {
   if (!data || data.format !== "lumen-backup-v1" || !data.values || typeof data.values !== "object" || Array.isArray(data.values)) {

@@ -111,6 +111,7 @@ test("a biblioteca de quem já usava o YouTube abre inteira, sem a gaveta do You
       values: {
         "lumen-v2": state("repertório da igreja"),
         "lumen-youtube-v1": state("fila de vídeos"),
+        "lumen-auto-slide-v1": state("ajuste do reconhecimento de canto"),
       },
     };
     await writeFile(path.join(dir, "library.json"), JSON.stringify(antigo));
@@ -124,5 +125,6 @@ test("a biblioteca de quem já usava o YouTube abre inteira, sem a gaveta do You
     assert.equal(await store.get("lumen-v2"), state("repertório da igreja"));
     const exportado = JSON.parse(await store.export());
     assert.equal("lumen-youtube-v1" in exportado.values, false);
+    assert.equal("lumen-auto-slide-v1" in exportado.values, false);
   } finally { await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 }); }
 });

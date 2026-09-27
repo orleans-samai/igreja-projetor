@@ -2,7 +2,6 @@ import { z } from "zod";
 import { toast } from "sonner";
 import { getBible, importBibleVersion } from "@/lib/bible";
 import { useLumenStore } from "@/store/lumen-store";
-import { useAutoSlideStore } from "@/store/auto-slide-store";
 import type { CompactBible, Theme, Settings } from "@/lib/types";
 
 const id = z.string().min(1).max(500);
@@ -94,7 +93,6 @@ export async function importService() {
     for (const value of [data.songThemeId, data.bibleThemeId, data.stageThemeId]) if (!data.themes.some((t) => t.id === value)) throw new Error("Tema ausente no pacote.");
     const bible = data.bible ? await importBibleVersion({ ...(data.bible as CompactBible), id: prefix + "bible" }) : null;
     if (useLumenStore.getState().status !== "idle") throw new Error("A apresentação começou. Encerre e importe novamente.");
-    useAutoSlideStore.getState().setLigado(false);
     useLumenStore.setState((s) => ({
       songs: [...s.songs, ...data.songs.map((song) => ({ ...song, id: remap(song.id), groupId: remap(song.groupId), themeId: song.themeId ? remap(song.themeId) : undefined, slides: song.slides.map((sl) => ({ ...sl, id: prefix + sl.id, themeOverrideId: sl.themeOverrideId ? remap(sl.themeOverrideId) : undefined })) }))],
       groups: [...s.groups, ...data.groups.map((g) => ({ ...g, id: remap(g.id) }))],

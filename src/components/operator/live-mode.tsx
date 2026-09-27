@@ -1,4 +1,3 @@
-import { AutoSlidePanel } from "@/components/operator/auto-slide";
 import { AlertTriangle, ChevronLeft, ChevronRight, Mic, MicOff, Search, SkipForward, Square } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -15,7 +14,6 @@ import type { LiveFrame, PlaylistItem } from "@/lib/types";
 import { FontSizeBar } from "@/components/operator/font-size-bar";
 import { useLumenStore } from "@/store/lumen-store";
 import { useOpsStore } from "@/store/ops-store";
-import { useAutoSlideStore } from "@/store/auto-slide-store";
 
 function playlistCursor() {
   const s = useLumenStore.getState();
@@ -143,11 +141,9 @@ function Timeline({ items, idx, start }: { items: PlaylistItem[]; idx: number; s
 export function LiveMode({
   outputFrame,
   previewFrame,
-  onAutoSlide,
 }: {
   outputFrame: LiveFrame;
   previewFrame: LiveFrame;
-  onAutoSlide: () => void;
 }) {
   const status = useLumenStore((s) => s.status);
   const live = useLumenStore((s) => s.live);
@@ -164,7 +160,6 @@ export function LiveMode({
   const jumpLabel = useLumenStore((s) => s.jumpLabel);
 
   const setLiveMode = useOpsStore((s) => s.setLiveMode);
-  const autoSlideLigado = useAutoSlideStore((s) => s.ligado);
   const setCommandOpen = useOpsStore((s) => s.setCommandOpen);
   const setEmergencyOpen = useOpsStore((s) => s.setEmergencyOpen);
   const voiceOn = useOpsStore((s) => s.voiceOn);
@@ -235,21 +230,11 @@ export function LiveMode({
         <h1 className="text-title font-semibold tracking-tight">Modo operador</h1>
         <Tally state={tally} label={tallyLabel} />
         <p className="tnum ml-auto font-mono text-body text-muted">{clock}</p>
-        {/* Fora do Modo operador o gatilho é o menu Mais da cabine, que não
-            existe aqui — sem isto, ligar o Auto-Slide pela primeira vez
-            neste modo não teria por onde. Some sozinho depois de ligado: a
-            faixa do Auto-Slide já mostra o próprio ajuste dali em diante. */}
-        {!autoSlideLigado && (
-          <Button size="sm" variant="ghost" onClick={onAutoSlide}>
-            <Mic /> Auto-Slide
-          </Button>
-        )}
         <FontSizeBar />
         <Button size="sm" variant="ghost" onClick={() => setLiveMode(false)}>
           Voltar à cabine
         </Button>
       </header>
-      <AutoSlidePanel onConfig={onAutoSlide} />
 
       <div className="empty:hidden px-3 pt-2">
         <InboxStrip />

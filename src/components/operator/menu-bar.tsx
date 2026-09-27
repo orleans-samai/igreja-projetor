@@ -1,6 +1,5 @@
 import { importarRecebido } from "@/lib/apresentacao";
 import {
-  Check,
   GraduationCap,
   ImageUp,
   Smartphone,
@@ -26,7 +25,6 @@ import { openOutputWindow } from "@/lib/live-channel";
 import { openProjectorWindow } from "@/lib/windows-desktop";
 import { useLumenStore } from "@/store/lumen-store";
 import { useOpsStore } from "@/store/ops-store";
-import { useAutoSlideStore } from "@/store/auto-slide-store";
 import { exportService, importService } from "@/lib/service-package";
 
 interface Action {
@@ -50,7 +48,6 @@ export function MenuBar({
   onSettings,
   onBible,
   onDisplay,
-  onAutoSlide,
   onRemoteControl,
   onLogo,
   onPermissoes,
@@ -66,7 +63,6 @@ export function MenuBar({
   onSettings: () => void;
   onBible: () => void;
   onDisplay: () => void;
-  onAutoSlide: () => void;
   onRemoteControl: () => void;
   onLogo: () => void;
   onPermissoes: () => void;
@@ -91,7 +87,6 @@ export function MenuBar({
   const importLibrary = useLumenStore((s) => s.importLibrary);
   const setTourOpen = useOpsStore((s) => s.setTourOpen);
   const reorganizando = useOpsStore((s) => s.reorganizando);
-  const autoSlideLigado = useAutoSlideStore((s) => s.ligado);
   const setReorganizando = useOpsStore((s) => s.setReorganizando);
   const setCommandOpen = useOpsStore((s) => s.setCommandOpen);
   const setCheckupOpen = useOpsStore((s) => s.setCheckupOpen);
@@ -378,7 +373,6 @@ export function MenuBar({
         { label: "Abrir palco", onSelect: openStage },
         { label: "Telão nesta janela", onSelect: () => setFillMode("audience") },
         { label: "Configurações de exibição", onSelect: onDisplay },
-        { label: "Reconhecimento de canto", onSelect: onAutoSlide },
         { label: "Controle remoto pelo celular", onSelect: onRemoteControl },
         { label: "Tema e tipografia", onSelect: onSettings },
         { label: "Próximo tema", onSelect: cycleTheme, shortcut: "Ctrl+T" },
@@ -546,47 +540,26 @@ export function MenuBar({
           <Palette className="size-3.5" aria-hidden /> Artes
         </button>
 
-        {/* Auto-Slide e VFX são recursos extras, não um modo permanente
-            como Reorganizar — por isso ficam escondidos atrás de um clique
-            em vez de ocupar a barra o tempo todo. O ponto aceso no gatilho
-            avisa quando o Auto-Slide está ligado, mesmo fechado. */}
+        {/* VFX é recurso extra, não um modo permanente como Reorganizar —
+            por isso fica atrás de um clique em vez de ocupar a barra o
+            tempo todo. */}
         <Menu>
           <MenuTrigger asChild>
             <button
               type="button"
               className={cn(
-                "flex items-center gap-1.5 rounded-md px-2 py-1 text-secondary",
+                "flex items-center gap-1.5 rounded-md px-2 py-1 text-secondary text-muted",
                 "transition-colors duration-[var(--motion-fast)] ease-[var(--ease-out)]",
+                "hover:bg-elevated hover:text-fg",
                 "data-[state=open]:bg-elevated data-[state=open]:text-fg",
                 "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring",
-                autoSlideLigado
-                  ? "text-accent"
-                  : "text-muted hover:bg-elevated hover:text-fg",
               )}
             >
               Mais
-              {autoSlideLigado && (
-                <span aria-hidden className="size-1.5 rounded-full bg-accent" />
-              )}
             </button>
           </MenuTrigger>
           <MenuContent>
-            <MenuItem onSelect={onAutoSlide}>
-              <span className="flex items-center gap-2">
-                {autoSlideLigado ? (
-                  <Check className="size-3.5 shrink-0" aria-hidden />
-                ) : (
-                  <span className="size-3.5 shrink-0" aria-hidden />
-                )}
-                Auto-Slide
-              </span>
-            </MenuItem>
-            <MenuItem onSelect={onVfx}>
-              <span className="flex items-center gap-2">
-                <span className="size-3.5 shrink-0" aria-hidden />
-                VFX
-              </span>
-            </MenuItem>
+            <MenuItem onSelect={onVfx}>VFX</MenuItem>
           </MenuContent>
         </Menu>
       </nav>

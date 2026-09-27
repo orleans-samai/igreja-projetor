@@ -155,6 +155,38 @@ try {
   await page.getByRole("button", { name: "Versículo 21", exact: true }).click();
   await page.waitForFunction(() => [...document.querySelectorAll("h2")].some((h) => h.textContent.includes("Mateus 17:22")));
   assert.match(await tituloDaBiblia(), /Mateus 17:22/);
+  // Um clique no versículo já projeta: dois cliques faziam o versículo
+  // esperar no escuro enquanto o pastor já lia.
+  await page.waitForFunction(
+    () => {
+      const q = JSON.parse(localStorage.getItem("lumen-live-frame") ?? "null");
+      return q?.status === "presenting" && (q?.deck?.title ?? "").includes("Mateus 17:22");
+    },
+    null,
+    { timeout: 10000 },
+  );
+  // Os quadrados de livros, capítulos e versículos têm − e +: cada tela e
+  // cada vista pede um tamanho. O tamanho volta ao padrão no fim.
+  const alturaDoLivro = () =>
+    page.getByRole("button", { name: "Mateus", exact: true }).evaluate((b) => b.getBoundingClientRect().height);
+  const esperarTamanho = (rotulo) =>
+    page.waitForFunction(
+      (r) => (document.querySelector('[aria-label="Tamanho dos quadrados da Bíblia"]')?.textContent ?? "").includes(r),
+      rotulo,
+      { timeout: 10000 },
+    );
+  await esperarTamanho("100%");
+  const alturaPadrao = await alturaDoLivro();
+  await page.getByRole("button", { name: "Aumentar os quadrados da Bíblia", exact: true }).click();
+  await esperarTamanho("115%");
+  assert.ok((await alturaDoLivro()) > alturaPadrao, "o + não aumentou os quadrados da Bíblia");
+  await page.getByRole("button", { name: "Diminuir os quadrados da Bíblia", exact: true }).click();
+  await esperarTamanho("100%");
+  await page.getByRole("button", { name: "Diminuir os quadrados da Bíblia", exact: true }).click();
+  await esperarTamanho("90%");
+  assert.ok((await alturaDoLivro()) < alturaPadrao, "o − não diminuiu os quadrados da Bíblia");
+  await page.getByRole("button", { name: "Aumentar os quadrados da Bíblia", exact: true }).click();
+  await esperarTamanho("100%");
   await page.screenshot({ animations: "disabled", path: path.join(evidence, "biblia.png") });
   // A letra fica no meio do telão, na vertical — nunca lá embaixo nem lá em
   // cima, com ou sem a referência no rodapé.
@@ -240,17 +272,6 @@ try {
   assert.deepEqual(range, { status: 206, length: 44 });
   const preflight = await page.evaluate((url) => window.lumenDesktop.preflight([url, "/missing.mp4"]), mediaUrl);
   assert.deepEqual(preflight.missing, ["/missing.mp4"]);
-  assert.equal((await page.evaluate(() => window.lumenDesktop.autoSlideStatus())).pronto, false);
-  // Auto-Slide não é mais botão solto na barra — mora dentro de "Mais",
-  // que só o revela com um clique.
-  await page.getByRole("button", { name: "Mais", exact: true }).click();
-  await page.getByRole("menuitem", { name: "Auto-Slide", exact: true }).click();
-  const autoDialog = page.getByRole("dialog", { name: "Reconhecimento de canto" });
-  await autoDialog.waitFor();
-  await autoDialog.getByRole("button", { name: "Instalar reconhecimento local", exact: true }).waitFor();
-  await page.screenshot({ animations: "disabled", path: path.join(evidence, "auto-slide.png") });
-  await autoDialog.getByRole("button", { name: "Fechar", exact: true }).click();
-  await autoDialog.waitFor({ state: "hidden" });
 
   // Controle remoto: liga o servidor de verdade, pareia como um celular de
   // fora pareia (fetch deste processo Node, não de dentro da página — é o
@@ -1486,13 +1507,11 @@ try {
       await locator.waitFor({ state: "visible" });
       assert.ok(await locator.evaluate((el) => { const r = el.getBoundingClientRect(); return r.left >= 0 && r.top >= 0 && r.right <= innerWidth + 1 && r.bottom <= innerHeight + 1; }), `Control outside viewport: ${width}x${height}@${zoom}`);
     };
-    // Na cabine, o gatilho persistente agora é "Mais" — Auto-Slide só aparece
-    // dentro do menu que ele abre. No Modo operador (F8) não existe "Mais",
-    // então o botão Auto-Slide continua direto na barra.
+    // Na cabine, o último item da barra é "Mais"; no Modo operador (F8), os
+    // botões do transporte.
     await assertWithin(page.getByRole("button", { name: "Mais", exact: true }));
     await page.screenshot({ animations: "disabled", path: path.join(evidence, `cabine-${width}-${zoom}.png`) });
     await page.keyboard.press("F8");
-    await assertWithin(page.getByRole("button", { name: "Auto-Slide", exact: true }));
     await assertWithin(page.getByRole("button", { name: "Próximo", exact: true }));
     await assertWithin(page.getByRole("button", { name: "Preto", exact: true }));
     await page.screenshot({ animations: "disabled", path: path.join(evidence, `operador-${width}-${zoom}.png`) });
@@ -1608,21 +1627,31 @@ try {
     `texto fixo a ${noTelao.alturas[0]}% e a letra a ${noTelao.letra}%: o fixo tem que ficar abaixo`,
   );
 
-  // ---- Sem IA e sem YouTube: nada disso existe mais na cabine ----
+  // ---- Sem IA, sem YouTube e sem Auto-Slide: nada disso existe mais ----
   // A igreja pediu para tirar. Nem botão, nem item de menu, nem ponte.
   assert.equal(await page.getByRole("button", { name: "IA", exact: true }).count(), 0, "o botão de IA voltou");
   await page.getByRole("button", { name: "Mais", exact: true }).click();
   assert.equal(await page.getByRole("menuitem", { name: "YouTube", exact: true }).count(), 0, "o YouTube voltou ao menu");
+  assert.equal(await page.getByRole("menuitem", { name: "Auto-Slide", exact: true }).count(), 0, "o Auto-Slide voltou ao menu");
   await page.keyboard.press("Escape");
-  const pontes = await page.evaluate(() => Object.keys(window.lumenDesktop).filter((k) => /^ia[A-Z]|youtube/i.test(k)));
-  assert.deepEqual(pontes, [], `sobrou ponte de IA ou YouTube: ${pontes.join(", ")}`);
+  await page.getByRole("button", { name: "Tela", exact: true }).click();
+  assert.equal(
+    await page.getByRole("menuitem", { name: "Reconhecimento de canto", exact: true }).count(),
+    0,
+    "o reconhecimento de canto voltou ao menu Tela",
+  );
+  await page.keyboard.press("Escape");
+  const pontes = await page.evaluate(() =>
+    Object.keys(window.lumenDesktop).filter((k) => /^ia[A-Z]|youtube|autoSlide/i.test(k)),
+  );
+  assert.deepEqual(pontes, [], `sobrou ponte de IA, YouTube ou Auto-Slide: ${pontes.join(", ")}`);
   await page.screenshot({ animations: "disabled", path: path.join(evidence, "operator.png") });
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => w.webContents.getURL() === "lumen://app/")?.setSize(800, 600));
   await page.screenshot({ animations: "disabled", path: path.join(evidence, "operator-800x600.png") });
   assert.deepEqual(errors, []);
   const disk = JSON.parse(await readFile(path.join(profile, "data", "library.json"), "utf8"));
   assert.ok(disk.values["lumen-v2"]);
-  console.log(`PASS: offline, fonts, Bible (gold buttons in and out of the Bible screen, five versions plus importing a licensed one, its three parts rearranged by dragging and swapping sides, New-Testament-only notice, omitted verse lands on the next), restart persistence, projector, media ranges, preflight, Auto-Slide, remote control (LAN, entrada por nome, nome fixo na rede, one click from the menu bar beside Permissões, accounts with username and password created in Permissões that sign in already holding their permission while the quick name-only access stays chat-only), update check, review before apply, 1366×768 at 100/125/150% and 800×600, no scroll and exactly one layout at ten sizes from 800×600 to 2560×1440, including every pixel around the 1280 cutover and the chat stays on screen, church logo and name reachable from the menu bar, art studio makes a batch of 8 distinct Konva designs from just a title and a Bible reference, opens one in the editor, saves it and exports PNG and JPEG at exactly 1920×1080 (Full HD is the default), VFX has three modes and a dynamic video becomes a real file in the Vídeos tab, no AI and no YouTube anywhere in the app, dirigente page signs in, sends a file, chats and files a notice, and its PowerPoint and PDF become slides in the service programme, video as a theme background, find a song by a lyric excerpt, right-click on lyrics edits or removes, double-click to project, fixed text only in the footer and the verse always centred vertically, phone has one play/pause button, the screen volume and a Sair do vídeo that takes media off the screen but never a lyric, tapping a media item shows its controls right there in a mini-player, the team chat in bubbles with who is online and who each message is for on the phone and the dirigente page, kept per service in a searchable, exportable history in the cabine, every new chat message pops up in gold on the phone, the cabine and the dirigente page (never for its own author), sees the media folder, gets a file imported in the cabine or copied in by Explorer within 5 s, a library row dragged into the service programme, a right-click menu that deletes media, a Culto tab that mirrors the service programme and projects or deletes (two taps) from it, projects from it, opens a song as a grid of slides and puts one on the screen, and searches lyrics through the cabine. Evidence: ${evidence}`);
+  console.log(`PASS: offline, fonts, Bible (one click on a verse projects it, − and + resize the book, chapter and verse squares, gold buttons in and out of the Bible screen, five versions plus importing a licensed one, its three parts rearranged by dragging and swapping sides, New-Testament-only notice, omitted verse lands on the next), restart persistence, projector, media ranges, preflight, remote control (LAN, entrada por nome, nome fixo na rede, one click from the menu bar beside Permissões, accounts with username and password created in Permissões that sign in already holding their permission while the quick name-only access stays chat-only), update check, review before apply, 1366×768 at 100/125/150% and 800×600, no scroll and exactly one layout at ten sizes from 800×600 to 2560×1440, including every pixel around the 1280 cutover and the chat stays on screen, church logo and name reachable from the menu bar, art studio makes a batch of 8 distinct Konva designs from just a title and a Bible reference, opens one in the editor, saves it and exports PNG and JPEG at exactly 1920×1080 (Full HD is the default), VFX has three modes and a dynamic video becomes a real file in the Vídeos tab, no AI, no YouTube and no Auto-Slide anywhere in the app, dirigente page signs in, sends a file, chats and files a notice, and its PowerPoint and PDF become slides in the service programme, video as a theme background, find a song by a lyric excerpt, right-click on lyrics edits or removes, double-click to project, fixed text only in the footer and the verse always centred vertically, phone has one play/pause button, the screen volume and a Sair do vídeo that takes media off the screen but never a lyric, tapping a media item shows its controls right there in a mini-player, the team chat in bubbles with who is online and who each message is for on the phone and the dirigente page, kept per service in a searchable, exportable history in the cabine, every new chat message pops up in gold on the phone, the cabine and the dirigente page (never for its own author), sees the media folder, gets a file imported in the cabine or copied in by Explorer within 5 s, a library row dragged into the service programme, a right-click menu that deletes media, a Culto tab that mirrors the service programme and projects or deletes (two taps) from it, projects from it, opens a song as a grid of slides and puts one on the screen, and searches lyrics through the cabine. Evidence: ${evidence}`);
 } finally {
   if (app) {
     // O fim do teste deixa uma música no ar, e a cabine (de propósito)

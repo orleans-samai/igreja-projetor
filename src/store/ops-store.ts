@@ -4,6 +4,7 @@ import { durableStorage } from "@/lib/durable-storage";
 import { nid } from "@/lib/fold";
 import { ORDEM_PADRAO, ordemValida, type PainelId } from "@/lib/paineis";
 import { ARRANJO_PADRAO, arranjoValido, type ArranjoDaBiblia } from "@/lib/paineis-da-biblia";
+import { ESCALA_PADRAO_DA_BIBLIA, proximaEscala } from "@/lib/tamanho-da-biblia";
 import {
   publishOps,
   readInbox,
@@ -46,6 +47,8 @@ interface OpsState {
   ordemPaineis: PainelId[];
   /** Onde fica cada parte da tela da Bíblia, também escolhido pelo operador. */
   arranjoBiblia: ArranjoDaBiblia;
+  /** Tamanho dos quadrados de livros, capítulos e versículos (1 = 100%). */
+  tamanhoBiblia: number;
   /** Modo de arrastar painel para trocar de lugar. */
   reorganizando: boolean;
   voiceOn: boolean;
@@ -84,6 +87,7 @@ interface OpsState {
   setSlideEditId: (v: string | null) => void;
   setOrdemPaineis: (v: PainelId[]) => void;
   setArranjoBiblia: (v: ArranjoDaBiblia) => void;
+  bumpTamanhoBiblia: (direcao: 1 | -1) => void;
   setReorganizando: (v: boolean) => void;
   setVoiceOn: (v: boolean) => void;
   setAutoRun: (v: boolean) => void;
@@ -125,6 +129,7 @@ export const useOpsStore = create<OpsState>()(
       slideEditId: null,
       ordemPaineis: [...ORDEM_PADRAO],
       arranjoBiblia: ARRANJO_PADRAO,
+      tamanhoBiblia: ESCALA_PADRAO_DA_BIBLIA,
       reorganizando: false,
       voiceOn: false,
       autoRun: false,
@@ -170,6 +175,10 @@ export const useOpsStore = create<OpsState>()(
       // sessão futura, talvez de outra versão do app.
       setOrdemPaineis: (v) => set({ ordemPaineis: ordemValida(v) }),
       setArranjoBiblia: (v) => set({ arranjoBiblia: arranjoValido(v) }),
+      // Sobre o valor vivo, como o zoom da grade: dois cliques rápidos são
+      // dois degraus, não um.
+      bumpTamanhoBiblia: (direcao) =>
+        set({ tamanhoBiblia: proximaEscala(get().tamanhoBiblia, direcao) }),
       setReorganizando: (reorganizando) => set({ reorganizando }),
       setVoiceOn: (voiceOn) => set({ voiceOn }),
       setAutoRun: (autoRun) => {
@@ -263,6 +272,7 @@ export const useOpsStore = create<OpsState>()(
         gridOpen: s.gridOpen,
         ordemPaineis: s.ordemPaineis,
         arranjoBiblia: s.arranjoBiblia,
+        tamanhoBiblia: s.tamanhoBiblia,
       }),
     },
   ),

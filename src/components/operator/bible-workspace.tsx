@@ -4,7 +4,9 @@ import {
   Check,
   Heart,
   History,
+  Minus,
   Play,
+  Plus,
   Search,
   Star,
 } from "lucide-react";
@@ -14,6 +16,7 @@ import { SlideStage } from "@/components/slide/slide-renderer";
 import { OptimizeButton } from "@/components/operator/optimize-bar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Hint } from "@/components/ui/tooltip";
 import {
   BUILTIN_BIBLES,
   carregarVersao,
@@ -39,6 +42,12 @@ import { fold } from "@/lib/fold";
 import { BibleReferencePopup } from "@/components/operator/bible-reference-popup";
 import { ParteDaBibliaArrastavel } from "@/components/operator/reorganize";
 import { arranjoValido, type ParteDaBiblia } from "@/lib/paineis-da-biblia";
+import {
+  escalaDaBiblia,
+  escalaMaxima,
+  escalaMinima,
+  rotuloDaEscala,
+} from "@/lib/tamanho-da-biblia";
 import type { LiveFrame } from "@/lib/types";
 import { useLumenStore } from "@/store/lumen-store";
 import { useOpsStore } from "@/store/ops-store";
@@ -127,6 +136,8 @@ export function BibleWorkspace({
   const cursor = useLumenStore((s) => s.bibleCursor);
   const versionId = useLumenStore((s) => s.bibleVersionId);
   const arranjo = arranjoValido(useOpsStore((s) => s.arranjoBiblia));
+  const tamanho = escalaDaBiblia(useOpsStore((s) => s.tamanhoBiblia));
+  const mudarTamanho = useOpsStore((s) => s.bumpTamanhoBiblia);
   const extra = useLumenStore((s) => s.extraVersionIds);
   const addExtraVersion = useLumenStore((s) => s.addExtraVersion);
   const arquivoDeVersao = useRef<HTMLInputElement>(null);
@@ -356,8 +367,10 @@ export function BibleWorkspace({
               <button
                 type="button"
                 data-verse={v.n}
-                onClick={() => go(cursor.bookId, cursor.chapter, v.n, false)}
-                onDoubleClick={() => go(cursor.bookId, cursor.chapter, v.n, true)}
+                // Um clique já projeta: a igreja pediu, e é o que se faz no
+                // meio da pregação, com pressa — dois cliques faziam o
+                // versículo esperar no escuro enquanto o pastor já lia.
+                onClick={() => go(cursor.bookId, cursor.chapter, v.n, true)}
                 className={cn(
                   "relative flex w-full items-baseline gap-3 px-4 py-2 text-left",
                   "transition-colors duration-[var(--motion-fast)] ease-[var(--ease-out)]",
@@ -416,27 +429,65 @@ export function BibleWorkspace({
     </div>
   );
   const parteNavegacao = (
-    <div className="lumen-scroll flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto bg-bg p-3">
-      <div className="relative">
-        <Search
-          aria-hidden
-          className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-subtle"
-        />
-        <Input
-          value={filtro}
-          onChange={(e) => setFiltro(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key !== "Enter") return;
-            const primeiro = livros[0];
-            if (primeiro) {
-              go(primeiro.id, 1, 1);
-              setFiltro("");
-            }
-          }}
-          placeholder="Buscar livro"
-          aria-label="Buscar livro"
-          className="pl-8"
-        />
+    <div
+      className="lumen-scroll flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto bg-bg p-3"
+      style={{ "--biblia-escala": tamanho } as React.CSSProperties}
+    >
+      <div className="flex items-center gap-2">
+        <div className="relative min-w-0 flex-1">
+          <Search
+            aria-hidden
+            className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-subtle"
+          />
+          <Input
+            value={filtro}
+            onChange={(e) => setFiltro(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key !== "Enter") return;
+              const primeiro = livros[0];
+              if (primeiro) {
+                go(primeiro.id, 1, 1);
+                setFiltro("");
+              }
+            }}
+            placeholder="Buscar livro"
+            aria-label="Buscar livro"
+            className="pl-8"
+          />
+        </div>
+        {/* O tamanho dos quadrados, na mão de quem opera: a igreja pediu
+            os livros maiores, e cada tela e cada vista pede um tamanho. */}
+        <div
+          className="flex shrink-0 items-center gap-0.5"
+          role="group"
+          aria-label="Tamanho dos quadrados da Bíblia"
+        >
+          <Hint label="Diminuir os quadrados">
+            <Button
+              size="iconSm"
+              variant="ghost"
+              aria-label="Diminuir os quadrados da Bíblia"
+              disabled={escalaMinima(tamanho)}
+              onClick={() => mudarTamanho(-1)}
+            >
+              <Minus />
+            </Button>
+          </Hint>
+          <span className="tnum w-10 text-center text-caption text-subtle" aria-live="polite">
+            {rotuloDaEscala(tamanho)}
+          </span>
+          <Hint label="Aumentar os quadrados">
+            <Button
+              size="iconSm"
+              variant="ghost"
+              aria-label="Aumentar os quadrados da Bíblia"
+              disabled={escalaMaxima(tamanho)}
+              onClick={() => mudarTamanho(1)}
+            >
+              <Plus />
+            </Button>
+          </Hint>
+        </div>
       </div>
 
       <Testamento
@@ -496,8 +547,7 @@ export function BibleWorkspace({
               data-on={n === cursor.verse}
               aria-label={`Versículo ${n}`}
               aria-pressed={n === cursor.verse}
-              onClick={() => go(cursor.bookId, cursor.chapter, n, false)}
-              onDoubleClick={() => go(cursor.bookId, cursor.chapter, n, true)}
+              onClick={() => go(cursor.bookId, cursor.chapter, n, true)}
               className={cn(
                 "bible-num bible-num-vs",
                 "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring",
@@ -753,8 +803,8 @@ export function BibleWorkspace({
       <p className="flex items-center gap-2 border-t border-border px-3 py-1.5 text-secondary text-subtle">
         <BookOpen className="size-3" />
         <span className="min-w-0 flex-1 truncate">
-          Digite o nome de um livro para abrir a busca · número vai ao versículo · duplo clique
-          projeta · Enter envia ao telão · Esc volta à cabine
+          Digite o nome de um livro para abrir a busca · número vai ao versículo · um clique no
+          versículo projeta · Enter envia ao telão · Esc volta à cabine
         </span>
         {hint && (
           <kbd className="rounded bg-elevated px-2 py-0.5 font-mono text-secondary text-fg">{hint}</kbd>

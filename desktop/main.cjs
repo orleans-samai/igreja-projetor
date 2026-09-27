@@ -5,7 +5,6 @@ const media = require("./media.cjs");
 const fs = require("node:fs");
 const path = require("node:path");
 const { mediaResponse } = require("./media-response.cjs");
-const { Recognition } = require("./recognition.cjs");
 const packages = require("./service-package.cjs");
 const { RemoteControl } = require("./remote-control.cjs");
 const { CofreRemoto } = require("./remote-store.cjs");
@@ -26,7 +25,6 @@ protocol.registerSchemesAsPrivileged([{ scheme: "lumen", privileges: {
 const smokeTest = !!process.env.LUMEN_TEST_DATA && (!app.isPackaged || process.argv.includes("--smoke-test"));
 if (smokeTest) app.setPath("userData", path.resolve(process.env.LUMEN_TEST_DATA));
 const dataDir = app.getPath("userData");
-const recognition = new Recognition(dataDir);
 const remoteControl = new RemoteControl(
   path.join(__dirname, "www"),
   new CofreRemoto(dataDir),
@@ -494,7 +492,6 @@ async function restoreBackup() {
   }
 }
 app.on("before-quit", (event) => {
-  recognition.cancel();
   remoteControl.desligar();
   if (quitting || !storage) return;
   event.preventDefault();
@@ -581,10 +578,6 @@ handle("lumen:remote-control-chat-apagar", (id) => remoteControl.apagarMensagem(
 handle("lumen:remote-control-silenciar", (id, minutos) => remoteControl.silenciar(id, minutos));
 handle("lumen:remote-control-presenca", () => remoteControl.presenca());
 onEvent("lumen:remote-control-digitando", (para) => remoteControl.digitandoDaCabine(para));
-handle("lumen:auto-slide-status", () => recognition.status());
-handle("lumen:auto-slide-install", () => recognition.install());
-handle("lumen:auto-slide-transcribe", (wav) => recognition.transcribe(wav));
-handle("lumen:auto-slide-cancel", () => recognition.cancel());
 handle("lumen:preflight", async (urls = []) => {
   if (!Array.isArray(urls) || urls.length > 2048 || urls.some((u) => typeof u !== "string" || u.length > 4096)) throw new Error("Lista de mídias inválida.");
   const displays = screen.getAllDisplays();
