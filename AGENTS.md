@@ -93,6 +93,11 @@ npm run test:desktop:smoke
   paleta, a conta da cor e a janela de grupo dele são as de
   `src/lib/cor-do-chat.ts` e `src/lib/chat-grupos.ts` — os testes conferem.
   Nada de `\p{…}` nem sintaxe nova ali: celular velho não abriria a página.
+  No CSS delas, não estilize por elemento solto (`li > button`): a regra
+  pega também o botão de ação ao lado (o `+` do culto ganhou a linha
+  inteira e espremeu o nome até uma palavra por linha). O smoke confere as
+  abas em 360 e 430 px (`conferirLayoutDoCelular`): lista nova no celular
+  entra nessa trava.
 - **Entrar pelo celular:** acesso rápido (só o nome, entra no chat) ou
   usuário e senha (conta criada em Permissões, já com permissão e equipe).
   A senha da conta só existe cozida (scrypt) em `remote.json`; o `status`

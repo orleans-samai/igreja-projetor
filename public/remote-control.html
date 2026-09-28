@@ -221,7 +221,11 @@
 
   /* ── listas ──────────────────────────────────────────────────── */
   .lista { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
-  .lista > li > button, .lista > li > .item {
+  /* O cartão é só o botão principal do item. O + ao lado também é botão
+     filho do li: pego por esta regra, ele ganhava largura de 100%, tomava a
+     linha e espremia o nome da música ou da mídia até uma palavra por linha,
+     com a linha vazando pela direita da tela. */
+  .lista > li > button:not(.mais-culto), .lista > li > .item {
     width: 100%; display: flex; align-items: center; gap: 12px; text-align: left;
     padding: 12px; border-radius: var(--r);
     border: 1px solid var(--borda); background: var(--superficie); color: var(--fg);
@@ -242,11 +246,15 @@
   }
   .volume-telao { flex: 1; min-width: 0; accent-color: var(--live); }
   .lista .autor { display: block; margin-top: 3px; font-size: 13px; color: var(--muted); }
+  /* Música: o nome em cima e quem canta embaixo, menor. O cartão é uma
+     fileira (feita para a capa da mídia ao lado do nome), e nela o cantor ia
+     para o lado e o nome quebrava em pedaços. */
+  .lista > li > button.item-texto { flex-direction: column; align-items: flex-start; justify-content: center; gap: 0; }
   /* O + ao lado do item: põe na programação do culto sem sair da lista. */
   .lista > li.com-mais { display: flex; gap: 8px; align-items: stretch; }
   .lista > li.com-mais > button:first-child { flex: 1; min-width: 0; }
   .mais-culto {
-    flex: none; width: 52px; border-radius: var(--r);
+    flex: none; width: 52px; padding: 0; display: grid; place-items: center; border-radius: var(--r);
     border: 1px solid var(--borda); background: var(--superficie);
     color: var(--live); font-size: 26px; font-weight: 500; line-height: 1;
   }
@@ -1468,6 +1476,7 @@
           var li = document.createElement("li");
           li.className = "com-mais";
           var b = document.createElement("button");
+          b.className = "item-texto";
           b.textContent = m.titulo;
           if (m.artista) {
             var s = document.createElement("span");
@@ -1657,6 +1666,7 @@
           var li = document.createElement("li");
           li.className = "com-mais";
           var b = document.createElement("button");
+          b.className = "item-texto";
           b.textContent = a.titulo;
           if (a.artista) {
             var sp = document.createElement("span");
