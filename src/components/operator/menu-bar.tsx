@@ -1,5 +1,4 @@
-import { quemAbreValido } from "@/lib/abrir-slides";
-import { importarRecebido } from "@/lib/apresentacao";
+import { abrirApresentacaoRecebida } from "@/components/operator/apresentacao-recebida";
 import {
   GraduationCap,
   ImageUp,
@@ -260,32 +259,7 @@ export function MenuBar({
       if (!escolha.cancelado) toast.error(escolha.error ?? "Não consegui abrir o arquivo.");
       return;
     }
-    toast(`Abrindo “${escolha.nome}”…`, { id: "apres-cabine" });
-    const r = await importarRecebido(
-      escolha.nome,
-      undefined,
-      quemAbreValido(useLumenStore.getState().settings.abrirSlidesCom),
-    );
-    if (!r.ok) {
-      toast.error(r.erro, { id: "apres-cabine", duration: 12000 });
-      return;
-    }
-    const st = useLumenStore.getState();
-    const n = r.apresentacao.slides.length;
-    st.adicionarApresentacao(r.apresentacao);
-    st.addToPlaylist({
-      type: "apresentacao",
-      refId: r.apresentacao.id,
-      notes: "",
-      title: r.apresentacao.titulo,
-      subtitle: `${n} slides`,
-    });
-    st.selectApresentacao(r.apresentacao.id);
-    const quem = r.desenhadaPor ? `, desenhados pelo ${r.desenhadaPor}` : "";
-    toast.success(`“${r.apresentacao.titulo}” entrou na programação — ${n} slides${quem}.`, {
-      id: "apres-cabine",
-    });
-    if (r.aviso) toast.warning(r.aviso, { duration: 15000 });
+    await abrirApresentacaoRecebida(escolha.nome);
   };
 
   const exportRepertoire = () => {

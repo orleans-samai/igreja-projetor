@@ -912,6 +912,36 @@ try {
   const linhaDoHino = biblioteca.locator("li", { hasText: "Hino de abertura" }).locator("button").first();
   await linhaDoHino.waitFor({ timeout: 5000 });
 
+  // ---- Qualquer arquivo entra: apresentação vira slides, o resto fica guardado ----
+  // Um .pptx solto na Mídia dava "não é vídeo, áudio nem imagem". A igreja
+  // pediu para aceitar qualquer arquivo, mesmo que o Lúmen não o projete.
+  const escalaSolta = path.join(fora, "Escala de louvor.docx");
+  await writeFile(escalaSolta, "documento da escala");
+  await biblioteca.locator('input[type="file"]').setInputFiles(escalaSolta);
+  await biblioteca.locator("[data-arquivo-guardado]", { hasText: "Escala de louvor.docx" }).waitFor({ timeout: 10000 });
+  assert.equal(
+    await biblioteca.getByRole("tab", { name: "Arquivos", exact: true }).getAttribute("aria-selected"),
+    "true",
+    "a Biblioteca não mostrou a aba Arquivos com o arquivo guardado",
+  );
+  const apresentacaoSolta = path.join(fora, "Aviso da semana.pptx");
+  await writeFile(apresentacaoSolta, pptxDeVerdade([{ texto: "Aviso da semana", fundo: "1F3B73" }]));
+  await biblioteca.locator('input[type="file"]').setInputFiles(apresentacaoSolta);
+  await esperarAsync(
+    page,
+    async () => {
+      const st = JSON.parse(await window.lumenDesktop.storageGet("lumen-v2")).state;
+      const itens = st.playlists.find((p) => p.id === st.activePlaylistId)?.items ?? [];
+      return (
+        (st.apresentacoes ?? []).some((a) => a.titulo === "Aviso da semana" && a.slides.length === 1) &&
+        itens.some((i) => i.type === "apresentacao" && i.title === "Aviso da semana")
+      );
+    },
+    undefined,
+    { timeout: 90000, oQue: "o .pptx solto na Mídia virar slides na programação" },
+  );
+  await biblioteca.getByRole("tab", { name: "Áudio", exact: true }).click();
+
   // Copiado pelo Explorer, sem passar pela cabine: o vigia da pasta avisa.
   await writeFile(path.join(pastaDeAudio.dir, "Copiado pelo Explorer.wav"), wavCurto());
   assert.ok(
@@ -1186,6 +1216,22 @@ try {
     true,
     "a cabine tocou o som do vídeo junto com o telão",
   );
+  // O volume do telão também na cabine, embaixo do tempo, e o mudo ao lado.
+  const quadroDoTelao = () => page.evaluate(() => JSON.parse(localStorage.getItem("lumen-live-frame") ?? "null"));
+  const volumeDaCabine = page.locator("input[data-volume-do-telao]:visible").first();
+  await volumeDaCabine.fill("30");
+  await page.waitForFunction(
+    () => JSON.parse(localStorage.getItem("lumen-live-frame") ?? "null")?.deck?.mediaVolume === 0.3,
+    null,
+    { timeout: 10000 },
+  );
+  await page.getByRole("button", { name: "Tirar o som do telão" }).first().click();
+  await page.waitForFunction(() => JSON.parse(localStorage.getItem("lumen-live-frame") ?? "null")?.deck?.mediaMudo === true);
+  await page.getByRole("button", { name: "Ligar o som do telão" }).first().click();
+  await page.waitForFunction(() => JSON.parse(localStorage.getItem("lumen-live-frame") ?? "null")?.deck?.mediaMudo === false);
+  await volumeDaCabine.fill("100");
+  await page.waitForFunction(() => JSON.parse(localStorage.getItem("lumen-live-frame") ?? "null")?.deck?.mediaVolume === 1);
+
   await page.locator("button:visible", { hasText: "Tirar vídeo" }).first().click();
   await page.waitForFunction(
     () => (JSON.parse(localStorage.getItem("lumen-live-frame") ?? "null")?.trilha?.mediaSrc ?? "").includes("Fundo%20do%20ensaio"),
@@ -1193,6 +1239,15 @@ try {
     { timeout: 10000 },
   );
   await page.waitForSelector("video[data-midia-oculta]", { state: "attached", timeout: 10000 });
+  // Sem a imagem do vídeo, a logo da igreja no telão — escuro, não.
+  assert.equal((await quadroDoTelao()).status, "logo", "ao tirar o vídeo, o telão não mostrou a logo");
+  // E o volume da cabine passa a mandar no som que continua tocando.
+  await volumeDaCabine.fill("50");
+  await page.waitForFunction(
+    () => JSON.parse(localStorage.getItem("lumen-live-frame") ?? "null")?.trilha?.mediaVolume === 0.5,
+    null,
+    { timeout: 10000 },
+  );
   assert.equal((await projetarPeloCelular("song", escolhida.id)).ok, true);
   await page.waitForFunction(
     (titulo) => {
@@ -2242,6 +2297,9 @@ try {
     guardado.state.songThemeId = "theme-infantil";
     const base = guardado.state.songs[0];
     const agora = Date.now();
+    const hoje = new Date();
+    const aaaammdd = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, "0")}-${String(hoje.getDate()).padStart(2, "0")}`;
+    guardado.state.playlists.push({ id: "pl-dia-do-teste", name: "Culto Domingo", data: aaaammdd, items: [], updatedAt: agora });
     guardado.state.songs.push({
       ...base,
       id: "faixa-longa",
@@ -2393,6 +2451,15 @@ try {
     win.setSize(1366, 768);
     win.webContents.setZoomFactor(1);
   });
+  // O dia do culto depois do nome: vários "Culto Domingo" iguais na lista
+  // não diziam qual era o de hoje.
+  await page.locator("[data-playlist-trigger]").first().click();
+  await page
+    .getByRole("menuitem", { name: `Culto Domingo, dia ${new Date().getDate()}`, exact: true })
+    .first()
+    .waitFor({ timeout: 5000 });
+  await page.keyboard.press("Escape");
+
   const musicaLonga = "Faixa longa do teste";
   await page.evaluate(async () => {
     const esperar = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -2535,7 +2602,7 @@ try {
   assert.deepEqual(errors, []);
   const disk = JSON.parse(await readFile(path.join(profile, "data", "library.json"), "utf8"));
   assert.ok(disk.values["lumen-v2"]);
-  console.log(`PASS: offline, fonts, Bible (one click on a verse projects it, books, chapters and verses always fit the panel with no scrollbar and nothing cut, even Luke 1's 80 verses, − and + setting the largest size, gold buttons in and out of the Bible screen, five versions plus importing a licensed one, its three parts rearranged by dragging and swapping sides, New-Testament-only notice, omitted verse lands on the next), restart persistence, projector, media ranges, preflight, remote control (LAN, entrada por nome, nome fixo na rede, one click from the menu bar beside Permissões, accounts with username and password created in Permissões that sign in already holding their permission while the quick name-only access stays chat-only, permissions by part (only chat, culto, mídia, letras, controle or full access) with the phone showing only the tabs each person can use and nothing but the chat for chat-only, a chat-only phone given a part going straight to it, the phone's header, on-air bar and tabs fixed while only the panel scrolls), update check, review before apply, 1366×768 at 100/125/150% and 800×600, no scroll and exactly one layout at ten sizes from 800×600 to 2560×1440, including every pixel around the 1280 cutover and the chat stays on screen, church logo and name reachable from the menu bar, a folder video behind the logo on the real screen with no faded box around it and the logo opening with Lúmen, a big blinking notice by default with its size chosen before sending, art studio makes a batch of 8 distinct Konva designs from just a title and a Bible reference, opens one in the editor, saves it and exports PNG and JPEG at exactly 1920×1080 (Full HD is the default), VFX has three modes and a dynamic video becomes a real file in the Vídeos tab, a theme column of images, videos and dynamics where one click puts a dynamic behind the lyrics, a gold Criar tema that sends the new theme straight to the screen, no AI, no YouTube and no Auto-Slide anywhere in the app (and what Auto-Slide downloaded is deleted on start), dirigente page signs in, sends a file that lands in the library and opens from the programme marked in yellow with who sent it, chats and files a notice, and its PowerPoint and PDF become slides in the service programme, a real .ppsx drawn by PowerPoint (or LibreOffice) into Full HD slides with its own background colour and each slide's picture in the strip below, the service name in yellow, songs exported from Holyrics in batch (.mufl, also .json and .txt) imported from the Arquivo menu while the encrypted single-song .muf explains how to export, a Slides menu between Artes and Mais choosing who opens presentations (Office, LibreOffice or Lúmen itself, with the missing program marked and the others as backup), and a .pptx that neither opens drawn by Lúmen itself into Full HD with its background colour and the white title inside its own box, video as a theme background, find a song by a lyric excerpt, right-click on lyrics edits or removes, double-click to project, fixed text only in the footer and the verse always centred vertically, phone has one play/pause button, the screen volume and a Sair do vídeo that takes media off the screen but never a lyric, sound from the screen only (the cabine preview stays muted), Tirar vídeo keeps the sound playing under a lyric and Mostrar vídeo brings the picture back, tapping a media item shows its controls right there in a mini-player, a chat keyboard with a wide text field, a small send arrow and one attach button for photo or voice, voice messages converted to WAV on the phone and arriving with their length, the team chat in bubbles with who is online and who each message is for on the phone and the dirigente page, kept per service in a searchable, exportable history in the cabine, every new chat message pops up in gold on the phone, the cabine and the dirigente page (never for its own author), sees the media folder, gets a file imported in the cabine or copied in by Explorer within 5 s, a library row dragged into the service programme, a right-click menu that deletes media, the lyrics strip reopening by itself when a lyric goes to the screen and scrolling itself to keep the yellow slide and the next two in view, and a 2 blocos option where the lyrics fill the top block with whole cards and continue in the bottom one, which scrolls when even it can't hold the rest, a Culto tab that mirrors the service programme, projects with a tap on the item and deletes (two taps) from it, a + beside songs, media and web results that puts them in the service programme, the phone's Letras, Mídia and Culto lists fitting the screen at 360 and 430 px with the name never squeezed by the + and the singer under the song name, lyrics search results that appear while typing and mark songs already in the library, projects from it, opens a song as a grid of slides and puts one on the screen, and searches lyrics through the cabine. Evidence: ${evidence}`);
+  console.log(`PASS: offline, fonts, Bible (one click on a verse projects it, books, chapters and verses always fit the panel with no scrollbar and nothing cut, even Luke 1's 80 verses, − and + setting the largest size, gold buttons in and out of the Bible screen, five versions plus importing a licensed one, its three parts rearranged by dragging and swapping sides, New-Testament-only notice, omitted verse lands on the next), restart persistence, projector, media ranges, preflight, remote control (LAN, entrada por nome, nome fixo na rede, one click from the menu bar beside Permissões, accounts with username and password created in Permissões that sign in already holding their permission while the quick name-only access stays chat-only, permissions by part (only chat, culto, mídia, letras, controle or full access) with the phone showing only the tabs each person can use and nothing but the chat for chat-only, a chat-only phone given a part going straight to it, the phone's header, on-air bar and tabs fixed while only the panel scrolls), update check, review before apply, 1366×768 at 100/125/150% and 800×600, no scroll and exactly one layout at ten sizes from 800×600 to 2560×1440, including every pixel around the 1280 cutover and the chat stays on screen, church logo and name reachable from the menu bar, a folder video behind the logo on the real screen with no faded box around it and the logo opening with Lúmen, a big blinking notice by default with its size chosen before sending, art studio makes a batch of 8 distinct Konva designs from just a title and a Bible reference, opens one in the editor, saves it and exports PNG and JPEG at exactly 1920×1080 (Full HD is the default), VFX has three modes and a dynamic video becomes a real file in the Vídeos tab, a theme column of images, videos and dynamics where one click puts a dynamic behind the lyrics, a gold Criar tema that sends the new theme straight to the screen, no AI, no YouTube and no Auto-Slide anywhere in the app (and what Auto-Slide downloaded is deleted on start), dirigente page signs in, sends a file that lands in the library and opens from the programme marked in yellow with who sent it, chats and files a notice, and its PowerPoint and PDF become slides in the service programme, a real .ppsx drawn by PowerPoint (or LibreOffice) into Full HD slides with its own background colour and each slide's picture in the strip below, the service name in yellow with its day after it (Culto Domingo, dia 27), any file accepted in Mídia (a .pptx becomes slides in the programme and anything else is kept in Mídia › Arquivos, never opened), songs exported from Holyrics in batch (.mufl, also .json and .txt) imported from the Arquivo menu while the encrypted single-song .muf explains how to export, a Slides menu between Artes and Mais choosing who opens presentations (Office, LibreOffice or Lúmen itself, with the missing program marked and the others as backup), and a .pptx that neither opens drawn by Lúmen itself into Full HD with its background colour and the white title inside its own box, video as a theme background, find a song by a lyric excerpt, right-click on lyrics edits or removes, double-click to project, fixed text only in the footer and the verse always centred vertically, phone has one play/pause button, the screen volume and a Sair do vídeo that takes media off the screen but never a lyric, sound from the screen only (the cabine preview stays muted), a screen volume slider and mute under the playback time in the cabine that also drive the soundtrack, Tirar vídeo puts the church logo on screen and keeps the sound playing under a lyric and Mostrar vídeo brings the picture back, tapping a media item shows its controls right there in a mini-player, a chat keyboard with a wide text field, a small send arrow and one attach button for photo or voice, voice messages converted to WAV on the phone and arriving with their length, the team chat in bubbles with who is online and who each message is for on the phone and the dirigente page, kept per service in a searchable, exportable history in the cabine, every new chat message pops up in gold on the phone, the cabine and the dirigente page (never for its own author), sees the media folder, gets a file imported in the cabine or copied in by Explorer within 5 s, a library row dragged into the service programme, a right-click menu that deletes media, the lyrics strip reopening by itself when a lyric goes to the screen and scrolling itself to keep the yellow slide and the next two in view, and a 2 blocos option where the lyrics fill the top block with whole cards and continue in the bottom one, which scrolls when even it can't hold the rest, a Culto tab that mirrors the service programme, projects with a tap on the item and deletes (two taps) from it, a + beside songs, media and web results that puts them in the service programme, the phone's Letras, Mídia and Culto lists fitting the screen at 360 and 430 px with the name never squeezed by the + and the singer under the song name, lyrics search results that appear while typing and mark songs already in the library, projects from it, opens a song as a grid of slides and puts one on the screen, and searches lyrics through the cabine. Evidence: ${evidence}`);
 } finally {
   if (app) {
     // O fim do teste deixa uma música no ar, e a cabine (de propósito)

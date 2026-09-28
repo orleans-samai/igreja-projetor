@@ -109,6 +109,8 @@ export interface PlaylistItem {
 export interface Playlist {
   id: string;
   name: string;
+  /** O dia do culto, AAAA-MM-DD — aparece depois do nome (ver dia-do-culto.ts). */
+  data?: string;
   serviceId?: string;
   items: PlaylistItem[];
   updatedAt: number;

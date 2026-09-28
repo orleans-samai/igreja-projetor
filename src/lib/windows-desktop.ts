@@ -173,6 +173,17 @@ export interface ImportacaoDeMidia {
   ok: boolean;
   importados: Pick<MediaFile, "id" | "kind" | "name" | "title" | "url">[];
   recusados: { nome: string; erro: string }[];
+  /** Apresentações copiadas para "recebidos", prontas para virar slides. Ausente em versões antigas. */
+  apresentacoes?: { nome: string }[];
+  /** O que não é mídia nem apresentação, guardado em Mídia › Arquivos. Ausente em versões antigas. */
+  arquivos?: { nome: string }[];
+}
+
+/** Um arquivo guardado em Mídia › Arquivos: o Lúmen guarda, não projeta. */
+export interface ArquivoGuardado {
+  nome: string;
+  bytes: number;
+  modificado: number;
 }
 
 export interface MediaListing {
@@ -258,6 +269,11 @@ declare global {
       mediaDelete: (kind: MediaKind, nome: string) => Promise<{ ok: boolean; error?: string }>;
       /** Copia para a pasta de mídia arquivos soltos na janela ou do "Importar". */
       mediaImportFiles: (files: File[] | FileList) => Promise<ImportacaoDeMidia>;
+      /** Mídia › Arquivos. Ausentes em versões antigas. */
+      arquivosListar?: () => Promise<{ ok: boolean; dir: string; itens: ArquivoGuardado[]; error?: string }>;
+      arquivosMostrar?: (nome: string) => Promise<{ ok: boolean; error?: string }>;
+      arquivosExcluir?: (nome: string) => Promise<{ ok: boolean; error?: string }>;
+      arquivosAbrirPasta?: () => Promise<{ ok: boolean; dir?: string; error?: string }>;
       /** Algo mudou nas pastas de mídia (arquivo novo, renomeado, excluído). */
       onMediaChanged: (cb: (kinds: MediaKind[]) => void) => () => void;
       apresentacaoPptx: (nome: string) => Promise<

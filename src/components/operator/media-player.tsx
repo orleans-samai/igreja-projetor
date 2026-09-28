@@ -9,6 +9,9 @@ import {
   Square,
   Video,
   VideoOff,
+  Volume1,
+  Volume2,
+  VolumeX,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -25,6 +28,7 @@ import {
   tempoDoPonto,
 } from "@/lib/media-player";
 import { assinarLocal } from "@/lib/media-local";
+import { porcentoDeVolume, volumeDePorcento } from "@/lib/remote-control";
 import { subscribeOps } from "@/lib/ops-channel";
 import { useLumenStore } from "@/store/lumen-store";
 
@@ -90,6 +94,47 @@ export function MediaPlayer() {
 
   const src = deck?.mediaSrc;
   useEffect(() => setEstado(VAZIO), [src]);
+
+  /*
+    Volume do telão. Arrastando, o número anda na hora aqui, mas o comando
+    sai no máximo a cada 120 ms e sempre ao soltar: um comando por pixel
+    encheria o canal com quadros que o telão nem chega a tocar.
+  */
+  const volumeDoDeck = deck?.mediaVolume ?? 1;
+  const mudo = deck?.mediaMudo === true;
+  const [volumeArrastando, setVolumeArrastando] = useState<number | null>(null);
+  const volume = volumeArrastando ?? volumeDoDeck;
+  const ultimoVolume = useRef(0);
+  const volumePendente = useRef<number | null>(null);
+  useEffect(() => () => window.clearTimeout(volumePendente.current ?? undefined), []);
+  const mandarVolume = (v: number, soltou: boolean) => {
+    setVolumeArrastando(soltou ? null : v);
+    window.clearTimeout(volumePendente.current ?? undefined);
+    volumePendente.current = null;
+    const enviar = () => {
+      ultimoVolume.current = performance.now();
+      // Subir o volume de quem estava mudo liga o som: é o que o gesto pede.
+      comandar({ mediaVolume: v, ...(mudo && v > 0 ? { mediaMudo: false } : {}) });
+    };
+    const espera = 120 - (performance.now() - ultimoVolume.current);
+    if (soltou || espera <= 0) {
+      enviar();
+      return;
+    }
+    // O último valor sempre chega, mesmo sem soltar (teclado, leitor de tela).
+    volumePendente.current = window.setTimeout(() => {
+      volumePendente.current = null;
+      enviar();
+      setVolumeArrastando(null);
+    }, espera);
+  };
+  // O áudio que toca na cabine obedece ao mesmo volume.
+  useEffect(() => {
+    const el = audioRef.current;
+    if (!el) return;
+    el.volume = Math.min(1, Math.max(0, volume));
+    el.muted = mudo;
+  }, [volume, mudo, src]);
 
   /**
    * De onde vêm os números do vídeo.
@@ -371,6 +416,40 @@ export function MediaPlayer() {
 
         <span className="tnum shrink-0 text-caption text-muted">
           {restante(tempoMostrado, duracao)}
+        </span>
+      </div>
+
+      {/* O volume do telão, embaixo do tempo, a pedido da igreja: o celular
+          já tinha, e na cabine era preciso pegar o celular para baixar o som. */}
+      <div className="flex items-center gap-2">
+        <Hint label={mudo ? "Ligar o som do telão" : "Tirar o som do telão"}>
+          <Button
+            size="iconSm"
+            variant="ghost"
+            aria-label={mudo ? "Ligar o som do telão" : "Tirar o som do telão"}
+            aria-pressed={mudo}
+            onClick={() => comandar({ mediaMudo: !mudo })}
+          >
+            {mudo || volume === 0 ? <VolumeX /> : volume < 0.5 ? <Volume1 /> : <Volume2 />}
+          </Button>
+        </Hint>
+        <input
+          type="range"
+          min={0}
+          max={100}
+          step={1}
+          value={porcentoDeVolume(volume)}
+          aria-label="Volume do telão"
+          aria-valuetext={mudo ? "sem som" : `${porcentoDeVolume(volume)}%`}
+          data-volume-do-telao
+          onChange={(e) => mandarVolume(volumeDePorcento(e.currentTarget.value), false)}
+          onPointerUp={(e) => mandarVolume(volumeDePorcento(e.currentTarget.value), true)}
+          onKeyUp={(e) => mandarVolume(volumeDePorcento(e.currentTarget.value), true)}
+          onBlur={() => setVolumeArrastando(null)}
+          className={cn("min-w-0 flex-1", mudo && "opacity-50")}
+        />
+        <span className="tnum w-10 shrink-0 text-right text-caption text-muted">
+          {mudo ? "mudo" : `${porcentoDeVolume(volume)}%`}
         </span>
       </div>
 

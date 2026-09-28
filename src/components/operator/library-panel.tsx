@@ -1,7 +1,9 @@
 import {
+  File as FileIcon,
   FileJson,
   FolderCog,
   FolderOpen,
+  FolderSearch,
   Globe,
   ListPlus,
   Loader2,
@@ -56,6 +58,7 @@ import {
 } from "@/lib/media-library";
 import { searchSongs, useLumenStore } from "@/store/lumen-store";
 import type { LibraryTab } from "@/lib/types";
+import type { ArquivoGuardado } from "@/lib/windows-desktop";
 
 const TABS = [
   { value: "songs", label: "Letras" },
@@ -657,6 +660,9 @@ function MediaList() {
   const search = useLumenStore((s) => s.search);
 
   const [kind, setKind] = useState<MediaKind>("video");
+  // "Arquivos" fica fora de `kind`: o que é de vídeo, áudio e imagem (pasta
+  // por tipo, projetar, pôr no culto) continua igual, e esta aba é outra lista.
+  const [verArquivos, setVerArquivos] = useState(false);
   const [listing, setListing] = useState<MediaListing>({ ok: true, items: [] });
   const [busy, setBusy] = useState(false);
   const [trocaPasta, setTrocaPasta] = useState<EscolhaDePasta | null>(null);
@@ -682,6 +688,11 @@ function MediaList() {
     if (aviso.versao === 0) return;
     if (aviso.mostrar && aviso.versao > mostradoAte) {
       mostradoAte = aviso.versao;
+      if (aviso.mostrar === "arquivos") {
+        setVerArquivos(true);
+        return;
+      }
+      setVerArquivos(false);
       if (aviso.mostrar !== kind) {
         setKind(aviso.mostrar);
         return;
@@ -796,200 +807,219 @@ function MediaList() {
         <Segmented
           label="Tipo de mídia"
           full
-          value={kind}
-          onChange={(v) => setKind(v)}
-          items={MEDIA_KINDS.map((k) => ({ value: k.value, label: k.label }))}
+          value={verArquivos ? "arquivos" : kind}
+          onChange={(v) => {
+            if (v === "arquivos") {
+              setVerArquivos(true);
+              return;
+            }
+            setVerArquivos(false);
+            setKind(v);
+          }}
+          items={[
+            ...MEDIA_KINDS.map((k) => ({ value: k.value as MediaKind | "arquivos", label: k.label })),
+            { value: "arquivos" as const, label: "Arquivos" },
+          ]}
         />
 
-        <div className="flex items-center gap-0.5">
-          <Hint label={`Abrir a pasta de ${mediaKindLabel(kind).toLowerCase()} no Explorer`}>
-            <Button
-              size="iconSm"
-              variant="ghost"
-              aria-label="Abrir pasta no Explorer"
-              disabled={!naPasta}
-              onClick={async () => {
-                const dir = await openMediaFolder(kind);
-                if (!dir) toast.error("Não consegui abrir a pasta.");
-              }}
-            >
-              <FolderOpen />
-            </Button>
-          </Hint>
-          <Hint label="Reler a pasta">
-            <Button
-              size="iconSm"
-              variant="ghost"
-              aria-label="Atualizar lista"
-              disabled={!naPasta}
-              loading={busy}
-              onClick={() => void atualizar(kind)}
-            >
-              {!busy && <RefreshCw />}
-            </Button>
-          </Hint>
-          <Hint label="Usar outra pasta para este tipo">
-            <Button
-              size="iconSm"
-              variant="ghost"
-              aria-label="Escolher outra pasta"
-              disabled={!naPasta}
-              onClick={async () => {
-                const escolha = await chooseMediaFolder(kind);
-                if (escolha.canceled || escolha.mesmaPasta) return;
-                if (!escolha.ok || !escolha.dir) {
-                  toast.error(escolha.error || "Não consegui usar essa pasta.");
-                  return;
-                }
-                // Sem nada na pasta antiga não há o que perguntar: troca direto.
-                if (!escolha.pendentes) {
-                  const r = await applyMediaFolder(kind, escolha.dir, false);
-                  if (!r.ok) {
-                    toast.error(r.error || "Não consegui trocar a pasta.");
+        {!verArquivos && (
+          <div className="flex items-center gap-0.5">
+            <Hint label={`Abrir a pasta de ${mediaKindLabel(kind).toLowerCase()} no Explorer`}>
+              <Button
+                size="iconSm"
+                variant="ghost"
+                aria-label="Abrir pasta no Explorer"
+                disabled={!naPasta}
+                onClick={async () => {
+                  const dir = await openMediaFolder(kind);
+                  if (!dir) toast.error("Não consegui abrir a pasta.");
+                }}
+              >
+                <FolderOpen />
+              </Button>
+            </Hint>
+            <Hint label="Reler a pasta">
+              <Button
+                size="iconSm"
+                variant="ghost"
+                aria-label="Atualizar lista"
+                disabled={!naPasta}
+                loading={busy}
+                onClick={() => void atualizar(kind)}
+              >
+                {!busy && <RefreshCw />}
+              </Button>
+            </Hint>
+            <Hint label="Usar outra pasta para este tipo">
+              <Button
+                size="iconSm"
+                variant="ghost"
+                aria-label="Escolher outra pasta"
+                disabled={!naPasta}
+                onClick={async () => {
+                  const escolha = await chooseMediaFolder(kind);
+                  if (escolha.canceled || escolha.mesmaPasta) return;
+                  if (!escolha.ok || !escolha.dir) {
+                    toast.error(escolha.error || "Não consegui usar essa pasta.");
                     return;
                   }
-                  if (r.aviso) toast.error(r.aviso, { duration: 10000 });
-                  else toast(`Pasta de ${mediaKindLabel(kind).toLowerCase()}: ${r.dir}`);
-                  void atualizar(kind);
-                  return;
-                }
-                setTrocaPasta(escolha);
-              }}
+                  // Sem nada na pasta antiga não há o que perguntar: troca direto.
+                  if (!escolha.pendentes) {
+                    const r = await applyMediaFolder(kind, escolha.dir, false);
+                    if (!r.ok) {
+                      toast.error(r.error || "Não consegui trocar a pasta.");
+                      return;
+                    }
+                    if (r.aviso) toast.error(r.aviso, { duration: 10000 });
+                    else toast(`Pasta de ${mediaKindLabel(kind).toLowerCase()}: ${r.dir}`);
+                    void atualizar(kind);
+                    return;
+                  }
+                  setTrocaPasta(escolha);
+                }}
+              >
+                <FolderCog />
+              </Button>
+            </Hint>
+
+            <label
+              className={cn(
+                "ml-auto inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-md px-2.5",
+                "text-caption font-medium text-muted",
+                "transition-colors duration-[var(--motion-fast)] ease-[var(--ease-out)]",
+                "hover:bg-elevated hover:text-fg focus-within:outline-2 focus-within:outline-offset-1 focus-within:outline-ring",
+              )}
             >
-              <FolderCog />
-            </Button>
-          </Hint>
+              <Upload className="size-3.5" aria-hidden />
+              Importar
+              <input
+                type="file"
+                accept={
+                  kind === "video"
+                    ? "video/mp4,video/webm"
+                    : kind === "audio"
+                      ? "audio/*"
+                      : "image/jpeg,image/png,image/webp"
+                }
+                className="sr-only"
+                multiple
+                onChange={(e) => {
+                  const files = Array.from(e.target.files ?? []);
+                  // Limpa para escolher o mesmo arquivo de novo disparar outra vez.
+                  e.target.value = "";
+                  void importar(files);
+                }}
+              />
+            </label>
+          </div>
 
-          <label
-            className={cn(
-              "ml-auto inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-md px-2.5",
-              "text-caption font-medium text-muted",
-              "transition-colors duration-[var(--motion-fast)] ease-[var(--ease-out)]",
-              "hover:bg-elevated hover:text-fg focus-within:outline-2 focus-within:outline-offset-1 focus-within:outline-ring",
-            )}
-          >
-            <Upload className="size-3.5" aria-hidden />
-            Importar
-            <input
-              type="file"
-              accept={
-                kind === "video"
-                  ? "video/mp4,video/webm"
-                  : kind === "audio"
-                    ? "audio/*"
-                    : "image/jpeg,image/png,image/webp"
-              }
-              className="sr-only"
-              multiple
-              onChange={(e) => {
-                const files = Array.from(e.target.files ?? []);
-                // Limpa para escolher o mesmo arquivo de novo disparar outra vez.
-                e.target.value = "";
-                void importar(files);
-              }}
-            />
-          </label>
-        </div>
+        )}
 
-        {listing.dir && (
+        {!verArquivos && listing.dir && (
           <p className="truncate text-caption text-subtle" title={listing.dir}>
             {listing.dir}
           </p>
         )}
       </div>
 
-      {listing.error && (
-        <p className="px-3 pb-2 text-secondary text-danger" role="alert">
-          {listing.error}
-        </p>
-      )}
-
-      {lista.length === 0 ? (
-        <Empty
-          title={
-            q
-              ? `Nenhuma mídia com “${search}”.`
-              : `Nenhum arquivo de ${mediaKindLabel(kind).toLowerCase()} na pasta.`
-          }
-          hint={
-            naPasta
-              ? "Copie os arquivos para a pasta pelo Explorer e toque em atualizar."
-              : "No navegador a mídia vale só até fechar o Lúmen."
-          }
-          action={
-            naPasta ? (
-              <Button size="sm" variant="secondary" onClick={() => void openMediaFolder(kind)}>
-                <FolderOpen /> Abrir a pasta
-              </Button>
-            ) : undefined
-          }
-        />
+      {verArquivos ? (
+        <ArquivosGuardados versao={aviso.versao} />
       ) : (
-        <ul>
-          {lista.map((m) => {
-            const favorita = favoriteMedia.includes(m.id);
-            return (
-              <li key={m.id} className="group/midia relative">
-                <LibraryRow
-                  selected={preview?.refId === m.id}
-                  onClick={() => {
-                    garantirNaStoreDaLista(m);
-                    selectMedia(m.id);
-                  }}
-                  onDoubleClick={() => {
-                    garantirNaStoreDaLista(m);
-                    projetarDaBiblioteca("media", m.id);
-                  }}
-                  onContextMenu={(e) => {
-                    e.preventDefault();
-                    setMenuDe({ ...m, x: e.clientX, y: e.clientY });
-                  }}
-                  arrastar={{
-                    item: {
-                      type: "media",
-                      refId: m.id,
-                      notes: "",
-                      title: m.title,
-                      subtitle: mediaKindLabel(kind),
-                    },
-                    midia: { id: m.id, kind, title: m.title, path: m.path },
-                  }}
-                  title="Um clique seleciona; dois cliques mandam para o telão; botão direito para mais"
-                >
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-body text-fg">{m.title}</span>
-                    {m.detalhe && (
-                      <span className="block truncate text-caption text-subtle">{m.detalhe}</span>
-                    )}
-                  </span>
-                  <span className="w-14 shrink-0" aria-hidden />
-                </LibraryRow>
-                <PorNoCulto
-                  label={`Pôr ${m.title} no culto`}
-                  grupo="group-hover/midia:opacity-100"
-                  direita="right-9"
-                  onClick={() => porNoCulto(m)}
-                />
-                <button
-                  type="button"
-                  aria-label={favorita ? `Tirar ${m.title} dos favoritos` : `Favoritar ${m.title}`}
-                  aria-pressed={favorita}
-                  onClick={() => toggleFavoriteMedia(m.id)}
-                  className={cn(
-                    "absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1",
-                    "transition-[color,opacity,transform] duration-[var(--motion-fast)] ease-[var(--ease-out)]",
-                    "active:scale-90 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring",
-                    favorita
-                      ? "text-live opacity-100"
-                      : "text-subtle opacity-0 hover:text-fg group-hover/midia:opacity-100 focus-visible:opacity-100",
-                  )}
-                >
-                  <Star className={cn("size-3.5", favorita && "fill-current")} />
-                </button>
-              </li>
-            );
-          })}
-        </ul>
+        <>
+          {listing.error && (
+            <p className="px-3 pb-2 text-secondary text-danger" role="alert">
+              {listing.error}
+            </p>
+          )}
+
+          {lista.length === 0 ? (
+            <Empty
+              title={
+                q
+                  ? `Nenhuma mídia com “${search}”.`
+                  : `Nenhum arquivo de ${mediaKindLabel(kind).toLowerCase()} na pasta.`
+              }
+              hint={
+                naPasta
+                  ? "Copie os arquivos para a pasta pelo Explorer e toque em atualizar."
+                  : "No navegador a mídia vale só até fechar o Lúmen."
+              }
+              action={
+                naPasta ? (
+                  <Button size="sm" variant="secondary" onClick={() => void openMediaFolder(kind)}>
+                    <FolderOpen /> Abrir a pasta
+                  </Button>
+                ) : undefined
+              }
+            />
+          ) : (
+            <ul>
+              {lista.map((m) => {
+                const favorita = favoriteMedia.includes(m.id);
+                return (
+                  <li key={m.id} className="group/midia relative">
+                    <LibraryRow
+                      selected={preview?.refId === m.id}
+                      onClick={() => {
+                        garantirNaStoreDaLista(m);
+                        selectMedia(m.id);
+                      }}
+                      onDoubleClick={() => {
+                        garantirNaStoreDaLista(m);
+                        projetarDaBiblioteca("media", m.id);
+                      }}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        setMenuDe({ ...m, x: e.clientX, y: e.clientY });
+                      }}
+                      arrastar={{
+                        item: {
+                          type: "media",
+                          refId: m.id,
+                          notes: "",
+                          title: m.title,
+                          subtitle: mediaKindLabel(kind),
+                        },
+                        midia: { id: m.id, kind, title: m.title, path: m.path },
+                      }}
+                      title="Um clique seleciona; dois cliques mandam para o telão; botão direito para mais"
+                    >
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-body text-fg">{m.title}</span>
+                        {m.detalhe && (
+                          <span className="block truncate text-caption text-subtle">{m.detalhe}</span>
+                        )}
+                      </span>
+                      <span className="w-14 shrink-0" aria-hidden />
+                    </LibraryRow>
+                    <PorNoCulto
+                      label={`Pôr ${m.title} no culto`}
+                      grupo="group-hover/midia:opacity-100"
+                      direita="right-9"
+                      onClick={() => porNoCulto(m)}
+                    />
+                    <button
+                      type="button"
+                      aria-label={favorita ? `Tirar ${m.title} dos favoritos` : `Favoritar ${m.title}`}
+                      aria-pressed={favorita}
+                      onClick={() => toggleFavoriteMedia(m.id)}
+                      className={cn(
+                        "absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1",
+                        "transition-[color,opacity,transform] duration-[var(--motion-fast)] ease-[var(--ease-out)]",
+                        "active:scale-90 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring",
+                        favorita
+                          ? "text-live opacity-100"
+                          : "text-subtle opacity-0 hover:text-fg group-hover/midia:opacity-100 focus-visible:opacity-100",
+                      )}
+                    >
+                      <Star className={cn("size-3.5", favorita && "fill-current")} />
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </>
       )}
 
       {/* Botão direito numa mídia: o mesmo menu das letras, no ponto do clique. */}
@@ -1044,6 +1074,167 @@ function MediaList() {
           </MenuItem>
         </MenuContent>
       </Menu>
+    </div>
+  );
+}
+
+/**
+ * Mídia › Arquivos: o que a igreja trouxe e o Lúmen não projeta — uma
+ * planilha, um documento, o que for. A igreja pediu para aceitar qualquer
+ * arquivo, mesmo que não rode: ele fica guardado, e daqui dá para achá-lo no
+ * Explorer ou mandá-lo para a Lixeira. O Lúmen nunca o abre nem o executa —
+ * arquivo qualquer aberto pelo app poderia ser um programa.
+ */
+function ArquivosGuardados({ versao }: { versao: number }) {
+  const search = useLumenStore((s) => s.search);
+  const [lista, setLista] = useState<{ ok: boolean; dir?: string; itens: ArquivoGuardado[]; error?: string }>({
+    ok: true,
+    itens: [],
+  });
+  const [busy, setBusy] = useState(false);
+  const temPasta = typeof window !== "undefined" && Boolean(window.lumenDesktop?.arquivosListar);
+
+  const atualizar = useCallback(async () => {
+    const listar = window.lumenDesktop?.arquivosListar;
+    if (!listar) return;
+    setBusy(true);
+    setLista(await listar());
+    setBusy(false);
+  }, []);
+
+  useEffect(() => {
+    void atualizar();
+  }, [atualizar, versao]);
+
+  const q = search.trim().toLowerCase();
+  const itens = lista.itens.filter((i) => !q || i.nome.toLowerCase().includes(q));
+
+  const importar = async (files: File[]) => {
+    if (files.length === 0) return;
+    contarTrazidos(await trazerArquivos(files, { mostrar: true }), "biblioteca");
+  };
+
+  const mostrar = async (nome: string) => {
+    const r = await window.lumenDesktop?.arquivosMostrar?.(nome);
+    if (r && !r.ok) toast.error(r.error || "Não consegui mostrar o arquivo.");
+  };
+
+  const excluir = async (nome: string) => {
+    const r = await window.lumenDesktop?.arquivosExcluir?.(nome);
+    if (!r?.ok) {
+      toast.error(r?.error || "Não consegui excluir.");
+      return;
+    }
+    toast(`“${nome}” foi para a Lixeira.`);
+    void atualizar();
+  };
+
+  return (
+    <div data-arquivos-guardados>
+      <div className="flex items-center gap-0.5 px-2 pb-2">
+        <Hint label="Abrir a pasta de arquivos no Explorer">
+          <Button
+            size="iconSm"
+            variant="ghost"
+            aria-label="Abrir a pasta de arquivos no Explorer"
+            disabled={!temPasta}
+            onClick={async () => {
+              const r = await window.lumenDesktop?.arquivosAbrirPasta?.();
+              if (r && !r.ok) toast.error(r.error || "Não consegui abrir a pasta.");
+            }}
+          >
+            <FolderOpen />
+          </Button>
+        </Hint>
+        <Hint label="Reler a pasta">
+          <Button
+            size="iconSm"
+            variant="ghost"
+            aria-label="Atualizar lista de arquivos"
+            disabled={!temPasta}
+            loading={busy}
+            onClick={() => void atualizar()}
+          >
+            {!busy && <RefreshCw />}
+          </Button>
+        </Hint>
+        <label
+          className={cn(
+            "ml-auto inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-md px-2.5",
+            "text-caption font-medium text-muted",
+            "transition-colors duration-[var(--motion-fast)] ease-[var(--ease-out)]",
+            "hover:bg-elevated hover:text-fg focus-within:outline-2 focus-within:outline-offset-1 focus-within:outline-ring",
+          )}
+        >
+          <Upload className="size-3.5" aria-hidden />
+          Importar
+          <input
+            type="file"
+            aria-label="Importar qualquer arquivo"
+            className="sr-only"
+            multiple
+            onChange={(e) => {
+              const files = Array.from(e.target.files ?? []);
+              e.target.value = "";
+              void importar(files);
+            }}
+          />
+        </label>
+      </div>
+
+      {lista.dir && (
+        <p className="truncate px-2 pb-2 text-caption text-subtle" title={lista.dir}>
+          {lista.dir}
+        </p>
+      )}
+      {lista.error && (
+        <p className="px-3 pb-2 text-secondary text-danger" role="alert">
+          {lista.error}
+        </p>
+      )}
+
+      {!temPasta ? (
+        <Empty title="Guardar arquivos é do app do Windows." hint="No navegador não há pasta onde guardar." />
+      ) : itens.length === 0 ? (
+        <Empty
+          title={q ? `Nenhum arquivo com “${search}”.` : "Nenhum arquivo guardado."}
+          hint="Solte aqui qualquer arquivo — planilha, documento, o que for. O Lúmen guarda; projeta só vídeo, áudio, imagem e apresentação."
+        />
+      ) : (
+        <ul>
+          {itens.map((a) => (
+            <li key={a.nome} data-arquivo-guardado className="flex items-center gap-2 px-3 py-1.5">
+              <FileIcon className="size-4 shrink-0 text-subtle" aria-hidden />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-body text-fg">{a.nome}</span>
+                <span className="block truncate text-caption text-subtle">
+                  {humanSize(a.bytes)} · guardado, não projeta
+                </span>
+              </span>
+              <Hint label="Mostrar no Explorer">
+                <Button
+                  size="iconSm"
+                  variant="ghost"
+                  aria-label={`Mostrar ${a.nome} no Explorer`}
+                  onClick={() => void mostrar(a.nome)}
+                >
+                  <FolderSearch />
+                </Button>
+              </Hint>
+              <Hint label="Excluir (vai para a Lixeira)">
+                <Button
+                  size="iconSm"
+                  variant="ghost"
+                  aria-label={`Excluir ${a.nome}`}
+                  onClick={() => void excluir(a.nome)}
+                >
+                  <Trash2 />
+                </Button>
+              </Hint>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

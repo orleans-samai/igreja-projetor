@@ -81,6 +81,11 @@ contextBridge.exposeInMainWorld("lumenDesktop", {
     }
     return ipcRenderer.invoke("lumen:media-import-paths", caminhos);
   },
+  /** Mídia › Arquivos: o que a igreja trouxe e o Lúmen não projeta. */
+  arquivosListar: () => ipcRenderer.invoke("lumen:arquivos-listar"),
+  arquivosMostrar: (nome) => ipcRenderer.invoke("lumen:arquivos-mostrar", nome),
+  arquivosExcluir: (nome) => ipcRenderer.invoke("lumen:arquivos-excluir", nome),
+  arquivosAbrirPasta: () => ipcRenderer.invoke("lumen:arquivos-pasta"),
   onMediaChanged: (cb) => {
     const listener = (_event, kinds) => cb(Array.isArray(kinds) ? kinds : []);
     ipcRenderer.on("lumen:media-changed", listener);

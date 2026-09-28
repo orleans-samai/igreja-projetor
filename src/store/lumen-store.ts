@@ -17,6 +17,7 @@ import { avisoPisca, tamanhoDoAvisoValido } from "@/lib/aviso-no-telao";
 import { destinoDoTema } from "@/lib/destino-do-tema";
 import { temaDeVideo } from "@/lib/tema-de-video";
 import { camposDaTrilha, trilhaDoVideo, trilhaSobrevive } from "@/lib/trilha";
+import { cultoTemDia, diaDoCultoNovo, diaDoInstante } from "@/lib/dia-do-culto";
 import { indiceNaProgramacao } from "@/lib/culto-etapas";
 import { COPYRIGHT_DE_EXEMPLO } from "@/lib/seed";
 import { letraContem } from "@/lib/busca-trecho";
@@ -1034,6 +1035,7 @@ export const useLumenStore = create<LumenState>()(
           const copy: Playlist = {
             id: nid(),
             name,
+            data: diaDoCultoNovo(name, new Date()),
             items: current?.items.map((i) => ({ ...i, id: nid() })) ?? [],
             updatedAt: Date.now(),
           };
@@ -1318,7 +1320,10 @@ export const useLumenStore = create<LumenState>()(
       tirarVideo: () => {
         const s = get();
         const trilha = trilhaDoVideo(s.status === "idle" ? null : s.live);
-        if (trilha) broadcast({ trilha }, set);
+        // A logo da igreja entra no lugar da imagem, a pedido da igreja: sem
+        // ela o telão ficava escuro enquanto o louvor tocava. A logo não cala
+        // a trilha (ver trilha.ts), e a letra projetada depois entra por cima.
+        if (trilha) broadcast({ trilha, status: "logo" }, set);
       },
 
       mostrarVideo: () => {
@@ -1579,15 +1584,27 @@ export const useLumenStore = create<LumenState>()(
        * A migração tira só essa frase exata. Copyright que a igreja escreveu
        * de verdade fica onde está.
        */
-      version: 1,
+      version: 2,
       migrate: (guardado) => {
-        const g = guardado as { songs?: { copyright?: string }[] } | undefined;
-        if (!g?.songs) return g;
+        const g = guardado as
+          | { songs?: { copyright?: string }[]; playlists?: Playlist[] }
+          | undefined;
+        if (!g) return g;
         return {
           ...g,
-          songs: g.songs.map((m) =>
-            m?.copyright === COPYRIGHT_DE_EXEMPLO ? { ...m, copyright: "" } : m,
-          ),
+          ...(g.songs && {
+            songs: g.songs.map((m) =>
+              m?.copyright === COPYRIGHT_DE_EXEMPLO ? { ...m, copyright: "" } : m,
+            ),
+          }),
+          // Versão 2: o culto antigo ganha, uma vez, o dia da última mudança
+          // — é o que aparece depois do nome. Gravado, não muda mais quando o
+          // culto for editado (ver dia-do-culto.ts).
+          ...(g.playlists && {
+            playlists: g.playlists.map((p) =>
+              p && !p.data && cultoTemDia(p) && p.updatedAt ? { ...p, data: diaDoInstante(p.updatedAt) } : p,
+            ),
+          }),
         };
       },
       partialize: (s) => ({

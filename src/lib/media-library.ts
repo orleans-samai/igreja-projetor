@@ -167,14 +167,14 @@ export async function mandarParaALixeira(
  */
 export interface AvisoDeMidia {
   versao: number;
-  mostrar?: MediaKind;
+  mostrar?: MediaKind | "arquivos";
 }
 
 let aviso: AvisoDeMidia = { versao: 0 };
 const ouvintes = new Set<() => void>();
 let ligadoAoDisco = false;
 
-export function avisarMidiaMudou(mostrar?: MediaKind) {
+export function avisarMidiaMudou(mostrar?: MediaKind | "arquivos") {
   aviso = { versao: aviso.versao + 1, mostrar };
   for (const ouvir of ouvintes) ouvir();
 }

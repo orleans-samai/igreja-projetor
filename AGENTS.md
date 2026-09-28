@@ -88,7 +88,17 @@ npm run test:desktop:smoke
   saía por duas fontes. "Tirar vídeo" tira a imagem e deixa o som seguindo
   por baixo da letra (`src/lib/trilha.ts`): é o mesmo `<video>` que continua
   tocando, por isso o áudio não corta. Outra mídia com som no ar encerra a
-  trilha.
+  trilha. Ao tirar o vídeo, a logo da igreja vai para o telão (não escuro).
+- **Qualquer arquivo na cabine:** soltar ou importar na Mídia ou no Culto
+  aceita tudo. Apresentação vira slides (`apresentacao-recebida.ts`, o mesmo
+  caminho do menu Slides); o resto fica em Mídia › Arquivos
+  (`midia/arquivos`), e o Lúmen nunca o abre nem executa — só mostra no
+  Explorer ou manda para a Lixeira. O que chega pela rede (celular,
+  dirigente) continua só mídia e apresentação (`receber` em
+  `desktop/media.cjs`).
+- **Dia do culto:** cada culto guarda `data` (AAAA-MM-DD) e aparece como
+  "Culto Domingo, dia 27" (`src/lib/dia-do-culto.ts`); culto do mês,
+  Temporário e modelo semanal não ganham dia.
 
 ## Arquitetura e segurança
 

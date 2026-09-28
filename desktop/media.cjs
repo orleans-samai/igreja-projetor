@@ -27,6 +27,15 @@ const PASTA_PADRAO = { video: "video", audio: "audio", image: "imagem" };
  */
 const DOCUMENTOS = [".pptx", ".ppsx", ".ppt", ".pps", ".odp", ".pdf"];
 const PASTA_RECEBIDOS = "recebidos";
+/**
+ * O que não é mídia nem apresentação e alguém trouxe mesmo assim: a igreja
+ * pediu para aceitar qualquer arquivo, mesmo que o Lúmen não o projete. Fica
+ * guardado aqui e aparece em Mídia › Arquivos — o Lúmen nunca abre nem
+ * executa estes arquivos; no máximo mostra onde estão.
+ */
+const PASTA_ARQUIVOS = "arquivos";
+/** Uma pasta com milhares de arquivos é descuido; a lista tem teto. */
+const MAX_LISTA_DE_ARQUIVOS = 2000;
 /** Teto do que a rede pode largar no computador da igreja de uma vez. */
 const MAX_ARQUIVO = 64 * 1024 * 1024;
 
@@ -532,9 +541,11 @@ function itemDaPasta(kind, nome) {
  * pasta, o celular enxerga.
  *
  * Os caminhos vêm do preload, tirados dos próprios arquivos soltos na janela
- * (`webUtils.getPathForFile`); a página não tem como inventar um. Mesmo
- * assim só entra extensão de vídeo, áudio ou imagem, e o destino é sempre
- * um nome livre dentro da pasta do tipo: nada é sobrescrito.
+ * (`webUtils.getPathForFile`); a página não tem como inventar um. Vídeo,
+ * áudio e imagem vão para a pasta do tipo; apresentação vai para
+ * "recebidos" e vira slides na cabine; qualquer outro arquivo fica em
+ * Arquivos, a pedido da igreja. O destino é sempre um nome livre: nada é
+ * sobrescrito.
  *
  * Sem teto de tamanho, ao contrário da rede: é um arquivo do próprio
  * computador da igreja, e vídeo de culto passa fácil de 64 MB.
@@ -546,6 +557,10 @@ async function importarCaminhos(caminhos) {
   const importados = [];
   /** @type {{ nome: string; erro: string }[]} */
   const recusados = [];
+  /** @type {{ nome: string }[]} */
+  const apresentacoes = [];
+  /** @type {{ nome: string }[]} */
+  const arquivos = [];
   const lista = Array.isArray(caminhos) ? caminhos.slice(0, 200) : [];
   for (const bruto of lista) {
     if (typeof bruto !== "string" || !bruto || !path.isAbsolute(bruto)) continue;
@@ -554,7 +569,10 @@ async function importarCaminhos(caminhos) {
     const ext = path.extname(nome).toLowerCase();
     const kind = Object.keys(KINDS).find((k) => KINDS[k].includes(ext));
     if (!kind) {
-      recusados.push({ nome, erro: "não é vídeo, áudio nem imagem" });
+      const r = await guardarForaDaMidia(origem, nome, ext);
+      if (!r.ok) recusados.push({ nome, erro: r.erro });
+      else if (r.apresentacao) apresentacoes.push({ nome: r.nome });
+      else arquivos.push({ nome: r.nome });
       continue;
     }
     let st;
@@ -584,7 +602,102 @@ async function importarCaminhos(caminhos) {
       recusados.push({ nome, erro: `não consegui copiar (${error?.code || error?.message || error})` });
     }
   }
-  return { ok: true, importados, recusados };
+  return { ok: true, importados, recusados, apresentacoes, arquivos };
+}
+
+/** A pasta de Arquivos (ver PASTA_ARQUIVOS). */
+function dirDosArquivos() {
+  return path.join(dataDir, "midia", PASTA_ARQUIVOS);
+}
+
+/** Um arquivo da pasta de Arquivos, com o caminho preso dentro dela. */
+function dentroDosArquivos(nome) {
+  const dir = dirDosArquivos();
+  const alvo = path.join(dir, nomeSeguro(nome));
+  return path.dirname(alvo) === dir ? alvo : null;
+}
+
+/**
+ * Apresentação vai para "recebidos", de onde a cabine a transforma em
+ * slides — o mesmo caminho do menu. O resto vai para Arquivos. Copiar,
+ * nunca mover: o original fica onde a igreja o deixou.
+ *
+ * @param {string} origem
+ * @param {string} nome
+ * @param {string} ext
+ */
+async function guardarForaDaMidia(origem, nome, ext) {
+  let st;
+  try {
+    st = await fsp.stat(origem);
+  } catch {
+    return { ok: false, erro: "o arquivo não foi encontrado" };
+  }
+  if (!st.isFile()) return { ok: false, erro: "não é um arquivo" };
+  const apresentacao = DOCUMENTOS.includes(ext);
+  if (apresentacao && st.size > MAX_ARQUIVO) {
+    return { ok: false, erro: "apresentação grande demais (máximo 64 MB)" };
+  }
+  const dir = apresentacao ? path.join(dataDir, PASTA_RECEBIDOS) : dirDosArquivos();
+  try {
+    await fsp.mkdir(dir, { recursive: true });
+    const destino = await nomeLivre(dir, nome);
+    await fsp.copyFile(origem, destino, fs.constants.COPYFILE_EXCL);
+    return { ok: true, apresentacao, nome: path.basename(destino) };
+  } catch (error) {
+    return { ok: false, erro: `não consegui copiar (${error?.code || error?.message || error})` };
+  }
+}
+
+/** O que está guardado em Arquivos: nome, tamanho e quando mudou. */
+async function listarArquivos() {
+  const dir = dirDosArquivos();
+  try {
+    await fsp.mkdir(dir, { recursive: true });
+    const entradas = await fsp.readdir(dir, { withFileTypes: true });
+    const itens = [];
+    for (const e of entradas) {
+      if (!e.isFile() || e.name.startsWith(".")) continue;
+      if (itens.length >= MAX_LISTA_DE_ARQUIVOS) break;
+      try {
+        const st = await fsp.stat(path.join(dir, e.name));
+        itens.push({ nome: e.name, bytes: st.size, modificado: st.mtimeMs });
+      } catch {
+        /* sumiu enquanto a lista era montada */
+      }
+    }
+    itens.sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+    return { ok: true, dir, itens };
+  } catch (error) {
+    return { ok: false, dir, itens: [], error: `Não consegui ler a pasta de arquivos: ${error?.message || error}` };
+  }
+}
+
+/** Abre o Explorer com o arquivo selecionado. Só isso: o arquivo não é aberto. */
+function mostrarArquivo(nome) {
+  const alvo = dentroDosArquivos(nome);
+  if (!alvo || !fs.existsSync(alvo)) return { ok: false, error: "O arquivo não está mais na pasta." };
+  shell.showItemInFolder(alvo);
+  return { ok: true };
+}
+
+/** Manda para a Lixeira do Windows (volta de lá se foi engano). */
+async function excluirArquivo(nome) {
+  const alvo = dentroDosArquivos(nome);
+  if (!alvo || !fs.existsSync(alvo)) return { ok: false, error: "O arquivo não está mais na pasta." };
+  try {
+    await shell.trashItem(alvo);
+    return { ok: true };
+  } catch {
+    return { ok: false, error: "Não consegui mandar para a lixeira. O arquivo continua na pasta." };
+  }
+}
+
+async function abrirPastaDosArquivos() {
+  const dir = dirDosArquivos();
+  await fsp.mkdir(dir, { recursive: true });
+  const problema = await shell.openPath(dir);
+  return problema ? { ok: false, error: problema } : { ok: true, dir };
 }
 
 /**
@@ -697,6 +810,10 @@ module.exports = {
   resolveMedia,
   receber,
   importarCaminhos,
+  listarArquivos,
+  mostrarArquivo,
+  excluirArquivo,
+  abrirPastaDosArquivos,
   vigiar,
   avisarMudanca,
   KINDS,

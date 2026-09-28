@@ -520,6 +520,10 @@ handle("lumen:media-reset", (kind) => media.reset(kind));
 // pela rede: uma função só decide extensão aceita, pasta e nome repetido.
 handle("lumen:media-save", (nome, dados) => media.receber(nome, Buffer.from(dados)));
 handle("lumen:media-import-paths", (caminhos) => media.importarCaminhos(caminhos));
+handle("lumen:arquivos-listar", () => media.listarArquivos());
+handle("lumen:arquivos-mostrar", (nome) => media.mostrarArquivo(nome));
+handle("lumen:arquivos-excluir", (nome) => media.excluirArquivo(nome));
+handle("lumen:arquivos-pasta", () => media.abrirPastaDosArquivos());
 handle("lumen:media-rename", (kind, nome, novo) => media.renomear(kind, nome, novo));
 handle("lumen:media-duplicate", (kind, nome) => media.duplicar(kind, nome));
 handle("lumen:media-delete", (kind, nome) => media.excluir(kind, nome));

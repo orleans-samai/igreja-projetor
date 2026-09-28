@@ -16,6 +16,7 @@ import { Hint } from "@/components/ui/tooltip";
 import { ThemeThumb } from "@/components/operator/theme-rail";
 import { cn } from "@/lib/cn";
 import { enviadoPor, etapaDoItem, type Etapa } from "@/lib/culto-etapas";
+import { nomeComDia } from "@/lib/dia-do-culto";
 import type { PlaylistItem } from "@/lib/types";
 import { useLumenStore } from "@/store/lumen-store";
 import {
@@ -91,6 +92,7 @@ export function PlaylistPanel({ showThemes = false }: { showThemes?: boolean }) 
   };
 
   const pl = playlists.find((p) => p.id === activeId) ?? playlists[0];
+  const hoje = new Date();
   const count = pl?.items.length ?? 0;
   // Quem está no ar ancora a leitura da lista: o que veio antes está feito,
   // o de baixo é o próximo. Sem nada no ar, o culto ainda não começou.
@@ -177,7 +179,11 @@ export function PlaylistPanel({ showThemes = false }: { showThemes?: boolean }) 
               "focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring",
             )}
           >
-            <span className="truncate font-semibold text-culto">{pl?.name ?? "Temporário"}</span>
+            {/* Com o dia depois do nome: vários "Culto Domingo" iguais na
+                lista não diziam qual era o de hoje. */}
+            <span className="truncate font-semibold text-culto">
+              {pl ? nomeComDia(pl, hoje) : "Temporário"}
+            </span>
             <ChevronDown
               className="size-3.5 shrink-0 text-subtle transition-transform duration-[var(--motion-base)] ease-[var(--ease-out)] group-data-[state=open]:rotate-180"
               aria-hidden
@@ -193,7 +199,7 @@ export function PlaylistPanel({ showThemes = false }: { showThemes?: boolean }) 
                 ) : (
                   <span className="size-3.5 shrink-0" aria-hidden />
                 )}
-                {p.name}
+                {nomeComDia(p, hoje)}
               </span>
             </MenuItem>
           ))}

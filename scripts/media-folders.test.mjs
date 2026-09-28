@@ -195,7 +195,7 @@ test("tipo de mídia desconhecido responde erro em vez de derrubar o app", async
   });
 });
 
-test("importar copia para a pasta do tipo, sem sobrescrever e sem aceitar qualquer arquivo", async () => {
+test("importar copia para a pasta do tipo, sem sobrescrever; apresentação e qualquer outro arquivo também entram", async () => {
   await comPastas(async (dir) => {
     const fora = path.join(dir, "area-de-trabalho");
     await mkdir(fora, { recursive: true });
@@ -203,6 +203,7 @@ test("importar copia para a pasta do tipo, sem sobrescrever e sem aceitar qualqu
     await writeFile(path.join(fora, "Louvor.mp3"), "audio");
     await writeFile(path.join(fora, "Cartaz.png"), "imagem");
     await writeFile(path.join(fora, "planilha.xlsx"), "x");
+    await writeFile(path.join(fora, "Culto.pptx"), "pptx");
     // Já existe um "Abertura.mp4" na pasta: o da igreja não pode sumir.
     await writeFile(path.join(media.folders().video, "Abertura.mp4"), "video-antigo");
 
@@ -211,6 +212,7 @@ test("importar copia para a pasta do tipo, sem sobrescrever e sem aceitar qualqu
       path.join(fora, "Louvor.mp3"),
       path.join(fora, "Cartaz.png"),
       path.join(fora, "planilha.xlsx"),
+      path.join(fora, "Culto.pptx"),
       path.join(fora, "nao-existe.mp4"),
       "relativo/sem-raiz.mp4",
       42,
@@ -230,8 +232,15 @@ test("importar copia para a pasta do tipo, sem sobrescrever e sem aceitar qualqu
     assert.equal(await readFile(path.join(media.folders().video, "Abertura (2).mp4"), "utf8"), "video-novo");
     assert.deepEqual(
       r.recusados.map((x) => x.nome),
-      ["planilha.xlsx", "nao-existe.mp4"],
+      ["nao-existe.mp4"],
     );
+    // A apresentação vai para "recebidos", de onde a cabine faz os slides;
+    // o que não é mídia nem apresentação fica guardado em Arquivos.
+    assert.deepEqual(r.apresentacoes, [{ nome: "Culto.pptx" }]);
+    assert.equal(await readFile(path.join(dir, "recebidos", "Culto.pptx"), "utf8"), "pptx");
+    assert.deepEqual(r.arquivos, [{ nome: "planilha.xlsx" }]);
+    const guardados = await media.listarArquivos();
+    assert.deepEqual(guardados.itens.map((i) => [i.nome, i.bytes]), [["planilha.xlsx", 1]]);
     // O original fica onde estava: importar é copiar, não mover.
     assert.equal(await readFile(path.join(fora, "Louvor.mp3"), "utf8"), "audio");
   });
@@ -244,6 +253,27 @@ test("arquivo que já mora na pasta não é copiado de novo", async () => {
     const r = await media.importarCaminhos([path.join(dir, "Foto.jpg")]);
     assert.deepEqual(r.importados.map((i) => i.name), ["Foto.jpg"]);
     assert.deepEqual(await readdir(dir), ["Foto.jpg"]);
+  });
+});
+
+test("Arquivos: só o que está dentro da pasta, e o nome não escapa dela", async () => {
+  await comPastas(async (dir) => {
+    const fora = path.join(dir, "fora");
+    await mkdir(fora, { recursive: true });
+    await writeFile(path.join(fora, "escala.docx"), "a");
+    await writeFile(path.join(fora, "escala (copia).docx"), "b");
+    const r = await media.importarCaminhos([path.join(fora, "escala.docx"), path.join(fora, "escala.docx")]);
+    // O segundo com o mesmo nome não apaga o primeiro.
+    assert.deepEqual(r.arquivos.map((a) => a.nome), ["escala.docx", "escala (2).docx"]);
+    assert.deepEqual(
+      (await media.listarArquivos()).itens.map((i) => i.nome),
+      ["escala (2).docx", "escala.docx"],
+    );
+    // Nome com caminho não sai da pasta: vira só o nome, e esse não existe.
+    await writeFile(path.join(dir, "recebidos-secreto.txt"), "fora da pasta");
+    assert.equal(media.mostrarArquivo(String.raw`..\..\recebidos-secreto.txt`).ok, false);
+    assert.equal(media.mostrarArquivo("../../recebidos-secreto.txt").ok, false);
+    assert.equal((await media.excluirArquivo("../fora/escala.docx")).ok, false);
   });
 });
 

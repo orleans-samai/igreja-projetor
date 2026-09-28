@@ -9,6 +9,7 @@ import {
   type MediaKind,
 } from "@/lib/media-library";
 import type { PlaylistItem } from "@/lib/types";
+import { abrirApresentacaoRecebida } from "@/components/operator/apresentacao-recebida";
 import { useLumenStore } from "@/store/lumen-store";
 
 /**
@@ -33,6 +34,8 @@ export interface Trazidos {
   recusados: { nome: string; erro: string }[];
   /** Sem pasta (navegador): a mídia só vale até fechar o Lúmen. */
   soNaSessao: boolean;
+  /** O que não é mídia nem apresentação, guardado em Mídia › Arquivos. */
+  guardados: string[];
 }
 
 /** A projeção acha a mídia pelo id na store; a pasta sozinha não basta. */
@@ -75,8 +78,19 @@ export async function trazerArquivos(
       path: f.url,
     }));
     itens.forEach(garantirNaStore);
+    const guardados = (naPasta.arquivos ?? []).map((a) => a.nome);
     if (itens.length) avisarMidiaMudou(mostrar ? itens[0].kind : undefined);
-    return { itens, recusados: naPasta.recusados, soNaSessao: false };
+    else if (guardados.length) avisarMidiaMudou(mostrar ? "arquivos" : undefined);
+    // Apresentação solta vira slides na programação, pelo caminho do menu.
+    // Sem esperar: o PowerPoint leva segundos, e o recado da mídia que
+    // entrou junto não pode ficar parado atrás dele.
+    const apresentacoes = naPasta.apresentacoes ?? [];
+    if (apresentacoes.length) {
+      void (async () => {
+        for (const a of apresentacoes) await abrirApresentacaoRecebida(a.nome);
+      })();
+    }
+    return { itens, recusados: naPasta.recusados, soNaSessao: false, guardados };
   }
 
   const st = useLumenStore.getState();
@@ -85,7 +99,8 @@ export async function trazerArquivos(
   for (const file of files) {
     const kind = tipoDoArquivo(file.name, file.type);
     if (!kind) {
-      recusados.push({ nome: file.name, erro: "não é vídeo, áudio nem imagem" });
+      // Sem pasta no disco (navegador) não há onde guardar o resto.
+      recusados.push({ nome: file.name, erro: "no navegador entra só vídeo, áudio e imagem" });
       continue;
     }
     const item = {
@@ -98,7 +113,7 @@ export async function trazerArquivos(
     itens.push(item);
   }
   if (itens.length) avisarMidiaMudou(mostrar ? itens[0].kind : undefined);
-  return { itens, recusados, soNaSessao: true };
+  return { itens, recusados, soNaSessao: true, guardados: [] };
 }
 
 /** O recado depois de soltar: o que entrou, onde, e o que ficou de fora e por quê. */
@@ -112,6 +127,13 @@ export function contarTrazidos(r: Trazidos, destino: "biblioteca" | "culto") {
           ? "na mídia, só nesta sessão"
           : "na mídia";
     toast(n === 1 ? `“${r.itens[0].title}” entrou ${onde}.` : `${n} arquivos entraram ${onde}.`);
+  }
+  if (r.guardados.length > 0) {
+    toast(
+      r.guardados.length === 1
+        ? `“${r.guardados[0]}” foi guardado em Mídia › Arquivos. O Lúmen guarda, mas não projeta esse tipo de arquivo.`
+        : `${r.guardados.length} arquivos foram guardados em Mídia › Arquivos. O Lúmen guarda, mas não projeta esses tipos.`,
+    );
   }
   if (r.recusados.length > 0) {
     const lista = r.recusados
