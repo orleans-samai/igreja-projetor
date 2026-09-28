@@ -8,9 +8,8 @@ import { pptxDeVerdade } from "./pptx-de-teste.mjs";
 import { zip } from "./zip-de-teste.mjs";
 
 const require = createRequire(import.meta.url);
-const { paraPdf, conversorDisponivel, acharLibreOffice, temPowerPoint, temSenha, descanso } = require(
-  "../desktop/conversor-office.cjs",
-);
+const { paraPdf, conversorDisponivel, programasInstalados, acharLibreOffice, temPowerPoint, temSenha, descanso } =
+  require("../desktop/conversor-office.cjs");
 
 const nenhum = { temPowerPoint: async () => false, acharLibreOffice: async () => null };
 
@@ -155,6 +154,56 @@ test("PowerPoint travado fica de fora das próximas: o culto não espera dois mi
       ["PowerPoint", "LibreOffice", "LibreOffice"],
     );
   });
+});
+
+// O menu Slides da cabine: a igreja escolhe quem abre as apresentações.
+test("com o LibreOffice escolhido, ele vai na frente mesmo tendo PowerPoint", async () => {
+  await comApresentacao(async (dir, entrada) => {
+    const { chamadas, conversores } = falsos({ powerPoint: "ok", libre: "ok" });
+    const r = await paraPdf(entrada, path.join(dir, "saida"), path.join(dir, "perfil"), conversores, "libreoffice");
+    assert.equal(r.ok, true);
+    assert.equal(r.com, "LibreOffice");
+    assert.equal(r.pulou, undefined);
+    assert.deepEqual(chamadas.map(([quem]) => quem), ["LibreOffice"]);
+  });
+});
+
+test("o LibreOffice escolhido não está instalado: o PowerPoint desenha e a cabine sabe por quê", async () => {
+  await comApresentacao(async (dir, entrada) => {
+    const { chamadas, conversores } = falsos({ powerPoint: "ok" });
+    const r = await paraPdf(entrada, path.join(dir, "saida"), path.join(dir, "perfil"), conversores, "libreoffice");
+    assert.equal(r.ok, true);
+    assert.equal(r.com, "PowerPoint");
+    assert.match(r.pulou, /LibreOffice não está instalado/);
+    assert.deepEqual(chamadas.map(([quem]) => quem), ["PowerPoint"]);
+  });
+});
+
+test("o LibreOffice escolhido recusou: o PowerPoint ainda desenha, e o culto não fica sem slides", async () => {
+  await comApresentacao(async (dir, entrada) => {
+    const { chamadas, conversores } = falsos({ powerPoint: "ok", libre: "falha" });
+    const r = await paraPdf(entrada, path.join(dir, "saida"), path.join(dir, "perfil"), conversores, "libreoffice");
+    assert.equal(r.com, "PowerPoint");
+    assert.match(r.pulou, /LibreOffice não conseguiu/);
+    assert.deepEqual(chamadas.map(([quem]) => quem), ["LibreOffice", "PowerPoint"]);
+  });
+});
+
+test("o PowerPoint recusou e o LibreOffice desenhou: o motivo vem junto", async () => {
+  await comApresentacao(async (dir, entrada) => {
+    const { conversores } = falsos({ powerPoint: "falha", libre: "ok" });
+    const r = await paraPdf(entrada, path.join(dir, "saida"), path.join(dir, "perfil"), conversores);
+    assert.equal(r.com, "LibreOffice");
+    assert.match(r.pulou, /PowerPoint não conseguiu/);
+  });
+});
+
+test("o menu Slides sabe quais programas o computador tem", async () => {
+  assert.deepEqual(await programasInstalados(nenhum), { powerPoint: false, libreOffice: false });
+  assert.deepEqual(
+    await programasInstalados({ temPowerPoint: async () => true, acharLibreOffice: async () => "soffice.exe" }),
+    { powerPoint: true, libreOffice: true },
+  );
 });
 
 test("o PowerPoint pediu senha: para aí, sem LibreOffice nem leitor próprio", async () => {

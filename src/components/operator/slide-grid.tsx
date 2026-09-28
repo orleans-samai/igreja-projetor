@@ -211,17 +211,38 @@ export function SlideGrid() {
                   : "shadow-[var(--shadow-border)] hover:shadow-[var(--shadow-border-hover)]",
             )}
           >
-            <span className="flex size-full items-center justify-center px-2 py-4">
-              <span
-                className="whitespace-pre-wrap leading-snug text-stage-fg"
-                style={{ fontSize: tamanhoDaLetra(slide.text, largura, altura) }}
-              >
-                {slide.text}
+            {/* Slide de apresentação é imagem (a página do PDF, o slide do
+                PowerPoint), e quase nunca tem texto: desenhado só pelo texto,
+                o cartão saía preto, e o operador passava a apresentação às
+                cegas. */}
+            {slide.imagem ? (
+              <img
+                src={slide.imagem}
+                alt=""
+                decoding="async"
+                draggable={false}
+                data-previa-do-slide
+                className="absolute inset-0 size-full object-contain"
+              />
+            ) : (
+              <span className="flex size-full items-center justify-center px-2 py-4">
+                <span
+                  className="whitespace-pre-wrap leading-snug text-stage-fg"
+                  style={{ fontSize: tamanhoDaLetra(slide.text, largura, altura) }}
+                >
+                  {slide.text}
+                </span>
               </span>
-            </span>
+            )}
 
             {largura >= 208 && (
-              <span className="absolute left-1.5 top-1 max-w-[60%] truncate text-caption text-stage-fg/60">
+              <span
+                className={cn(
+                  "absolute left-1.5 top-1 max-w-[60%] truncate text-caption",
+                  // Em cima de um slide branco, o rótulo claro sumia.
+                  slide.imagem ? "rounded-sm bg-stage/80 px-1 text-stage-fg/80" : "text-stage-fg/60",
+                )}
+              >
                 {slide.label}
               </span>
             )}

@@ -204,15 +204,27 @@ const CONVERSORES = {
  * A apresentação em PDF, dentro de `pasta`: pelo PowerPoint; se não houver
  * ou não conseguir, pelo LibreOffice.
  *
+ * `primeiro` é a escolha do menu Slides da cabine. Com "libreoffice", a
+ * igreja quer o LibreOffice mesmo tendo o Office — e ele vai na frente.
+ * Quem ficou para trás continua de reserva: escolher um programa não pode
+ * deixar o culto sem os slides quando ele falta ou recusa o arquivo. O
+ * `pulou` do resultado diz por que o primeiro não desenhou, para a cabine
+ * avisar quem escolheu.
+ *
  * Cada um recebe uma cópia do arquivo, com nome simples, dentro de
  * `pasta`: um PowerPoint que falhou no meio não prende o arquivo que o
  * LibreOffice vai abrir em seguida, e a cópia não leva a marca de "baixado
  * da internet" que o Windows grava junto do original.
  *
- * @returns {Promise<{ ok: true, pdf: string, com: "PowerPoint" | "LibreOffice" }
+ * @param {string} entrada
+ * @param {string} pasta
+ * @param {string} perfil
+ * @param {Partial<typeof CONVERSORES>} [trocas]
+ * @param {"powerpoint" | "libreoffice"} [primeiro]
+ * @returns {Promise<{ ok: true, pdf: string, com: "PowerPoint" | "LibreOffice", pulou?: string }
  *   | { ok: false, error: string, semConversor?: boolean, comSenha?: boolean }>}
  */
-async function paraPdf(entrada, pasta, perfil, trocas = {}) {
+async function paraPdf(entrada, pasta, perfil, trocas = {}, primeiro = "powerpoint") {
   const conversores = { ...CONVERSORES, ...trocas };
   const ext = path.extname(entrada).toLowerCase();
   if (!EXTENSOES.has(ext)) {
@@ -224,39 +236,72 @@ async function paraPdf(entrada, pasta, perfil, trocas = {}) {
   const pdf = path.join(pasta, "apresentacao.pdf");
   await fsp.writeFile(copia, await fsp.readFile(entrada));
 
-  let falhaDoPowerPoint = "";
-  if (!conversores.powerPointTravado?.ativo() && (await conversores.temPowerPoint())) {
-    const r = await conversores.comPowerPoint(copia, pdf);
-    if (r.ok) return { ok: true, pdf, com: "PowerPoint" };
-    if (r.senha) return { ok: false, comSenha: true, error: COM_SENHA };
-    if (r.travou) conversores.powerPointTravado?.comecar();
-    falhaDoPowerPoint = r.travou
-      ? "O PowerPoint demorou demais para abrir essa apresentação."
-      : "O PowerPoint não conseguiu abrir essa apresentação.";
-  }
+  // Cada tentativa diz se desenhou, se pediu senha, ou por que não:
+  // `faltou` é não ter o programa; `falhou` é o programa recusar o arquivo.
+  const tentativas = {
+    async powerpoint() {
+      if (conversores.powerPointTravado?.ativo()) {
+        return { motivo: "O PowerPoint travou há pouco e está de fora por alguns minutos." };
+      }
+      if (!(await conversores.temPowerPoint())) {
+        return { faltou: true, motivo: "O PowerPoint não está instalado neste computador." };
+      }
+      const r = await conversores.comPowerPoint(copia, pdf);
+      if (r.ok) return { com: "PowerPoint" };
+      if (r.senha) return { senha: true };
+      if (r.travou) conversores.powerPointTravado?.comecar();
+      return {
+        falhou: true,
+        motivo: r.travou
+          ? "O PowerPoint demorou demais para abrir essa apresentação."
+          : "O PowerPoint não conseguiu abrir essa apresentação.",
+      };
+    },
+    async libreoffice() {
+      const soffice = await conversores.acharLibreOffice();
+      if (!soffice) return { faltou: true, motivo: "O LibreOffice não está instalado neste computador." };
+      await fsp.rm(pdf, { force: true });
+      const r = await conversores.comLibreOffice(soffice, copia, pasta, perfil, pdf);
+      if (r.ok) return { com: "LibreOffice" };
+      return {
+        falhou: true,
+        motivo: r.travou
+          ? "O LibreOffice demorou demais para desenhar a apresentação."
+          : "O LibreOffice não conseguiu abrir essa apresentação.",
+      };
+    },
+  };
 
-  const soffice = await conversores.acharLibreOffice();
-  if (!soffice) {
-    return falhaDoPowerPoint
-      ? { ok: false, error: falhaDoPowerPoint }
-      : {
-          ok: false,
-          semConversor: true,
-          error: "Este computador não tem PowerPoint nem LibreOffice para desenhar a apresentação.",
-        };
+  const ordem = primeiro === "libreoffice" ? ["libreoffice", "powerpoint"] : ["powerpoint", "libreoffice"];
+  const antes = [];
+  for (const quem of ordem) {
+    const r = await tentativas[quem]();
+    if (r.com) return { ok: true, pdf, com: r.com, ...(antes.length ? { pulou: antes[0].motivo } : {}) };
+    if (r.senha) return { ok: false, comSenha: true, error: COM_SENHA };
+    antes.push(r);
   }
-  await fsp.rm(pdf, { force: true });
-  const r = await conversores.comLibreOffice(soffice, copia, pasta, perfil, pdf);
-  if (r.ok) return { ok: true, pdf, com: "LibreOffice" };
-  if (falhaDoPowerPoint) {
+  const falhas = antes.filter((r) => r.falhou);
+  if (falhas.length === 0) {
+    return {
+      ok: false,
+      semConversor: true,
+      error: "Este computador não tem PowerPoint nem LibreOffice para desenhar a apresentação.",
+    };
+  }
+  if (falhas.length > 1) {
     return { ok: false, error: "Nem o PowerPoint nem o LibreOffice conseguiram abrir essa apresentação." };
   }
-  return {
-    ok: false,
-    error: r.travou
-      ? "O LibreOffice demorou demais para desenhar a apresentação."
-      : "O LibreOffice não conseguiu abrir essa apresentação.",
-  };
+  return { ok: false, error: falhas[0].motivo };
+}
+
+/** Quais programas este computador tem, para o menu Slides mostrar o que dá para escolher. */
+async function programasInstalados(trocas = {}) {
+  const conversores = { ...CONVERSORES, ...trocas };
+  const [powerPoint, libreOffice] = await Promise.all([
+    conversores.temPowerPoint(),
+    conversores.acharLibreOffice().then(Boolean),
+  ]);
+  return { powerPoint, libreOffice };
 }
 
 /** Quem vai desenhar as apresentações neste computador, para a cabine dizer. */
@@ -269,6 +314,7 @@ async function conversorDisponivel(trocas = {}) {
 module.exports = {
   paraPdf,
   conversorDisponivel,
+  programasInstalados,
   acharLibreOffice,
   temPowerPoint,
   temSenha,

@@ -276,15 +276,22 @@ declare global {
       apresentacaoBruto?: (
         nome: string,
       ) => Promise<{ ok: true; bytes: Uint8Array } | { ok: false; error: string }>;
-      /** PowerPoint ou ODP desenhado pelo PowerPoint/LibreOffice, como PDF. */
+      /**
+       * PowerPoint ou ODP desenhado pelo PowerPoint/LibreOffice, como PDF.
+       * `primeiro` é quem vai na frente (menu Slides); `pulou`, por que ele
+       * não desenhou quando foi o outro.
+       */
       apresentacaoConverter: (
         nome: string,
+        primeiro?: "powerpoint" | "libreoffice",
       ) => Promise<
-        | { ok: true; bytes: Uint8Array; com: "PowerPoint" | "LibreOffice" }
+        | { ok: true; bytes: Uint8Array; com: "PowerPoint" | "LibreOffice"; pulou?: string }
         | { ok: false; error: string; semConversor?: boolean; comSenha?: boolean }
       >;
       /** Quem desenha as apresentações neste computador. */
       apresentacaoConversor: () => Promise<"PowerPoint" | "LibreOffice" | null>;
+      /** Se há PowerPoint e LibreOffice neste computador. Ausente em versões antigas. */
+      apresentacaoProgramas?: () => Promise<{ powerPoint: boolean; libreOffice: boolean }>;
       apresentacaoPaginas: (
         paginas: Uint8Array[],
       ) => Promise<{ ok: true; id: string; urls: string[] } | { ok: false; error: string }>;

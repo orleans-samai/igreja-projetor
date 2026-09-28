@@ -526,8 +526,9 @@ handle("lumen:media-delete", (kind, nome) => media.excluir(kind, nome));
 // Apresentações: PowerPoint é lido aqui, sem Office; PDF é desenhado na
 // janela pelo pdf.js e só as páginas prontas voltam para cá.
 handle("lumen:apresentacao-pptx", (nome) => apresentacoes.importarPptx(nome));
-handle("lumen:apresentacao-converter", (nome) => apresentacoes.converterParaPdf(nome));
+handle("lumen:apresentacao-converter", (nome, primeiro) => apresentacoes.converterParaPdf(nome, primeiro));
 handle("lumen:apresentacao-conversor", () => apresentacoes.conversor());
+handle("lumen:apresentacao-programas", () => apresentacoes.programas());
 handle("lumen:apresentacao-pdf", (nome) => apresentacoes.lerPdf(nome));
 handle("lumen:apresentacao-bruto", (nome) => apresentacoes.lerPptxBruto(nome));
 handle("lumen:apresentacao-paginas", (paginas) => apresentacoes.salvarPaginas(paginas));

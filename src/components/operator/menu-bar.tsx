@@ -1,3 +1,4 @@
+import { quemAbreValido } from "@/lib/abrir-slides";
 import { importarRecebido } from "@/lib/apresentacao";
 import {
   GraduationCap,
@@ -13,6 +14,8 @@ import {
 import { type ReactNode } from "react";
 import { toast } from "sonner";
 import { LumenMark } from "@/components/logo";
+import { EscolhasDeQuemAbre, MenuSlides } from "@/components/operator/menu-slides";
+import { useProgramasInstalados } from "@/components/operator/use-programas-instalados";
 import { Button } from "@/components/ui/button";
 import { Menu, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrigger } from "@/components/ui/menu";
 import { Tally } from "@/components/ui/panel";
@@ -100,6 +103,7 @@ export function MenuBar({
   const secondMonitor = useLumenStore((s) => s.settings.secondMonitor);
   const startFullscreen = useLumenStore((s) => s.settings.startFullscreen);
   const pending = useOpsStore((s) => s.inbox.filter((r) => r.status === "pending").length);
+  const programasNoCelular = useProgramasInstalados();
 
   const openProjector = () => {
     void openProjectorWindow({ secondMonitor, fullscreen: startFullscreen }).then((w) => {
@@ -244,7 +248,11 @@ export function MenuBar({
       return;
     }
     toast(`Abrindo “${escolha.nome}”…`, { id: "apres-cabine" });
-    const r = await importarRecebido(escolha.nome);
+    const r = await importarRecebido(
+      escolha.nome,
+      undefined,
+      quemAbreValido(useLumenStore.getState().settings.abrirSlidesCom),
+    );
     if (!r.ok) {
       toast.error(r.erro, { id: "apres-cabine", duration: 12000 });
       return;
@@ -542,6 +550,10 @@ export function MenuBar({
           <Palette className="size-3.5" aria-hidden /> Artes
         </button>
 
+        {/* Quem abre as apresentações — Office, LibreOffice ou o próprio
+            Lúmen — a pedido da igreja, entre as Artes e o Mais. */}
+        <MenuSlides onImportar={() => void importarApresentacao()} />
+
         {/* VFX é recurso extra, não um modo permanente como Reorganizar —
             por isso fica atrás de um clique em vez de ocupar a barra o
             tempo todo. */}
@@ -567,7 +579,7 @@ export function MenuBar({
       </nav>
 
       {/* Celular: tudo num menu só. Antes, nada disto existia abaixo de 640px. */}
-      <Menu>
+      <Menu onOpenChange={programasNoCelular.perguntar}>
         <MenuTrigger asChild>
           <Button size="iconSm" variant="ghost" className="sm:hidden" aria-label="Menu">
             <MenuIcon />
@@ -594,6 +606,9 @@ export function MenuBar({
             <MenuItem onSelect={onRemoteControl}>Controle pelo celular</MenuItem>
             <MenuItem onSelect={onArtes}>Artes</MenuItem>
             <MenuItem onSelect={onVfx}>VFX</MenuItem>
+          </Section>
+          <Section first={false} label="Slides: abrir apresentações com">
+            <EscolhasDeQuemAbre programas={programasNoCelular.programas} />
           </Section>
         </MenuContent>
       </Menu>

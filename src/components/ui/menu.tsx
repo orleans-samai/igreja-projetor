@@ -1,4 +1,5 @@
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
+import { Check } from "lucide-react";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/cn";
 
@@ -71,6 +72,67 @@ export function MenuItem({
       <span className="truncate">{children}</span>
       {shortcut && <span className="tnum shrink-0 text-caption text-subtle">{shortcut}</span>}
     </DropdownMenu.Item>
+  );
+}
+
+/**
+ * Uma escolha só entre várias (quem abre as apresentações, por exemplo).
+ *
+ * O ✓ marca a escolhida, e o leitor de tela ouve "marcado": um item comum
+ * de menu não diz qual está valendo.
+ */
+export function MenuEscolhas({
+  valor,
+  onEscolher,
+  children,
+}: {
+  valor: string;
+  onEscolher: (valor: string) => void;
+  children: ReactNode;
+}) {
+  return (
+    <DropdownMenu.RadioGroup value={valor} onValueChange={onEscolher}>
+      {children}
+    </DropdownMenu.RadioGroup>
+  );
+}
+
+export function MenuEscolha({
+  valor,
+  children,
+  detalhe,
+}: {
+  valor: string;
+  children: ReactNode;
+  /** Uma linha menor embaixo: o que a escolha faz, ou o que falta para ela. */
+  detalhe?: ReactNode;
+}) {
+  return (
+    <DropdownMenu.RadioItem
+      value={valor}
+      className={cn(
+        "flex cursor-pointer select-none items-start gap-2 rounded-md px-2 py-1.5",
+        "text-body text-fg outline-none",
+        "transition-colors duration-[var(--motion-fast)] ease-[var(--ease-out)]",
+        "data-highlighted:bg-raised",
+      )}
+    >
+      <span className="mt-0.5 flex size-4 shrink-0 items-center justify-center">
+        <DropdownMenu.ItemIndicator>
+          <Check className="size-3.5" aria-hidden />
+        </DropdownMenu.ItemIndicator>
+      </span>
+      <span className="min-w-0">
+        <span className="block" data-rotulo>
+          {children}
+        </span>
+        {detalhe && (
+          <span className="block text-caption text-subtle" data-detalhe>
+            {detalhe}
+          </span>
+        )}
+      </span>
+    </DropdownMenu.RadioItem>
   );
 }
 

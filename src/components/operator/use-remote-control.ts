@@ -4,6 +4,7 @@ import { nid } from "@/lib/fold";
 import { parseLyrics } from "@/lib/lyrics";
 import { loadSong, suggestSongs } from "@/lib/lyrics-suggestions";
 import { avisarMensagem } from "@/components/operator/aviso-de-mensagem";
+import { quemAbreValido } from "@/lib/abrir-slides";
 import { importarRecebido } from "@/lib/apresentacao";
 import { MEDIA_KINDS, listMedia, mediaKindLabel, useMidiaMudou } from "@/lib/media-library";
 import { TETO_DE_CAPAS, capaDe } from "@/lib/midia-capa";
@@ -387,7 +388,8 @@ export function useRemoteControl() {
           // Lúmen sabe mostrá-la.
           const quem = evento.de ? `, de ${evento.de},` : "";
           toast(`Abrindo “${evento.nome}”${quem}…`, { id: `apres-${evento.nome}` });
-          void importarRecebido(evento.nome, evento.de || undefined).then((r) => {
+          const abrirCom = quemAbreValido(useLumenStore.getState().settings.abrirSlidesCom);
+          void importarRecebido(evento.nome, evento.de || undefined, abrirCom).then((r) => {
             if (!r.ok) {
               // O arquivo continua guardado; o que falhou foi transformá-lo
               // em slides — e isso se diz com o motivo, não com silêncio.

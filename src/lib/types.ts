@@ -179,6 +179,8 @@ export interface Settings {
   avisoTamanho?: import("./aviso-no-telao").TamanhoDoAviso;
   /** O aviso pisca para chamar a atenção. Ausente = pisca. */
   avisoPiscar?: boolean;
+  /** Quem abre as apresentações (menu Slides). Ausente = automático. */
+  abrirSlidesCom?: import("./abrir-slides").QuemAbreSlides;
   showClock: boolean;
   baseFill: "dark" | "light";
   clockPosition: ClockPosition;

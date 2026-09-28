@@ -1,3 +1,4 @@
+import { avisoDaEscolha, primeiroConversor, QUEM_ABRE_PADRAO, type QuemAbreSlides } from "./abrir-slides.ts";
 import type { Apresentacao } from "./types";
 
 /**
@@ -15,6 +16,9 @@ import type { Apresentacao } from "./types";
  *   cor, fundo, formas e imagens, em Full HD. Se até esse desenho falhar, o
  *   leitor simplificado tira o texto e a imagem de cada slide.
  *   .ppt e .odp não têm desenho próprio: sem conversor, diz o que fazer.
+ *
+ * Essa é a ordem do automático. No menu Slides a igreja escolhe quem vai na
+ * frente (ver abrir-slides.ts); os outros ficam de reserva.
  */
 
 /** Largura em que cada página de PDF é desenhada: Full HD, a do telão. */
@@ -139,7 +143,11 @@ export async function paginasDoPdf(bytes: Uint8Array): Promise<Uint8Array[]> {
  * É o mesmo caminho para o que veio do dirigente e para o que o operador
  * escolheu na cabine: um lugar só decide o que é aceito.
  */
-export async function importarRecebido(nome: string, de?: string): Promise<ResultadoDaImportacao> {
+export async function importarRecebido(
+  nome: string,
+  de?: string,
+  quem: QuemAbreSlides = QUEM_ABRE_PADRAO,
+): Promise<ResultadoDaImportacao> {
   const d = typeof window !== "undefined" ? window.lumenDesktop : undefined;
   if (!d?.isDesktop) return { ok: false, erro: "Importar apresentação é do app do Windows." };
   if (!sabeImportar(nome)) return { ok: false, erro: motivoDeNaoImportar(nome) };
@@ -147,18 +155,47 @@ export async function importarRecebido(nome: string, de?: string): Promise<Resul
   const base = nome.replace(/\.[^.]+$/, "");
   const ext = extensao(nome);
   if (DE_APRESENTACAO.includes(ext)) {
-    const convertido = await d.apresentacaoConverter(nome);
+    // Escolhido o próprio Lúmen, ele desenha primeiro, sem abrir programa
+    // nenhum. Quando não dá — .ppt e .odp ele não lê —, os programas
+    // desenham, e a cabine diz por quê.
+    let semOLumen: string | undefined;
+    if (quem === "lumen") {
+      if (LEITOR_PROPRIO.includes(ext)) {
+        const desenhada = await desenharPeloLumen(nome, base, de, { error: "" });
+        if (desenhada.ok) return desenhada;
+        semOLumen = `O Lúmen não conseguiu desenhar esta apresentação (${desenhada.erro}).`;
+      } else {
+        semOLumen = "O Lúmen desenha sozinho só .pptx e .ppsx.";
+      }
+    }
+    const convertido = await d.apresentacaoConverter(nome, primeiroConversor(quem));
     if (convertido.ok) {
       const r = await apresentacaoDoPdf(convertido.bytes, base, de, "pptx");
-      return r.ok ? { ...r, desenhadaPor: convertido.com } : r;
+      if (!r.ok) return r;
+      const aviso = avisoDaEscolha(quem, convertido.com, semOLumen ?? convertido.pulou);
+      return { ...r, desenhadaPor: convertido.com, ...(aviso ? { aviso } : {}) };
     }
     // Com senha, ninguém abre: nem o desenho do Lúmen, nem o leitor simples.
     if (convertido.comSenha) return { ok: false, erro: convertido.error };
     if (!LEITOR_PROPRIO.includes(ext)) {
       return { ok: false, erro: convertido.semConversor ? motivoDeNaoImportar(nome) : convertido.error };
     }
-    const desenhada = await desenharPeloLumen(nome, base, de, convertido);
-    if (desenhada.ok) return desenhada;
+    if (quem !== "lumen") {
+      // Com um programa escolhido, o aviso diz por que ele não desenhou; o
+      // desenho do Lúmen acrescenta só o que é dele (fontes, o que faltou).
+      const escolhido = quem !== "automatico";
+      const desenhada = await desenharPeloLumen(
+        nome,
+        base,
+        de,
+        escolhido ? { semConversor: convertido.semConversor, error: "" } : convertido,
+      );
+      if (desenhada.ok) {
+        if (!escolhido) return desenhada;
+        const aviso = [avisoDaEscolha(quem, "Lúmen", convertido.error), desenhada.aviso].filter(Boolean).join(" ");
+        return { ...desenhada, aviso };
+      }
+    }
     const r = await d.apresentacaoPptx(nome);
     if (!r.ok) return { ok: false, erro: r.error };
     return {

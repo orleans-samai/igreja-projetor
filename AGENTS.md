@@ -57,8 +57,12 @@ npm run test:desktop:smoke
   (pdf.js, 1920 px) — sai como no PowerPoint, sem animações. Sem nenhum dos
   dois, .pptx/.ppsx são desenhados pelo próprio Lúmen (`src/lib/pptx/`:
   tema, herança do layout e do mestre, texto) e, se nem isso der, caem no
-  leitor simplificado (`desktop/pptx.cjs`, texto e imagem). A cabine sempre
-  diz quem desenhou. Arquivo com senha é recusado na hora: o PowerPoint
+  leitor simplificado (`desktop/pptx.cjs`, texto e imagem). Essa é a ordem
+  do automático: no menu **Slides** (entre Artes e Mais) a igreja escolhe
+  quem vai na frente — Office, LibreOffice ou o próprio Lúmen
+  (`src/lib/abrir-slides.ts`) —, e os outros ficam de reserva. A cabine
+  sempre diz quem desenhou, e avisa quando foi a reserva no lugar do
+  escolhido. Arquivo com senha é recusado na hora: o PowerPoint
   nunca pode ficar parado esperando senha no meio do culto.
 - **Telão:** a letra fica sempre centralizada na vertical
   (`SlideBody` em `src/components/slide/slide-renderer.tsx`,

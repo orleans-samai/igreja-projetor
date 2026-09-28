@@ -14,7 +14,12 @@ const path = require("node:path");
 const fsp = require("node:fs/promises");
 const { randomUUID } = require("node:crypto");
 const { lerPptx } = require("./pptx.cjs");
-const { paraPdf, conversorDisponivel, EXTENSOES: EXTENSOES_DO_OFFICE } = require("./conversor-office.cjs");
+const {
+  paraPdf,
+  conversorDisponivel,
+  programasInstalados,
+  EXTENSOES: EXTENSOES_DO_OFFICE,
+} = require("./conversor-office.cjs");
 
 const PASTA = "apresentacoes";
 /**
@@ -126,7 +131,12 @@ function umaDeCadaVez(tarefa) {
  * original. Sem nenhum dos dois, `semConversor` — e a janela cai no leitor
  * simplificado, avisando.
  */
-async function converterParaPdf(nome) {
+/**
+ * @param {string} nome
+ * @param {unknown} [primeiro] a escolha do menu Slides; só "libreoffice"
+ *   muda a ordem — qualquer outra coisa que chegue da janela vale o de sempre.
+ */
+async function converterParaPdf(nome, primeiro) {
   const caminho = recebido(nome);
   if (!caminho || !EXTENSOES_DO_OFFICE.has(path.extname(caminho).toLowerCase())) {
     return { ok: false, error: "Apresentação fora da pasta de recebidos." };
@@ -137,12 +147,13 @@ async function converterParaPdf(nome) {
       const st = await fsp.stat(caminho);
       if (!st.isFile()) return { ok: false, error: "Não é um arquivo." };
       if (st.size > MAX_ARQUIVO) return { ok: false, error: "Arquivo grande demais (máximo 64 MB)." };
-      const r = await paraPdf(caminho, trabalho, path.join(dataDir, "libreoffice-perfil"));
+      const ordem = primeiro === "libreoffice" ? "libreoffice" : "powerpoint";
+      const r = await paraPdf(caminho, trabalho, path.join(dataDir, "libreoffice-perfil"), {}, ordem);
       if (!r.ok) return r;
       if ((await fsp.stat(r.pdf)).size > MAX_PDF_CONVERTIDO) {
         return { ok: false, error: "A apresentação desenhada ficou grande demais para o telão." };
       }
-      return { ok: true, bytes: await fsp.readFile(r.pdf), com: r.com };
+      return { ok: true, bytes: await fsp.readFile(r.pdf), com: r.com, ...(r.pulou ? { pulou: r.pulou } : {}) };
     } catch (erro) {
       return { ok: false, error: erro?.message || "Não consegui desenhar a apresentação." };
     } finally {
@@ -154,6 +165,11 @@ async function converterParaPdf(nome) {
 /** "PowerPoint", "LibreOffice" ou null: quem desenha as apresentações aqui. */
 function conversor() {
   return conversorDisponivel();
+}
+
+/** Se há PowerPoint e LibreOffice aqui: o menu Slides marca o que falta. */
+function programas() {
+  return programasInstalados();
 }
 
 /** Os bytes de um PDF recebido, para a janela desenhar as páginas. */
@@ -247,6 +263,7 @@ module.exports = {
   importarPptx,
   converterParaPdf,
   conversor,
+  programas,
   lerPdf,
   lerPptxBruto,
   salvarPaginas,

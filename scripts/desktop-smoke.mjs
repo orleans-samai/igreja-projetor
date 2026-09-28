@@ -1825,6 +1825,125 @@ try {
     assert.equal(pixel.largura, 1920, "o slide não veio em Full HD");
   }
 
+  // ---- A faixa de baixo mostra a imagem de cada slide da apresentação ----
+  // Slide de PowerPoint é imagem: desenhado só pelo texto, o cartão saía
+  // preto, e o operador passava a apresentação às cegas.
+  await page.evaluate(() => {
+    const linha = [...document.querySelectorAll('button[title^="Um clique seleciona"]')].find((b) =>
+      (b.textContent || "").includes("Culto de Domingo"),
+    );
+    linha?.click();
+  });
+  await page.waitForFunction(
+    () => {
+      const imgs = [...document.querySelectorAll('section[aria-label="Letras do slide"] img[data-previa-do-slide]')];
+      return imgs.length === 3 && imgs.every((i) => i.complete && i.naturalWidth > 0);
+    },
+    null,
+    { timeout: 15000 },
+  );
+  const previasNaFaixa = await page.evaluate(() =>
+    [...document.querySelectorAll('section[aria-label="Letras do slide"] img[data-previa-do-slide]')].map((i) =>
+      i.getAttribute("src"),
+    ),
+  );
+  assert.deepEqual(previasNaFaixa, doPpsx.slides.map((sl) => sl.imagem), "a faixa não mostrou a imagem de cada slide");
+  await page.locator('section[aria-label="Letras do slide"]').screenshot({ path: path.join(evidence, "faixa-apresentacao.png") });
+
+  // ---- Menu Slides: quem abre as apresentações ----
+  // A igreja pediu, entre as Artes e o Mais, a escolha entre o Office, o
+  // LibreOffice e o próprio Lúmen. O escolhido vai na frente; os outros
+  // ficam de reserva, com aviso.
+  const barra = await page.evaluate(() =>
+    [...document.querySelectorAll('nav[aria-label="Menu principal"] > *')].map(
+      (el) => el.getAttribute("aria-label") || (el.textContent || "").trim(),
+    ),
+  );
+  const naBarra = (rotulo) => barra.indexOf(rotulo);
+  assert.ok(
+    naBarra("Artes") >= 0 && naBarra("Slides") === naBarra("Artes") + 1 && naBarra("Mais") === naBarra("Slides") + 1,
+    `o Slides não ficou entre as Artes e o Mais: ${barra.join(" | ")}`,
+  );
+  const programasDaCabine = await page.evaluate(() => window.lumenDesktop.apresentacaoProgramas());
+  const escolherNoMenuSlides = async (rotulo) => {
+    await page.getByRole("button", { name: "Slides", exact: true }).click();
+    await page.getByRole("menuitemradio", { name: rotulo }).click();
+    await page.getByRole("menuitemradio").first().waitFor({ state: "detached" });
+  };
+  await page.getByRole("button", { name: "Slides", exact: true }).click();
+  // O menu pergunta ao computador o que há instalado quando abre; o que
+  // falta aparece como "Não encontrado".
+  await page.waitForFunction(
+    (esperado) => {
+      const itens = [...document.querySelectorAll('[role="menuitemradio"]')];
+      if (itens.length !== 4) return false;
+      const falta = (i) => (itens[i].querySelector("[data-detalhe]")?.textContent || "").includes("Não encontrado");
+      return falta(1) === !esperado.powerPoint && falta(2) === !esperado.libreOffice;
+    },
+    programasDaCabine,
+    { timeout: 10000 },
+  );
+  const opcoesDoMenu = await page.evaluate(() =>
+    [...document.querySelectorAll('[role="menuitemradio"]')].map((el) => ({
+      rotulo: el.querySelector("[data-rotulo]")?.textContent ?? "",
+      marcada: el.getAttribute("aria-checked"),
+    })),
+  );
+  await page.keyboard.press("Escape");
+  assert.deepEqual(
+    opcoesDoMenu.map((o) => o.rotulo),
+    ["Automático", "Office (PowerPoint)", "LibreOffice", "O próprio Lúmen"],
+  );
+  assert.equal(opcoesDoMenu[0].marcada, "true", "o automático não veio marcado");
+  const enviarPptx = async (titulo) => {
+    const r = await fetch(`${remoteBase}/dirigente/enviar`, {
+      method: "POST",
+      headers: {
+        "x-lumen-dirigente": tokenDirigente,
+        "x-lumen-arquivo": encodeURIComponent(`${titulo}.pptx`),
+        "x-lumen-de": encodeURIComponent("Pastor Elias"),
+      },
+      body: pptxDeVerdade([
+        { texto: titulo, fundo: "1F3B73" },
+        { texto: "Amém", fundo: "7A1F1F" },
+      ]),
+    });
+    assert.equal(r.status, 200, `o envio de ${titulo} falhou`);
+  };
+  const toastCom = (textos, timeout = 90000) =>
+    page.waitForFunction(
+      (lista) =>
+        [...document.querySelectorAll("[data-sonner-toast]")].some((t) =>
+          lista.every((txt) => (t.textContent || "").includes(txt)),
+        ),
+      textos,
+      { timeout },
+    );
+
+  // O próprio Lúmen, mesmo com o Office no computador.
+  await escolherNoMenuSlides(/O próprio Lúmen/);
+  await esperarAsync(
+    page,
+    async () => JSON.parse(await window.lumenDesktop.storageGet("lumen-v2")).state.settings.abrirSlidesCom === "lumen",
+    undefined,
+    { oQue: "a escolha do menu Slides ficar guardada" },
+  );
+  await enviarPptx("Escolha do Lúmen");
+  await toastCom(["Escolha do Lúmen", "desenhados pelo Lúmen"]);
+
+  // O LibreOffice na frente; sem ele, a reserva desenha e a cabine avisa.
+  await escolherNoMenuSlides(/^LibreOffice/);
+  await enviarPptx("Escolha do LibreOffice");
+  if (programasDaCabine.libreOffice) {
+    await toastCom(["Escolha do LibreOffice", "desenhados pelo LibreOffice"]);
+  } else if (programasDaCabine.powerPoint) {
+    await toastCom(["Escolha do LibreOffice", "desenhados pelo PowerPoint"]);
+    await toastCom(["no lugar do LibreOffice"]);
+  } else {
+    await toastCom(["Escolha do LibreOffice", "desenhados pelo Lúmen"]);
+  }
+  await escolherNoMenuSlides(/^Automático/);
+
   // ---- A cabine não rola, nem para o lado nem para baixo ----
   // Controle que saiu da tela é controle que não existe: no meio do culto
   // ninguém procura barra de rolagem para achar o botão de parar. Um vídeo
@@ -2379,7 +2498,7 @@ try {
   assert.deepEqual(errors, []);
   const disk = JSON.parse(await readFile(path.join(profile, "data", "library.json"), "utf8"));
   assert.ok(disk.values["lumen-v2"]);
-  console.log(`PASS: offline, fonts, Bible (one click on a verse projects it, books, chapters and verses always fit the panel with no scrollbar and nothing cut, even Luke 1's 80 verses, − and + setting the largest size, gold buttons in and out of the Bible screen, five versions plus importing a licensed one, its three parts rearranged by dragging and swapping sides, New-Testament-only notice, omitted verse lands on the next), restart persistence, projector, media ranges, preflight, remote control (LAN, entrada por nome, nome fixo na rede, one click from the menu bar beside Permissões, accounts with username and password created in Permissões that sign in already holding their permission while the quick name-only access stays chat-only, permissions by part (only chat, culto, mídia, letras, controle or full access) with the phone showing only the tabs each person can use and nothing but the chat for chat-only, a chat-only phone given a part going straight to it, the phone's header, on-air bar and tabs fixed while only the panel scrolls), update check, review before apply, 1366×768 at 100/125/150% and 800×600, no scroll and exactly one layout at ten sizes from 800×600 to 2560×1440, including every pixel around the 1280 cutover and the chat stays on screen, church logo and name reachable from the menu bar, a folder video behind the logo on the real screen with no faded box around it and the logo opening with Lúmen, a big blinking notice by default with its size chosen before sending, art studio makes a batch of 8 distinct Konva designs from just a title and a Bible reference, opens one in the editor, saves it and exports PNG and JPEG at exactly 1920×1080 (Full HD is the default), VFX has three modes and a dynamic video becomes a real file in the Vídeos tab, a theme column of images, videos and dynamics where one click puts a dynamic behind the lyrics, a gold Criar tema that sends the new theme straight to the screen, no AI, no YouTube and no Auto-Slide anywhere in the app (and what Auto-Slide downloaded is deleted on start), dirigente page signs in, sends a file that lands in the library and opens from the programme marked in yellow with who sent it, chats and files a notice, and its PowerPoint and PDF become slides in the service programme, a real .ppsx drawn by PowerPoint (or LibreOffice) into Full HD slides with its own background colour, and a .pptx that neither opens drawn by Lúmen itself into Full HD with its background colour and the white title inside its own box, video as a theme background, find a song by a lyric excerpt, right-click on lyrics edits or removes, double-click to project, fixed text only in the footer and the verse always centred vertically, phone has one play/pause button, the screen volume and a Sair do vídeo that takes media off the screen but never a lyric, sound from the screen only (the cabine preview stays muted), Tirar vídeo keeps the sound playing under a lyric and Mostrar vídeo brings the picture back, tapping a media item shows its controls right there in a mini-player, a chat keyboard with a wide text field, a small send arrow and one attach button for photo or voice, voice messages converted to WAV on the phone and arriving with their length, the team chat in bubbles with who is online and who each message is for on the phone and the dirigente page, kept per service in a searchable, exportable history in the cabine, every new chat message pops up in gold on the phone, the cabine and the dirigente page (never for its own author), sees the media folder, gets a file imported in the cabine or copied in by Explorer within 5 s, a library row dragged into the service programme, a right-click menu that deletes media, the lyrics strip reopening by itself when a lyric goes to the screen and scrolling itself to keep the yellow slide and the next two in view, and a 2 blocos option where the lyrics fill the top block with whole cards and continue in the bottom one, which scrolls when even it can't hold the rest, a Culto tab that mirrors the service programme, projects with a tap on the item and deletes (two taps) from it, a + beside songs, media and web results that puts them in the service programme, the phone's Letras, Mídia and Culto lists fitting the screen at 360 and 430 px with the name never squeezed by the + and the singer under the song name, lyrics search results that appear while typing and mark songs already in the library, projects from it, opens a song as a grid of slides and puts one on the screen, and searches lyrics through the cabine. Evidence: ${evidence}`);
+  console.log(`PASS: offline, fonts, Bible (one click on a verse projects it, books, chapters and verses always fit the panel with no scrollbar and nothing cut, even Luke 1's 80 verses, − and + setting the largest size, gold buttons in and out of the Bible screen, five versions plus importing a licensed one, its three parts rearranged by dragging and swapping sides, New-Testament-only notice, omitted verse lands on the next), restart persistence, projector, media ranges, preflight, remote control (LAN, entrada por nome, nome fixo na rede, one click from the menu bar beside Permissões, accounts with username and password created in Permissões that sign in already holding their permission while the quick name-only access stays chat-only, permissions by part (only chat, culto, mídia, letras, controle or full access) with the phone showing only the tabs each person can use and nothing but the chat for chat-only, a chat-only phone given a part going straight to it, the phone's header, on-air bar and tabs fixed while only the panel scrolls), update check, review before apply, 1366×768 at 100/125/150% and 800×600, no scroll and exactly one layout at ten sizes from 800×600 to 2560×1440, including every pixel around the 1280 cutover and the chat stays on screen, church logo and name reachable from the menu bar, a folder video behind the logo on the real screen with no faded box around it and the logo opening with Lúmen, a big blinking notice by default with its size chosen before sending, art studio makes a batch of 8 distinct Konva designs from just a title and a Bible reference, opens one in the editor, saves it and exports PNG and JPEG at exactly 1920×1080 (Full HD is the default), VFX has three modes and a dynamic video becomes a real file in the Vídeos tab, a theme column of images, videos and dynamics where one click puts a dynamic behind the lyrics, a gold Criar tema that sends the new theme straight to the screen, no AI, no YouTube and no Auto-Slide anywhere in the app (and what Auto-Slide downloaded is deleted on start), dirigente page signs in, sends a file that lands in the library and opens from the programme marked in yellow with who sent it, chats and files a notice, and its PowerPoint and PDF become slides in the service programme, a real .ppsx drawn by PowerPoint (or LibreOffice) into Full HD slides with its own background colour and each slide's picture in the strip below, a Slides menu between Artes and Mais choosing who opens presentations (Office, LibreOffice or Lúmen itself, with the missing program marked and the others as backup), and a .pptx that neither opens drawn by Lúmen itself into Full HD with its background colour and the white title inside its own box, video as a theme background, find a song by a lyric excerpt, right-click on lyrics edits or removes, double-click to project, fixed text only in the footer and the verse always centred vertically, phone has one play/pause button, the screen volume and a Sair do vídeo that takes media off the screen but never a lyric, sound from the screen only (the cabine preview stays muted), Tirar vídeo keeps the sound playing under a lyric and Mostrar vídeo brings the picture back, tapping a media item shows its controls right there in a mini-player, a chat keyboard with a wide text field, a small send arrow and one attach button for photo or voice, voice messages converted to WAV on the phone and arriving with their length, the team chat in bubbles with who is online and who each message is for on the phone and the dirigente page, kept per service in a searchable, exportable history in the cabine, every new chat message pops up in gold on the phone, the cabine and the dirigente page (never for its own author), sees the media folder, gets a file imported in the cabine or copied in by Explorer within 5 s, a library row dragged into the service programme, a right-click menu that deletes media, the lyrics strip reopening by itself when a lyric goes to the screen and scrolling itself to keep the yellow slide and the next two in view, and a 2 blocos option where the lyrics fill the top block with whole cards and continue in the bottom one, which scrolls when even it can't hold the rest, a Culto tab that mirrors the service programme, projects with a tap on the item and deletes (two taps) from it, a + beside songs, media and web results that puts them in the service programme, the phone's Letras, Mídia and Culto lists fitting the screen at 360 and 430 px with the name never squeezed by the + and the singer under the song name, lyrics search results that appear while typing and mark songs already in the library, projects from it, opens a song as a grid of slides and puts one on the screen, and searches lyrics through the cabine. Evidence: ${evidence}`);
 } finally {
   if (app) {
     // O fim do teste deixa uma música no ar, e a cabine (de propósito)
