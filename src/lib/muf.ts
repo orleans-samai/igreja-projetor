@@ -1,3 +1,5 @@
+import { lerArquivoDoHolyrics } from "./holyrics.ts";
+
 /**
  * Pacote .muf — repertório em lote.
  *
@@ -106,21 +108,34 @@ export type LeituraMuf =
   | { ok: false; erro: string };
 
 /**
- * Lê o .muf.
+ * Lê o .muf do Lúmen — ou o que o Holyrics exportou (ver holyrics.ts).
  *
- * Tenta descomprimir; se o arquivo não estiver comprimido, lê como texto. O
- * gzip começa sempre com 0x1f 0x8b, então dá para saber antes de tentar em
- * vez de depender de a exceção acontecer.
+ * O pacote do Lúmen é gzip; o gzip começa sempre com 0x1f 0x8b, então dá
+ * para saber antes de tentar em vez de depender de a exceção acontecer.
+ * Sem gzip, vale o JSON do Lúmen; o resto vai para o leitor do Holyrics.
  */
-export async function lerMuf(bytes: Uint8Array): Promise<LeituraMuf> {
+export async function lerMuf(bytes: Uint8Array, nome = ""): Promise<LeituraMuf> {
   if (bytes.length === 0) return { ok: false, erro: "O arquivo está vazio." };
   if (bytes.length > MAX_BYTES) {
     return { ok: false, erro: "O arquivo é grande demais para um pacote de letras." };
   }
+  const ehGzip = bytes[0] === 0x1f && bytes[1] === 0x8b;
+  // O que não é o pacote do Lúmen pode ser o que veio do Holyrics: a igreja
+  // exportou de lá (.mufl, .json, .txt) e escolheu este mesmo item do menu.
+  if (!ehGzip) {
+    let dado: unknown;
+    try {
+      dado = JSON.parse(new TextDecoder().decode(bytes).trimStart());
+    } catch {
+      dado = undefined;
+    }
+    const doLumen = dado === undefined ? [] : extrairMusicas(dado);
+    if (doLumen.length > 0) return { ok: true, musicas: doLumen };
+    return lerArquivoDoHolyrics(bytes, nome);
+  }
   let cru: string;
   try {
-    const ehGzip = bytes[0] === 0x1f && bytes[1] === 0x8b;
-    cru = ehGzip ? await descomprimir(bytes) : new TextDecoder().decode(bytes);
+    cru = await descomprimir(bytes);
   } catch {
     return { ok: false, erro: "Não foi possível descompactar este arquivo." };
   }

@@ -27,3 +27,6 @@ AGENTS.project.md
 startup.sh
 screenshots/
 attachments/
+# O Holyrics cria estas pastas onde o Java roda (scripts/holyrics-amostras.jjs).
+/Holyrics/
+/logs/

@@ -92,6 +92,9 @@
   /* Amarelo do "Enviado por": o que o dirigente mandou precisa saltar aos
      olhos na programação, e não se confundir com o âmbar do "no ar". */
   --color-enviado: #f2c94c;
+  /* O nome do culto em amarelo, a pedido da igreja: é ele que diz de qual
+     culto é a programação que está na tela. */
+  --color-culto: #f2c94c;
 
   /* -- superfícies de projeção -------------------------------------------- */
   --color-paper: #f3efe6;

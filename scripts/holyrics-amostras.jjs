@@ -1,0 +1,64 @@
+// Regera as amostras de src/lib/amostras-holyrics pelo exportador do próprio
+// Holyrics — é isso que garante que o Lúmen lê o formato de verdade, e não o
+// que se imaginou dele. Letras inventadas.
+//
+// Precisa do Holyrics instalado (Windows, em C:\Holyrics). Rode de uma pasta
+// temporária, nunca da raiz do projeto nem de C:\Holyrics: as classes do
+// Holyrics criam as pastas Holyrics\ e logs\ onde o Java roda — e em
+// C:\Holyrics elas são as do Holyrics de verdade. Caminhos absolutos:
+//
+//   cd /d %TEMP%
+//   C:\Holyrics\Holyrics\jre\bin\jjs.exe -J-Dfile.encoding=UTF-8 ^
+//     -cp "C:\Holyrics\Holyrics.exe;C:\Holyrics\lib\*" ^
+//     <projeto>\scripts\holyrics-amostras.jjs -- <projeto>\src\lib\amostras-holyrics
+//
+// O .muf de uma música sai cifrado e muda a cada vez; os outros saem iguais.
+var File = Java.type("java.io.File");
+var ArrayList = Java.type("java.util.ArrayList");
+var Long = Java.type("java.lang.Long");
+var Pair = Java.type("com.limagiran.holyrics.pojo.Pair");
+var EnumSongKey = Java.type("com.limagiran.enums.EnumSongKey");
+
+var pasta = arguments[0];
+
+var construtor = Java.type("com.limagiran.holyrics.model.Music").class.getDeclaredConstructor(Long.TYPE);
+construtor.setAccessible(true);
+function musica(id, titulo, artista, letra, autor, copyright) {
+  var m = construtor.newInstance(id);
+  m.setTitle(titulo);
+  m.setArtist(artista);
+  m.setLyrics(letra);
+  m.setAuthor(autor);
+  m.setCopyright(copyright);
+  return m;
+}
+function lista() {
+  var l = new ArrayList();
+  for (var i = 0; i < arguments.length; i++) l.add(arguments[i]);
+  return l;
+}
+function exportador(classe) {
+  var c = Java.type(classe).class.getDeclaredConstructor();
+  c.setAccessible(true);
+  return c.newInstance();
+}
+
+var cancao = musica(1001, "Canção da Manhã", "Coral da Vila",
+  "Primeira linha do verso\nSegunda linha com ação\n\nRefrão de louvor\nCantamos juntos", "João da Silva", "Domínio público");
+var cancaoComEmoji = musica(1001, "Canção da Manhã", "Coral da Vila",
+  "Primeira linha do verso\nSegunda linha com ação\n\nRefrão de louvor\nCantamos juntos 🙏", "João da Silva", "Domínio público");
+var hino = musica(1002, "Hino de Teste", "", "Só uma estrofe\ncom duas linhas", "", "");
+var coracao = musica(1003, "Coração Grato", "Ministério Alvorada",
+  "Verso um\r\nlinha dois\r\n\r\nVerso dois\r\nlinha quatro", "Maria", "© 2024 Teste");
+var comTom = musica(2001, "Tom de Teste", "Banda", "Linha um\nLinha dois", "", "© Teste");
+comTom.setSongKey(EnumSongKey.valueOf("E"));
+
+var holyrics = exportador("com.limagiran.holyrics.model.rw.OutputTypeMusicHolyrics");
+print(holyrics.saveSingle(lista(cancaoComEmoji, hino, coracao), new File(pasta, "lote.mufl")));
+print(holyrics.saveSingle(lista(comTom), new File(pasta, "tom.mufl")));
+print(holyrics.saveMultiple(lista(Pair.create(cancaoComEmoji, new File(pasta, "uma-musica-cifrada.muf")))));
+print(exportador("com.limagiran.holyrics.model.rw.OutputTypeMusicJson").saveSingle(lista(cancao, hino), new File(pasta, "lote.json")));
+print(exportador("com.limagiran.holyrics.model.rw.OutputTypeMusicTxt").saveSingle(lista(cancao, hino), new File(pasta, "lote.txt")));
+
+// Alguma thread do Holyrics fica viva e segura o Java aberto depois de gravar.
+java.lang.System.exit(0);

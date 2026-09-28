@@ -177,7 +177,7 @@ export function PlaylistPanel({ showThemes = false }: { showThemes?: boolean }) 
               "focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring",
             )}
           >
-            <span className="truncate">{pl?.name ?? "Temporário"}</span>
+            <span className="truncate font-semibold text-culto">{pl?.name ?? "Temporário"}</span>
             <ChevronDown
               className="size-3.5 shrink-0 text-subtle transition-transform duration-[var(--motion-base)] ease-[var(--ease-out)] group-data-[state=open]:rotate-180"
               aria-hidden

@@ -22,7 +22,7 @@ import { Tally } from "@/components/ui/panel";
 import { Hint } from "@/components/ui/tooltip";
 import { cn } from "@/lib/cn";
 import { fold, nid } from "@/lib/fold";
-import { escreverMuf, lerMuf } from "@/lib/muf";
+import { escreverMuf, lerMuf, type MusicaDoPacote } from "@/lib/muf";
 import { importarMusicasJsonDoDisco } from "@/lib/import-songs-json";
 import { openOutputWindow } from "@/lib/live-channel";
 import { openProjectorWindow } from "@/lib/windows-desktop";
@@ -182,23 +182,36 @@ export function MenuBar({
    * Música que já existe com o mesmo título e artista é atualizada, não
    * duplicada: quem importa um hinário duas vezes quer o hinário, não duas
    * cópias dele.
+   *
+   * Aceita também o que o Holyrics exporta (.mufl, .json, .txt — ver
+   * holyrics.ts), e vários arquivos de uma vez.
    */
-  const importarMuf = () => {
+  const importarEmLote = (aceita: string) => {
     const input = document.createElement("input");
     input.type = "file";
-    input.accept = ".muf,.mufl,application/gzip,application/json";
+    input.accept = aceita;
+    input.multiple = true;
     input.onchange = async () => {
-      const file = input.files?.[0];
-      if (!file) return;
-      const lido = await lerMuf(new Uint8Array(await file.arrayBuffer()));
-      if (!lido.ok) {
-        toast.error(lido.erro);
-        return;
+      const arquivos = [...(input.files ?? [])];
+      if (arquivos.length === 0) return;
+      const musicas: MusicaDoPacote[] = [];
+      // O mesmo motivo em vários arquivos (vinte .muf cifrados, digamos) é
+      // um aviso só, não vinte.
+      const falhas = new Map<string, string[]>();
+      for (const file of arquivos) {
+        const lido = await lerMuf(new Uint8Array(await file.arrayBuffer()), file.name);
+        if (lido.ok) musicas.push(...lido.musicas);
+        else falhas.set(lido.erro, [...(falhas.get(lido.erro) ?? []), file.name]);
       }
+      for (const [erro, nomes] of falhas) {
+        const onde = arquivos.length === 1 ? "" : nomes.length === 1 ? `${nomes[0]}: ` : `${nomes.length} arquivos: `;
+        toast.error(`${onde}${erro}`, { duration: 15000 });
+      }
+      if (musicas.length === 0) return;
       const st = useLumenStore.getState();
       let novas = 0;
       let atualizadas = 0;
-      for (const m of lido.musicas) {
+      for (const m of musicas) {
         const igual = useLumenStore
           .getState()
           .songs.find(
@@ -311,7 +324,16 @@ export function MenuBar({
         { label: "Exportar repertório", onSelect: exportRepertoire },
         { label: "Importar repertório", onSelect: importRepertoire },
         { label: "Exportar repertório em lote (.muf)", onSelect: () => void exportarMuf() },
-        { label: "Importar repertório em lote (.muf)", onSelect: importarMuf },
+        {
+          label: "Importar repertório em lote (.muf)",
+          onSelect: () => importarEmLote(".muf,.mufl,.json,.txt,application/gzip,application/json"),
+        },
+        // A igreja exportou do Holyrics e o .muf dava erro: agora entra o
+        // lote do Holyrics (.mufl), o .json e o .txt dele.
+        {
+          label: "Importar músicas do Holyrics (.mufl, .json, .txt)…",
+          onSelect: () => importarEmLote(".mufl,.muf,.json,.txt"),
+        },
         { label: "Importar músicas (.json)", onSelect: importarMusicasJsonDoDisco },
         {
           label: "Importar apresentação (PowerPoint ou PDF)…",

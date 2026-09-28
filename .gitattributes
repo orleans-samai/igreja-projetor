@@ -1,0 +1,4 @@
+# Amostras gravadas pelo próprio Holyrics: os testes dependem dos bytes
+# exatos. O .muf cifrado não tem byte nulo, e o git o tomaria por texto e
+# trocaria os fins de linha dentro dele.
+src/lib/amostras-holyrics/* binary

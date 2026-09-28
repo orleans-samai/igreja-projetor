@@ -76,12 +76,31 @@ function bloco(v: unknown): string {
 }
 
 /**
+ * O JSON exportado do Holyrics traz a letra num objeto: `full_text` com
+ * ela inteira e `paragraphs` com cada estrofe. Lida como texto, vinha
+ * vazia, e a música era recusada por "não ter letra".
+ */
+function letraDoHolyrics(v: unknown): string {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return "";
+  const o = v as Record<string, unknown>;
+  const inteira = texto(o.full_text).replace(/\r\n?/g, "\n").trim();
+  if (inteira) return inteira;
+  const paragrafos = Array.isArray(o.paragraphs) ? o.paragraphs : [];
+  return paragrafos
+    .map((p) => (p && typeof p === "object" ? texto((p as Record<string, unknown>).text).trim() : ""))
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+/**
  * Monta a letra no formato do Lúmen: linha em branco separa slide, e
  * `[Coro]` / `[Ponte]` viram rótulo de slide (ver parseLyrics).
  */
 function montarLetra(o: Record<string, unknown>): string {
   const direta = texto(pegar(o, "letra")).trim();
   if (direta) return direta;
+  const doHolyrics = letraDoHolyrics(pegar(o, "letra"));
+  if (doHolyrics) return doHolyrics;
 
   const partes: string[] = [];
   const estrofes = pegar(o, "estrofes");

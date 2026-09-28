@@ -64,6 +64,14 @@ npm run test:desktop:smoke
   sempre diz quem desenhou, e avisa quando foi a reserva no lugar do
   escolhido. Arquivo com senha é recusado na hora: o PowerPoint
   nunca pode ficar parado esperando senha no meio do culto.
+- **Músicas do Holyrics** (`src/lib/holyrics.ts`): o lote com "Arquivo
+  único" (.mufl) é serialização do Java, lida por
+  `src/lib/serializacao-java.ts` — só leitura, nenhuma classe é criada, com
+  teto de profundidade, objetos e tamanhos. O .json e o .txt do Holyrics
+  também entram. O .muf de uma música vem cifrado pelo Holyrics e não é
+  aberto: a mensagem ensina a exportar o .mufl. As amostras em
+  `src/lib/amostras-holyrics/` foram gravadas pelo próprio Holyrics
+  (`scripts/holyrics-amostras.jjs`); não troque por arquivo feito à mão.
 - **Telão:** a letra fica sempre centralizada na vertical
   (`SlideBody` em `src/components/slide/slide-renderer.tsx`,
   `margensCentradas`). Não reintroduza alinhamento em cima/embaixo.
