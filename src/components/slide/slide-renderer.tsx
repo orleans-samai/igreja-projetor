@@ -779,6 +779,9 @@ export function SlideCanvas({
               // espaço todo" — exatamente o brasão de parede a parede.
               tamanho={tamanhoValido(frame.settings.logoTamanho)}
               comNome={frame.settings.logoComNome}
+              corDoNome={frame.settings.logoNomeCor}
+              sombraLogo={frame.settings.logoSombra}
+              sombraNome={frame.settings.logoNomeSombra}
             />
           </div>
         </div>

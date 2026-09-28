@@ -177,6 +177,12 @@ export interface Settings {
   logoComNome?: boolean;
   /** Vídeo ou imagem da pasta de mídia atrás da logo. Ausente = o fundo do tema. */
   logoFundo?: import("./logo-no-telao").FundoDaLogo | null;
+  /** Cor do nome da igreja no telão (#rrggbb). Ausente = a cor do texto do palco. */
+  logoNomeCor?: string;
+  /** Sombra atrás da logo, de 0 a 100. Ausente = sem sombra. */
+  logoSombra?: number;
+  /** Sombra atrás do nome da igreja, de 0 a 100. Ausente = sem sombra. */
+  logoNomeSombra?: number;
   /** Tamanho do aviso de rodapé, o último que o operador escolheu. Ausente = grande. */
   avisoTamanho?: import("./aviso-no-telao").TamanhoDoAviso;
   /** O aviso pisca para chamar a atenção. Ausente = pisca. */
@@ -306,6 +312,9 @@ export interface LiveFrame {
     | "logoTamanho"
     | "logoComNome"
     | "logoFundo"
+    | "logoNomeCor"
+    | "logoSombra"
+    | "logoNomeSombra"
     | "fontScale"
     | "showClock"
     | "baseFill"

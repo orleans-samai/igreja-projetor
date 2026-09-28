@@ -1,5 +1,13 @@
 import { cn } from "@/lib/cn";
-import { alturaDaLogo, corpoDoNome, type TamanhoDaLogo, type UnidadeDaLogo } from "@/lib/logo-no-telao";
+import {
+  alturaDaLogo,
+  corDoNomeValida,
+  corpoDoNome,
+  sombraDaLogo,
+  sombraDoNome,
+  type TamanhoDaLogo,
+  type UnidadeDaLogo,
+} from "@/lib/logo-no-telao";
 
 export function LumenMark({ className }: { className?: string }) {
   return (
@@ -28,6 +36,9 @@ export function ChurchLogo({
   tamanho,
   comNome = false,
   unidade = "vmin",
+  corDoNome,
+  sombraLogo,
+  sombraNome,
 }: {
   url?: string;
   name: string;
@@ -38,7 +49,14 @@ export function ChurchLogo({
   comNome?: boolean;
   /** `cqmin` na prévia, que mede pela caixinha; `vmin` no telão. */
   unidade?: UnidadeDaLogo;
+  /** Cor do nome (#rrggbb). Ausente = a do palco. */
+  corDoNome?: string;
+  /** Sombras de 0 a 100 (ver logo-no-telao.ts). */
+  sombraLogo?: number;
+  sombraNome?: number;
 }) {
+  const cor = corDoNomeValida(corDoNome);
+  const estiloDoNome = { color: cor, textShadow: sombraDoNome(sombraNome) };
   if (url) {
     const noTelao = tamanho !== undefined;
     const nome = comNome && name.trim();
@@ -48,12 +66,17 @@ export function ChurchLogo({
           src={url}
           alt={name}
           className="max-w-full object-contain"
-          style={noTelao ? { maxHeight: alturaDaLogo(tamanho, unidade), maxWidth: "70%" } : { maxHeight: "100%" }}
+          style={{
+            ...(noTelao ? { maxHeight: alturaDaLogo(tamanho, unidade), maxWidth: "70%" } : { maxHeight: "100%" }),
+            filter: sombraDaLogo(sombraLogo, unidade),
+          }}
         />
+        {/* O Enter do nome vira linha nova aqui também: a igreja quebra o
+            nome onde quer, e o telão mostra do mesmo jeito. */}
         {nome && (
           <p
-            className="mt-[0.6em] font-display font-semibold tracking-tight text-stage-fg"
-            style={noTelao ? { fontSize: corpoDoNome(tamanho, unidade) } : undefined}
+            className="mt-[0.6em] whitespace-pre-line font-display font-semibold leading-tight tracking-tight text-stage-fg"
+            style={{ ...(noTelao ? { fontSize: corpoDoNome(tamanho, unidade) } : undefined), ...estiloDoNome }}
           >
             {nome}
           </p>
@@ -65,7 +88,12 @@ export function ChurchLogo({
     <div className={cn("flex flex-col items-center gap-4 text-center", className)}>
       <LumenMark className="size-16" />
       <div>
-        <p className="font-display text-4xl font-semibold tracking-tight text-stage-fg">{name}</p>
+        <p
+          className="whitespace-pre-line font-display text-4xl font-semibold leading-tight tracking-tight text-stage-fg"
+          style={estiloDoNome}
+        >
+          {name}
+        </p>
         <p className="mt-1 text-body uppercase tracking-[0.22em] text-stage-fg/55">Lúmen</p>
       </div>
     </div>

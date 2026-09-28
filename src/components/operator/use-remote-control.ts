@@ -14,9 +14,12 @@ import {
   type AcaoRemota,
   type CultoRemoto,
   type TemaRemoto,
+  type TempoDaMidia,
 } from "@/lib/remote-control";
 import { temaDaMusica, temasUsados } from "@/lib/tema-remoto";
 import { enviadoPor, etapaDoItem } from "@/lib/culto-etapas";
+import { assinarLocal } from "@/lib/media-local";
+import { subscribeOps } from "@/lib/ops-channel";
 import { useChatStore } from "@/store/chat-store";
 import { chegouRecado, recadoApagado } from "@/store/chat-historico-store";
 import { useLumenStore, type LumenState } from "@/store/lumen-store";
@@ -109,6 +112,51 @@ export function useRemoteControl() {
     if (!d?.isDesktop) return;
     d.remoteControlPushState(estadoRemoto(status, live, liveIndex));
   }, [status, live, liveIndex]);
+
+  /*
+    A barra de tempo do celular. O relato vem de onde vem o da barra da
+    cabine: do telão, que é o que a igreja vê, ou do vídeo da própria cabine
+    com o telão fechado. Sai no máximo um por segundo — o celular anda o
+    relógio sozinho entre um e outro — e na hora quando o vídeo pausa, toca
+    ou termina. Sem vídeo no ar, a barra some.
+  */
+  const srcDaTrilha = useLumenStore((s) => s.trilha?.mediaSrc ?? null);
+  const srcDoVideo =
+    srcDaTrilha ??
+    (status !== "idle" && live?.kind === "media" && live.mediaType === "video" ? (live.mediaSrc ?? null) : null);
+  useEffect(() => {
+    const d = window.lumenDesktop;
+    if (!d?.isDesktop || !d.remoteControlPushMediaTime) return;
+    // Trocou o vídeo (ou saiu): a barra do anterior não vale mais.
+    d.remoteControlPushMediaTime(null);
+    if (!srcDoVideo) return;
+    let ultimoEnvio = 0;
+    let ultimoEstado = "";
+    let ultimoDoTelao = 0;
+    const mandar = (r: TempoDaMidia) => {
+      // Vídeo sem duração conhecida (o .webm gravado pelo navegador, por
+      // exemplo) não ganha barra: ela mentiria sobre onde se pode ir.
+      if (!Number.isFinite(r.duracao) || r.duracao <= 0) return;
+      const agora = Date.now();
+      if (r.estado === ultimoEstado && agora - ultimoEnvio < 1000) return;
+      ultimoEnvio = agora;
+      ultimoEstado = r.estado;
+      d.remoteControlPushMediaTime?.({ estado: r.estado, tempo: r.tempo, duracao: r.duracao });
+    };
+    const semTelao = subscribeOps((msg) => {
+      if (msg.type !== "media-tempo") return;
+      ultimoDoTelao = Date.now();
+      mandar(msg);
+    });
+    const semLocal = assinarLocal((r) => {
+      if (Date.now() - ultimoDoTelao < 2000) return;
+      mandar(r);
+    });
+    return () => {
+      semTelao();
+      semLocal();
+    };
+  }, [srcDoVideo]);
 
   // O repertório que o celular enxerga para editar. Vai inteiro a cada
   // mudança: são títulos e letras, não mídia, e um hinário inteiro de texto
@@ -437,6 +485,10 @@ export function useRemoteControl() {
           mediaVolume: volumeDePorcento(evento.valor),
           mediaMudo: evento.valor === 0,
         });
+        return;
+      }
+      if (evento.tipo === "posicao") {
+        useLumenStore.getState().buscarMedia(evento.segundos);
         return;
       }
       if (evento.tipo === "projetar") {

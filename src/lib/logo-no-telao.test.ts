@@ -4,8 +4,12 @@ import {
   TAMANHOS_DA_LOGO,
   TAMANHO_PADRAO,
   alturaDaLogo,
+  corDoNomeValida,
   corpoDoNome,
   fundoDaLogoValido,
+  sombraDaLogo,
+  sombraDoNome,
+  sombraValida,
   tamanhoValido,
 } from "./logo-no-telao.ts";
 
@@ -62,5 +66,35 @@ describe("o fundo atrás da logo", () => {
     assert.equal(fundoDaLogoValido({ tipo: "imagem", url: "https://exemplo.com/foto.jpg", titulo: "x" }), null);
     // O tipo tem de bater com a pasta: imagem na pasta de vídeo é engano.
     assert.equal(fundoDaLogoValido({ tipo: "imagem", url: "lumen://app/__midia/video/a.mp4", titulo: "x" }), null);
+  });
+});
+
+describe("cor do nome e sombras da logo", () => {
+  it("a cor do nome só vale em #rrggbb; o resto é a cor do palco", () => {
+    assert.equal(corDoNomeValida("#F2C94C"), "#f2c94c");
+    assert.equal(corDoNomeValida("amarelo"), undefined);
+    assert.equal(corDoNomeValida("#fff"), undefined);
+    assert.equal(corDoNomeValida("url(javascript:1)"), undefined);
+    assert.equal(corDoNomeValida(undefined), undefined);
+  });
+
+  it("a força da sombra fica entre 0 e 100", () => {
+    assert.equal(sombraValida(55.4), 55);
+    assert.equal(sombraValida(-3), 0);
+    assert.equal(sombraValida(300), 100);
+    assert.equal(sombraValida("x"), 0);
+    assert.equal(sombraValida(undefined), 0);
+  });
+
+  it("sem força, nenhuma sombra; com força, mais escura e mais aberta", () => {
+    assert.equal(sombraDaLogo(0), undefined);
+    assert.equal(sombraDoNome(0), undefined);
+    const fraca = sombraDaLogo(20, "cqmin") ?? "";
+    const forte = sombraDaLogo(100, "cqmin") ?? "";
+    assert.match(fraca, /^drop-shadow\(0 [\d.]+cqmin [\d.]+cqmin rgba\(0, 0, 0, [\d.]+\)\)$/);
+    const opaca = (s: string) => Number(/rgba\(0, 0, 0, ([\d.]+)\)/.exec(s)?.[1]);
+    assert.ok(opaca(forte) > opaca(fraca));
+    // A do nome é em "em": acompanha o corpo do texto no telão e na prévia.
+    assert.match(sombraDoNome(60) ?? "", /^0 [\d.]+em [\d.]+em rgba\(0, 0, 0, [\d.]+\)$/);
   });
 });

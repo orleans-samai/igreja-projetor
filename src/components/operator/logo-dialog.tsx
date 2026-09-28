@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { ChurchLogo } from "@/components/logo";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { Input, Label } from "@/components/ui/input";
+import { Label } from "@/components/ui/input";
 import {
   LADO_MAX_LOGO,
   PESO_MAX_BYTES,
@@ -18,7 +18,9 @@ import { Segmented } from "@/components/ui/segmented";
 import {
   NOME_DO_TAMANHO,
   TAMANHOS_DA_LOGO,
+  corDoNomeValida,
   fundoDaLogoValido,
+  sombraValida,
   tamanhoValido,
   type FundoDaLogo,
 } from "@/lib/logo-no-telao";
@@ -258,6 +260,9 @@ export function IdentidadeDaIgreja() {
           tamanho={tamanhoValido(settings.logoTamanho)}
           comNome={!!settings.logoComNome}
           unidade="cqmin"
+          corDoNome={settings.logoNomeCor}
+          sombraLogo={settings.logoSombra}
+          sombraNome={settings.logoNomeSombra}
         />
       </div>
 
@@ -280,6 +285,8 @@ export function IdentidadeDaIgreja() {
           </label>
         </div>
       )}
+
+      <AparenciaDaLogo />
 
       <FundoAtrasDaLogo />
 
@@ -304,17 +311,102 @@ export function IdentidadeDaIgreja() {
 
       <div className="space-y-1.5">
         <Label htmlFor={idNome}>Nome da igreja</Label>
-        <Input
+        {/* Várias linhas: o Enter quebra o nome, e o telão mostra do mesmo
+            jeito — "Assembleia de Deus" em cima, o bairro embaixo. */}
+        <textarea
           id={idNome}
           value={settings.churchName}
           onChange={(e) => update({ churchName: e.target.value })}
           placeholder="Igreja Local"
+          rows={2}
+          className="field min-h-16 w-full resize-y py-2"
         />
         <p className="text-secondary text-muted">
-          Aparece na barra de cima da cabine e no telão quando não há imagem. Com a logo
-          escolhida, é ela que o telão mostra.
+          Enter quebra a linha. Aparece na barra de cima da cabine e no telão quando não há
+          imagem; com a logo escolhida, embaixo dela se marcar “Nome da igreja embaixo”.
         </p>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Cor do nome e sombras, a pedido da igreja: sobre um fundo claro o nome
+ * branco sumia, e sobre um vídeo movimentado a logo se perdia. A sombra vai
+ * de 0 (nenhuma) a 100; a prévia de cima mostra na hora.
+ */
+function AparenciaDaLogo() {
+  const settings = useLumenStore((s) => s.settings);
+  const update = useLumenStore((s) => s.updateSettings);
+  const idCor = useId();
+  const cor = corDoNomeValida(settings.logoNomeCor);
+  return (
+    <div className="space-y-2.5 rounded-lg p-3 shadow-[var(--shadow-border)]">
+      <div className="flex flex-wrap items-center gap-2">
+        <label htmlFor={idCor} className="text-secondary font-medium text-fg">
+          Cor do nome
+        </label>
+        <input
+          id={idCor}
+          type="color"
+          value={cor ?? COR_DO_PALCO}
+          onChange={(e) => update({ logoNomeCor: e.target.value })}
+          className="h-7 w-10 cursor-pointer rounded-md border border-border bg-transparent"
+        />
+        {cor && (
+          <Button size="sm" variant="ghost" onClick={() => update({ logoNomeCor: undefined })}>
+            Padrão
+          </Button>
+        )}
+      </div>
+      {settings.logoUrl && (
+        <ControleDeSombra
+          rotulo="Sombra da logo"
+          valor={sombraValida(settings.logoSombra)}
+          mudar={(v) => update({ logoSombra: v })}
+        />
+      )}
+      <ControleDeSombra
+        rotulo="Sombra do nome"
+        valor={sombraValida(settings.logoNomeSombra)}
+        mudar={(v) => update({ logoNomeSombra: v })}
+      />
+    </div>
+  );
+}
+
+/** A cor do texto do palco (--color-stage-fg): o que o nome usa sem escolha. */
+const COR_DO_PALCO = "#f4f1ea";
+
+function ControleDeSombra({
+  rotulo,
+  valor,
+  mudar,
+}: {
+  rotulo: string;
+  valor: number;
+  mudar: (v: number) => void;
+}) {
+  const id = useId();
+  return (
+    <div className="flex items-center gap-3">
+      <label htmlFor={id} className="w-32 shrink-0 text-secondary font-medium text-fg">
+        {rotulo}
+      </label>
+      <input
+        id={id}
+        type="range"
+        min={0}
+        max={100}
+        step={1}
+        value={valor}
+        aria-valuetext={valor === 0 ? "sem sombra" : `${valor}%`}
+        onChange={(e) => mudar(sombraValida(e.currentTarget.value))}
+        className="min-w-0 flex-1"
+      />
+      <span className="tnum w-12 shrink-0 text-right text-caption text-muted">
+        {valor === 0 ? "sem" : `${valor}%`}
+      </span>
     </div>
   );
 }

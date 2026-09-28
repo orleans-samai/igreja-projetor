@@ -15,7 +15,7 @@ import { Empty, Tally } from "@/components/ui/panel";
 import { Hint } from "@/components/ui/tooltip";
 import { ThemeThumb } from "@/components/operator/theme-rail";
 import { cn } from "@/lib/cn";
-import { enviadoPor, etapaDoItem, type Etapa } from "@/lib/culto-etapas";
+import { enviadoPor, etapaDoItem } from "@/lib/culto-etapas";
 import { nomeComDia } from "@/lib/dia-do-culto";
 import type { PlaylistItem } from "@/lib/types";
 import { useLumenStore } from "@/store/lumen-store";
@@ -321,7 +321,10 @@ export function PlaylistPanel({ showThemes = false }: { showThemes?: boolean }) 
                   <span className="truncate text-body text-fg">{item.title}</span>
                 </span>
                 <span className="mt-0.5 flex min-w-0 items-center gap-1.5">
-                  {(etapa !== "pendente" || !enviadoPor(item.enviadoPor)) && <EtapaTag etapa={etapa} />}
+                  {/* Só o "No ar" ganha selo. "Próximo" e "Pendente" saíram a
+                      pedido da igreja: o texto pulava de item em item a cada
+                      avanço e mais distraía do que ajudava. */}
+                  {onAir && <Tally state="live" label="No ar" />}
                   {enviadoPor(item.enviadoPor) && (
                     <span className="truncate text-caption font-semibold text-enviado">
                       {enviadoPor(item.enviadoPor)}
@@ -372,18 +375,6 @@ export function PlaylistPanel({ showThemes = false }: { showThemes?: boolean }) 
       )}
     </div>
   );
-}
-
-function EtapaTag({ etapa }: { etapa: Etapa }) {
-  if (etapa === "no-ar") return <Tally state="live" label="No ar" />;
-  if (etapa === "proximo") {
-    return (
-      <span className="rounded-sm bg-accent/20 px-1.5 text-caption font-medium text-accent">
-        Próximo
-      </span>
-    );
-  }
-  return <span className="text-caption text-subtle">Pendente</span>;
 }
 
 function labelType(t: string) {

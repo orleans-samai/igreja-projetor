@@ -115,6 +115,20 @@ const ACOES_VALIDAS = new Set([
 /** Tocar, pausar e sair do vídeo também moram no mini-player da aba Mídia. */
 const ACOES_DA_MIDIA = new Set(["tocar", "pausar", "parar-midia"]);
 
+/** O teto de uma posição ou duração de vídeo: um dia. */
+const MAX_SEGUNDOS = 24 * 60 * 60;
+
+/** O tempo do vídeo que vem da cabine, limpo — ou null. */
+function tempoDaMidiaValido(bruto) {
+  if (!bruto || typeof bruto !== "object") return null;
+  const estado = ["tocando", "pausado", "fim"].includes(bruto.estado) ? bruto.estado : null;
+  const numero = (v) => (typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= MAX_SEGUNDOS ? v : null);
+  const tempo = numero(bruto.tempo);
+  const duracao = numero(bruto.duracao);
+  if (!estado || tempo === null || duracao === null) return null;
+  return { estado, tempo, duracao };
+}
+
 /**
  * Senha de ninguém, para conferir quando o usuário não existe: responder
  * mais depressa a um usuário inexistente contaria quais usuários existem.
@@ -208,6 +222,7 @@ class RemoteControl {
     /** res do SSE → token, para saber de quem é cada conexão aberta. */
     this.assinantes = new Map();
     this.ultimoEstado = null;
+    this.ultimoTempo = null;
     this.repertorio = [];
     /** A cara dos temas, para a grade de slides do celular ter fundo. */
     this.temas = [];
@@ -461,6 +476,7 @@ class RemoteControl {
     // sem se identificar de novo. É o que "desligar e ligar" tem que custar.
     this._salvar();
     this.ultimoEstado = null;
+    this.ultimoTempo = null;
     this.chat = [];
     this.server.close();
     // O SSE é uma conexão que fica aberta de propósito. `close()` só para de
@@ -538,6 +554,18 @@ class RemoteControl {
     this.ultimoEstado = payload;
     // O que está no ar é de quem mexe no culto: quem só tem o chat vê só o chat.
     this._transmitir({ tipo: "estado", estado: payload }, (d) => alemDoChat(d.permissoes));
+  }
+
+  /**
+   * Onde está o vídeo do telão, para a barra de tempo do celular.
+   *
+   * Evento próprio e leve: mandar o estado inteiro a cada segundo pesaria
+   * no celular velho. Vai só para quem pode mexer na mídia, que é quem tem
+   * a barra; `null` é "nenhum vídeo no ar".
+   */
+  atualizarTempo(payload) {
+    this.ultimoTempo = tempoDaMidiaValido(payload);
+    this._transmitir({ tipo: "tempo", tempo: this.ultimoTempo }, (d) => podeAlguma(d.permissoes, ["midia", "controle"]));
   }
 
   /** A lista de músicas que o celular pode abrir para editar. */
@@ -1019,6 +1047,7 @@ class RemoteControl {
       if (m === "POST" && p === "/culto/projetar") return await this._itemDoCulto(req, res, "projetar");
       if (m === "POST" && p === "/projetar") return await this._projetar(req, res);
       if (m === "POST" && p === "/volume") return await this._volume(req, res);
+      if (m === "POST" && p === "/posicao") return await this._posicao(req, res);
       if (m === "POST" && p === "/buscar") return await this._buscar(req, res);
       if (m === "POST" && p === "/letra") return await this._letra(req, res);
     } catch {
@@ -1075,6 +1104,7 @@ class RemoteControl {
       `data: ${JSON.stringify({
         tipo: "inicio",
         estado: alemDoChat(disp.permissoes) ? this.ultimoEstado : null,
+        tempo: podeAlguma(disp.permissoes, ["midia", "controle"]) ? this.ultimoTempo : null,
         permissoes: disp.permissoes,
         nome: disp.nome,
         // O endereço que não vence, para o aparelho poder guardar. Vai como
@@ -1422,6 +1452,33 @@ class RemoteControl {
       return;
     }
     this.onEvento?.({ tipo: "volume", valor: Math.round(valor), de: disp.nome });
+    this._json(res, 200, { ok: true });
+  }
+
+  /**
+   * Levar o vídeo do telão a um ponto, em segundos: a barra de tempo do
+   * celular e o voltar/avançar 10 s. O mesmo direito de tocar e pausar.
+   */
+  async _posicao(req, res) {
+    let corpo;
+    try {
+      corpo = JSON.parse(await this._lerCorpo(req));
+    } catch {
+      corpo = {};
+    }
+    const disp = this._sessao(corpo.token);
+    if (!disp) {
+      this._json(res, 401, { ok: false, erro: "Sessão expirada. Entre novamente." });
+      return;
+    }
+    if (!podeAlguma(disp.permissoes, ["midia", "controle"])) return this._semPermissao(res, "midia");
+    const segundos = typeof corpo.segundos === "number" ? corpo.segundos : NaN;
+    // Vídeo de culto não tem um dia inteiro: número fora disso é engano.
+    if (!Number.isFinite(segundos) || segundos < 0 || segundos > MAX_SEGUNDOS) {
+      this._json(res, 400, { ok: false, erro: "Posição inválida." });
+      return;
+    }
+    this.onEvento?.({ tipo: "posicao", segundos, de: disp.nome });
     this._json(res, 200, { ok: true });
   }
 

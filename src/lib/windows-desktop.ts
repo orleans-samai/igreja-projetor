@@ -382,6 +382,8 @@ declare global {
       remoteControlDigitando: (para: import("./remote-control").ParaChat) => void;
       onRemoteEvent: (cb: (evento: import("./remote-control").EventoRemoto) => void) => () => void;
       remoteControlPushState: (payload: import("./remote-control").RemoteStatePayload) => void;
+      /** Onde está o vídeo do telão, para a barra de tempo do celular. Ausente em versões antigas. */
+      remoteControlPushMediaTime?: (payload: import("./remote-control").TempoDaMidia | null) => void;
       onRemoteCommand: (cb: (acao: string) => void) => () => void;
       updateCheck: () => Promise<{ ok: boolean; erro?: string }>;
       updateDownload: () => Promise<import("./updates").EstadoAtualizacao>;

@@ -118,6 +118,13 @@ export interface MensagemChat {
   segundos?: number;
 }
 
+/** Onde está o vídeo do telão, para a barra de tempo do celular. */
+export interface TempoDaMidia {
+  estado: "tocando" | "pausado" | "fim";
+  tempo: number;
+  duracao: number;
+}
+
 /** O que chega do celular pelo processo principal, fora o transporte. */
 export type EventoRemoto =
   | { tipo: "dispositivos"; novo?: string }
@@ -156,6 +163,9 @@ export type EventoRemoto =
   // Volume do que toca no telão, pedido pelo celular. Não cabe na lista de
   // ações porque carrega um número, não é um botão fixo.
   | { tipo: "volume"; valor: number; de: string }
+  // A barra de tempo e o voltar/avançar 10 s do celular: levar o vídeo do
+  // telão a um ponto, em segundos.
+  | { tipo: "posicao"; segundos: number; de: string }
   // Aviso escrito na página do dirigente. Vira texto na biblioteca da
   // cabine, não recado no chat: é para ser projetado, não lido pela equipe.
   | { tipo: "aviso"; titulo: string; texto: string; de: string }

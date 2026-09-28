@@ -16,6 +16,8 @@ contextBridge.exposeInMainWorld("lumenDesktop", {
   remoteControlStatus: () => ipcRenderer.invoke("lumen:remote-control-status"),
   remoteControlDisconnectAll: () => ipcRenderer.invoke("lumen:remote-control-disconnect-all"),
   remoteControlPushState: (payload) => ipcRenderer.send("lumen:remote-control-state", payload),
+  /** Onde está o vídeo do telão, para a barra de tempo do celular. */
+  remoteControlPushMediaTime: (payload) => ipcRenderer.send("lumen:remote-control-media-time", payload),
   onRemoteCommand: (cb) => {
     const listener = (_event, acao) => cb(acao);
     ipcRenderer.on("lumen:remote-command", listener);

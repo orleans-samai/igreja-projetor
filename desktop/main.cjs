@@ -570,6 +570,7 @@ handle("lumen:remote-control-stop", () => remoteControl.desligar());
 handle("lumen:remote-control-status", () => remoteControl.status());
 handle("lumen:remote-control-disconnect-all", () => remoteControl.desconectarTodos());
 onEvent("lumen:remote-control-state", (payload) => remoteControl.atualizarEstado(payload));
+onEvent("lumen:remote-control-media-time", (payload) => remoteControl.atualizarTempo(payload));
 onEvent("lumen:remote-control-repertoire", (lista) => remoteControl.atualizarRepertorio(lista));
 onEvent("lumen:remote-control-themes", (lista) => remoteControl.atualizarTemas(lista));
 onEvent("lumen:remote-control-media", (lista) => remoteControl.atualizarMidia(lista));

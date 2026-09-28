@@ -542,12 +542,13 @@ test("cada parte abre só o que é dela; o acesso completo abre tudo", async () 
       proximo: (await postar(ctx, "/comando", { token, acao: "proximo" })).status,
       pausar: (await postar(ctx, "/comando", { token, acao: "pausar" })).status,
       volume: (await postar(ctx, "/volume", { token, valor: 50 })).status,
+      posicao: (await postar(ctx, "/posicao", { token, segundos: 12 })).status,
     });
-    assert.deepEqual(await pedidos(await comPermissao(ctx, [])), { letras: 403, midia: 403, culto: 403, proximo: 403, pausar: 403, volume: 403 });
-    assert.deepEqual(await pedidos(await comPermissao(ctx, ["midia"])), { letras: 403, midia: 200, culto: 403, proximo: 403, pausar: 200, volume: 200 });
-    assert.deepEqual(await pedidos(await comPermissao(ctx, ["letras", "culto"])), { letras: 200, midia: 403, culto: 200, proximo: 403, pausar: 403, volume: 403 });
-    assert.deepEqual(await pedidos(await comPermissao(ctx, ["controle"])), { letras: 403, midia: 403, culto: 403, proximo: 200, pausar: 200, volume: 200 });
-    assert.deepEqual(await pedidos(await comPermissao(ctx, ["completo"])), { letras: 200, midia: 200, culto: 200, proximo: 200, pausar: 200, volume: 200 });
+    assert.deepEqual(await pedidos(await comPermissao(ctx, [])), { letras: 403, midia: 403, culto: 403, proximo: 403, pausar: 403, volume: 403, posicao: 403 });
+    assert.deepEqual(await pedidos(await comPermissao(ctx, ["midia"])), { letras: 403, midia: 200, culto: 403, proximo: 403, pausar: 200, volume: 200, posicao: 200 });
+    assert.deepEqual(await pedidos(await comPermissao(ctx, ["letras", "culto"])), { letras: 200, midia: 403, culto: 200, proximo: 403, pausar: 403, volume: 403, posicao: 403 });
+    assert.deepEqual(await pedidos(await comPermissao(ctx, ["controle"])), { letras: 403, midia: 403, culto: 403, proximo: 200, pausar: 200, volume: 200, posicao: 200 });
+    assert.deepEqual(await pedidos(await comPermissao(ctx, ["completo"])), { letras: 200, midia: 200, culto: 200, proximo: 200, pausar: 200, volume: 200, posicao: 200 });
     // A recusa diz qual parte falta.
     const semLetras = await (await fetch(`${ctx.base}/repertorio?token=${await comPermissao(ctx, ["midia"])}`)).json();
     assert.match(semLetras.erro, /letras/);
@@ -1019,6 +1020,55 @@ test("o volume do telão vem do celular, e só de quem controla", async () => {
       });
       assert.equal(r.status, 400, `volume ${valor} devia ser recusado`);
     }
+  } finally {
+    await derrubar(ctx);
+  }
+});
+
+test("a posição do vídeo vem do celular, com número de verdade", async () => {
+  const ctx = await subir();
+  const vistos = [];
+  ctx.rc.onEvento = (e) => vistos.push(e);
+  try {
+    const token = await comPermissao(ctx, ["midia"]);
+    assert.equal((await postar(ctx, "/posicao", { token, segundos: 83.5 })).status, 200);
+    assert.deepEqual(
+      vistos.filter((e) => e.tipo === "posicao").map((e) => e.segundos),
+      [83.5],
+    );
+    for (const segundos of [-1, 90000, "10", null, Number.NaN]) {
+      const r = await postar(ctx, "/posicao", { token, segundos });
+      assert.equal(r.status, 400, `posição ${segundos} devia ser recusada`);
+    }
+    assert.equal((await postar(ctx, "/posicao", { token: "nada", segundos: 1 })).status, 401);
+  } finally {
+    await derrubar(ctx);
+  }
+});
+
+test("o tempo do vídeo vai pelo fluxo só para quem mexe na mídia, e limpo", async () => {
+  const ctx = await subir();
+  try {
+    const soCulto = await fluxo(ctx, await comPermissao(ctx, ["culto"]));
+    const comMidia = await fluxo(ctx, await comPermissao(ctx, ["midia"]));
+    ctx.rc.atualizarTempo({ estado: "tocando", tempo: 42, duracao: 250, lixo: "x" });
+    assert.ok(
+      await comMidia.esperar(
+        (e) => e.tipo === "tempo" && JSON.stringify(e.tempo) === JSON.stringify({ estado: "tocando", tempo: 42, duracao: 250 }),
+      ),
+    );
+    ctx.rc.atualizarTempo({ estado: "voando", tempo: 1, duracao: 2 });
+    assert.ok(await comMidia.esperar((e) => e.tipo === "tempo" && e.tempo === null));
+    ctx.rc.atualizarEstado({ titulo: "marcador", slideAtual: 1, slideTotal: 1, noAr: true, preto: false });
+    assert.ok(await soCulto.esperar((e) => e.tipo === "estado"));
+    assert.ok(!soCulto.eventos.some((e) => e.tipo === "tempo"), "quem não mexe na mídia recebeu o tempo");
+    // Quem conecta depois recebe o último tempo no retrato do começo.
+    ctx.rc.atualizarTempo({ estado: "pausado", tempo: 10, duracao: 20 });
+    const depois = await fluxo(ctx, await comPermissao(ctx, ["controle"]));
+    assert.ok(await depois.esperar((e) => e.tipo === "inicio" && e.tempo?.tempo === 10));
+    soCulto.fechar();
+    comMidia.fechar();
+    depois.fechar();
   } finally {
     await derrubar(ctx);
   }

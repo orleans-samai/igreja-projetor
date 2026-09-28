@@ -120,6 +120,9 @@ npm run test:desktop:smoke
   inteira e espremeu o nome até uma palavra por linha). O smoke confere as
   abas em 360 e 430 px (`conferirLayoutDoCelular`): lista nova no celular
   entra nessa trava.
+  O ícone do Lúmen nas duas páginas é o do aplicativo no PC
+  (`public/favicon.svg`, de onde sai o .ico); `desktop-marca.test.mjs`
+  confere.
 - **Entrar pelo celular:** acesso rápido (só o nome, entra no chat) ou
   usuário e senha (conta criada em Permissões, já com permissão e equipe).
   A senha da conta só existe cozida (scrypt) em `remote.json`; o `status`
@@ -133,6 +136,11 @@ npm run test:desktop:smoke
 - O servidor do celular (`desktop/remote-control.cjs`) confere a permissão
   em toda rota e avisa mudanças pelo fluxo SSE sem carregar dados que
   exijam permissão (o que está no ar só vai para quem tem mais que o chat).
+- **Barra de tempo do celular:** a cabine repassa o relato do telão
+  (`media-tempo`) ao servidor, no máximo um por segundo e só com duração
+  conhecida (evento `tempo`, só para quem mexe na mídia); o celular anda o
+  relógio sozinho entre um relato e outro e manda `/posicao` para ir a um
+  ponto.
 
 ## Armadilhas do Windows
 

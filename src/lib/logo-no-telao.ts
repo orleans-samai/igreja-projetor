@@ -59,6 +59,47 @@ export function corpoDoNome(tamanho: unknown, unidade: UnidadeDaLogo = "vmin"): 
   return `${(FRACAO[tamanhoValido(tamanho)] * 100 * 0.2).toFixed(1)}${unidade}`;
 }
 
+/*
+  Cor do nome e sombras da logo e do nome, a pedido da igreja: sobre um fundo
+  claro, o nome branco sumia; sobre um vídeo movimentado, a logo se perdia.
+  A sombra vai de 0 (nenhuma) a 100.
+*/
+
+/** A cor do nome da igreja, em #rrggbb; qualquer outra coisa é "a do palco". */
+export function corDoNomeValida(bruto: unknown): string | undefined {
+  return typeof bruto === "string" && /^#[0-9a-f]{6}$/i.test(bruto) ? bruto.toLowerCase() : undefined;
+}
+
+/** A força da sombra, inteira de 0 a 100. Ausente ou estragada é 0. */
+export function sombraValida(bruto: unknown): number {
+  const n = Number(bruto);
+  return Number.isFinite(n) ? Math.round(Math.min(100, Math.max(0, n))) : 0;
+}
+
+/**
+ * O filtro de sombra da logo, na unidade da tela (ou da prévia), ou nada.
+ * `drop-shadow` segue o desenho da imagem: um brasão de fundo transparente
+ * ganha sombra no contorno, não num retângulo em volta.
+ */
+export function sombraDaLogo(forca: unknown, unidade: UnidadeDaLogo = "vmin"): string | undefined {
+  const f = sombraValida(forca) / 100;
+  if (f === 0) return undefined;
+  const desce = (0.3 + 0.9 * f).toFixed(2);
+  const espalha = (0.6 + 2.4 * f).toFixed(2);
+  const opaca = (0.35 + 0.55 * f).toFixed(2);
+  return `drop-shadow(0 ${desce}${unidade} ${espalha}${unidade} rgba(0, 0, 0, ${opaca}))`;
+}
+
+/** A sombra do nome, em `em`: acompanha o corpo do texto no telão e na prévia. */
+export function sombraDoNome(forca: unknown): string | undefined {
+  const f = sombraValida(forca) / 100;
+  if (f === 0) return undefined;
+  const desce = (0.02 + 0.08 * f).toFixed(3);
+  const espalha = (0.06 + 0.3 * f).toFixed(3);
+  const opaca = (0.4 + 0.55 * f).toFixed(2);
+  return `0 ${desce}em ${espalha}em rgba(0, 0, 0, ${opaca})`;
+}
+
 /** O que fica atrás da logo no telão, escolhido da pasta de mídia. */
 export interface FundoDaLogo {
   tipo: "video" | "imagem";

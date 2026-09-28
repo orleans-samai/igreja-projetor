@@ -1216,6 +1216,73 @@ try {
     true,
     "a cabine tocou o som do vídeo junto com o telão",
   );
+  // ---- Controle de reprodução no celular: barra de tempo e 10 s ----
+  // Nas duas telas: Controle e o mini-player da Mídia. O tempo vem do relato
+  // que a cabine repassa (aqui, do vídeo da própria cabine: o telão do
+  // teste ainda não abriu).
+  await celular.click("#abaControle");
+  // O ícone do celular é o do aplicativo no PC (public/favicon.svg).
+  assert.equal(await celular.locator('.marca svg rect[fill="#e8eaef"]').count(), 1, "o celular não mostra o ícone do app");
+  const barraDoCelular = celular.locator("#painelControle .posicao-midia");
+  await barraDoCelular.waitFor({ state: "visible", timeout: 15000 });
+  const tempoNoTelao = () =>
+    page.evaluate(() => JSON.parse(localStorage.getItem("lumen-live-frame") ?? "null")?.deck?.mediaTempo ?? 0);
+  // O que o celular pede e o que ouve de volta: se a barra não mover o
+  // vídeo, o recado diz em que ponto o pedido parou.
+  const pedidosDePosicao = [];
+  celular.on("response", async (resposta) => {
+    if (!resposta.url().endsWith("/posicao")) return;
+    pedidosDePosicao.push({ corpo: resposta.request().postData(), status: resposta.status(), volta: await resposta.text().catch(() => "") });
+  });
+  const semPosicao = async (erro) => {
+    const celularAgora = await celular.evaluate(() => ({
+      valor: document.querySelector("#painelControle .posicao-midia")?.value,
+      corrido: document.querySelector("#painelControle .tempo-corrido")?.textContent,
+      restante: document.querySelector("#painelControle .tempo-restante")?.textContent,
+      desligada: document.querySelector("#painelControle .posicao-midia")?.disabled,
+    }));
+    const quadro = await page.evaluate(() => JSON.parse(localStorage.getItem("lumen-live-frame") ?? "null")?.deck);
+    throw new Error(
+      `a barra do celular não levou o vídeo: ${erro.message}
+pedidos: ${JSON.stringify(pedidosDePosicao)}
+celular: ${JSON.stringify(celularAgora)}
+quadro: ${JSON.stringify({ tipo: quadro?.mediaType, tempo: quadro?.mediaTempo, busca: quadro?.mediaBusca })}`,
+    );
+  };
+  // A barra é a duração inteira: o meio leva a um ponto, o fim ao dobro dele.
+  // (O vídeo do teste dura menos de um segundo — o relógio mostraria 0:00.)
+  await barraDoCelular.fill("500");
+  await page
+    .waitForFunction(
+      () => (JSON.parse(localStorage.getItem("lumen-live-frame") ?? "null")?.deck?.mediaTempo ?? 0) > 0,
+      null,
+      { timeout: 10000 },
+    )
+    .catch(semPosicao);
+  const meioDoVideo = await tempoNoTelao();
+  await barraDoCelular.fill("1000");
+  await page.waitForFunction(
+    (meio) => {
+      const t = JSON.parse(localStorage.getItem("lumen-live-frame") ?? "null")?.deck?.mediaTempo ?? 0;
+      return Math.abs(t - 2 * meio) <= 0.01 + 0.02 * meio;
+    },
+    meioDoVideo,
+    { timeout: 10000 },
+  );
+  // Voltar 10 s recua uns 10 s a partir de onde está — ou para no começo.
+  const antesDoPulo = await tempoNoTelao();
+  await celular.locator('#painelControle .pular-midia[data-segundos="-10"]').click();
+  await page.waitForFunction(
+    (antes) => {
+      const t = JSON.parse(localStorage.getItem("lumen-live-frame") ?? "null")?.deck?.mediaTempo ?? -99;
+      return t >= 0 && t !== antes && (t === 0 || t <= antes - 8);
+    },
+    antesDoPulo,
+    { timeout: 10000 },
+  );
+  assert.equal(await celular.locator("#midiaPlayer .posicao-midia").count(), 1, "o mini-player da Mídia ficou sem a barra");
+  assert.equal(await celular.locator("#midiaPlayer .pular-midia").count(), 2);
+
   // O volume do telão também na cabine, embaixo do tempo, e o mudo ao lado.
   const quadroDoTelao = () => page.evaluate(() => JSON.parse(localStorage.getItem("lumen-live-frame") ?? "null"));
   const volumeDaCabine = page.locator("input[data-volume-do-telao]:visible").first();
@@ -1593,6 +1660,12 @@ try {
     null,
     { timeout: 10000 },
   );
+  // "Próximo" e "Pendente" saíram dos itens a pedido da igreja: o texto
+  // pulava de item em item a cada avanço. Fica só o "No ar".
+  const selosNoCulto = await page.$$eval("[data-soltar-culto] > li", (lis) =>
+    lis.map((li) => li.textContent || "").filter((t) => /Próximo|Pendente/.test(t)),
+  );
+  assert.deepEqual(selosNoCulto, [], `sobrou selo na programação: ${selosNoCulto.join(" | ")}`);
   // E abre: dois cliques no item põem a imagem no telão.
   await page
     .locator('button[title^="Um clique seleciona"]:visible', { hasText: "fundo-do-dirigente" })
@@ -2344,6 +2417,32 @@ try {
     true,
     "voltou o quadro escurecido em volta da logo",
   );
+  // O nome da igreja em duas linhas (o Enter desce o texto), na cor e com a
+  // sombra escolhidas na cabine — no telão de verdade.
+  await page.getByRole("button", { name: "Logo e nome da igreja" }).click();
+  const dialogoDoNome = page.getByRole("dialog", { name: "Logo e nome da igreja" });
+  await dialogoDoNome.waitFor({ state: "visible", timeout: 10000 });
+  await dialogoDoNome.getByLabel("Nome da igreja").fill("Assembleia de Deus\nVila Nova");
+  await dialogoDoNome.getByLabel("Cor do nome").fill("#f2c94c");
+  await dialogoDoNome.getByLabel("Sombra do nome").fill("60");
+  await page.keyboard.press("Escape");
+  await dialogoDoNome.waitFor({ state: "hidden", timeout: 10000 });
+  const nomeNoTelao = await (
+    await projector.waitForFunction(
+      () => {
+        const p = [...document.querySelectorAll("p")].find((el) => (el.textContent || "").includes("Vila Nova"));
+        if (!p) return null;
+        const estilo = getComputedStyle(p);
+        return { texto: p.textContent, quebra: estilo.whiteSpace, cor: estilo.color, sombra: estilo.textShadow };
+      },
+      null,
+      { timeout: 10000 },
+    )
+  ).jsonValue();
+  assert.equal(nomeNoTelao.texto, "Assembleia de Deus\nVila Nova");
+  assert.equal(nomeNoTelao.quebra, "pre-line", "o Enter do nome não virou linha nova no telão");
+  assert.equal(nomeNoTelao.cor, "rgb(242, 201, 76)", "a cor do nome não chegou ao telão");
+  assert.notEqual(nomeNoTelao.sombra, "none", "a sombra do nome não chegou ao telão");
   // O aviso no telão de verdade: 96 px no telão de 1920 e piscando.
   await page.locator('input[aria-label="Aviso no rodapé do telão"]:visible').first().fill("Vamos orar");
   await page.locator('button[aria-label="Mostrar aviso por 10 segundos"]:visible').first().click();
@@ -2602,7 +2701,7 @@ try {
   assert.deepEqual(errors, []);
   const disk = JSON.parse(await readFile(path.join(profile, "data", "library.json"), "utf8"));
   assert.ok(disk.values["lumen-v2"]);
-  console.log(`PASS: offline, fonts, Bible (one click on a verse projects it, books, chapters and verses always fit the panel with no scrollbar and nothing cut, even Luke 1's 80 verses, − and + setting the largest size, gold buttons in and out of the Bible screen, five versions plus importing a licensed one, its three parts rearranged by dragging and swapping sides, New-Testament-only notice, omitted verse lands on the next), restart persistence, projector, media ranges, preflight, remote control (LAN, entrada por nome, nome fixo na rede, one click from the menu bar beside Permissões, accounts with username and password created in Permissões that sign in already holding their permission while the quick name-only access stays chat-only, permissions by part (only chat, culto, mídia, letras, controle or full access) with the phone showing only the tabs each person can use and nothing but the chat for chat-only, a chat-only phone given a part going straight to it, the phone's header, on-air bar and tabs fixed while only the panel scrolls), update check, review before apply, 1366×768 at 100/125/150% and 800×600, no scroll and exactly one layout at ten sizes from 800×600 to 2560×1440, including every pixel around the 1280 cutover and the chat stays on screen, church logo and name reachable from the menu bar, a folder video behind the logo on the real screen with no faded box around it and the logo opening with Lúmen, a big blinking notice by default with its size chosen before sending, art studio makes a batch of 8 distinct Konva designs from just a title and a Bible reference, opens one in the editor, saves it and exports PNG and JPEG at exactly 1920×1080 (Full HD is the default), VFX has three modes and a dynamic video becomes a real file in the Vídeos tab, a theme column of images, videos and dynamics where one click puts a dynamic behind the lyrics, a gold Criar tema that sends the new theme straight to the screen, no AI, no YouTube and no Auto-Slide anywhere in the app (and what Auto-Slide downloaded is deleted on start), dirigente page signs in, sends a file that lands in the library and opens from the programme marked in yellow with who sent it, chats and files a notice, and its PowerPoint and PDF become slides in the service programme, a real .ppsx drawn by PowerPoint (or LibreOffice) into Full HD slides with its own background colour and each slide's picture in the strip below, the service name in yellow with its day after it (Culto Domingo, dia 27), any file accepted in Mídia (a .pptx becomes slides in the programme and anything else is kept in Mídia › Arquivos, never opened), songs exported from Holyrics in batch (.mufl, also .json and .txt) imported from the Arquivo menu while the encrypted single-song .muf explains how to export, a Slides menu between Artes and Mais choosing who opens presentations (Office, LibreOffice or Lúmen itself, with the missing program marked and the others as backup), and a .pptx that neither opens drawn by Lúmen itself into Full HD with its background colour and the white title inside its own box, video as a theme background, find a song by a lyric excerpt, right-click on lyrics edits or removes, double-click to project, fixed text only in the footer and the verse always centred vertically, phone has one play/pause button, the screen volume and a Sair do vídeo that takes media off the screen but never a lyric, sound from the screen only (the cabine preview stays muted), a screen volume slider and mute under the playback time in the cabine that also drive the soundtrack, Tirar vídeo puts the church logo on screen and keeps the sound playing under a lyric and Mostrar vídeo brings the picture back, tapping a media item shows its controls right there in a mini-player, a chat keyboard with a wide text field, a small send arrow and one attach button for photo or voice, voice messages converted to WAV on the phone and arriving with their length, the team chat in bubbles with who is online and who each message is for on the phone and the dirigente page, kept per service in a searchable, exportable history in the cabine, every new chat message pops up in gold on the phone, the cabine and the dirigente page (never for its own author), sees the media folder, gets a file imported in the cabine or copied in by Explorer within 5 s, a library row dragged into the service programme, a right-click menu that deletes media, the lyrics strip reopening by itself when a lyric goes to the screen and scrolling itself to keep the yellow slide and the next two in view, and a 2 blocos option where the lyrics fill the top block with whole cards and continue in the bottom one, which scrolls when even it can't hold the rest, a Culto tab that mirrors the service programme, projects with a tap on the item and deletes (two taps) from it, a + beside songs, media and web results that puts them in the service programme, the phone's Letras, Mídia and Culto lists fitting the screen at 360 and 430 px with the name never squeezed by the + and the singer under the song name, lyrics search results that appear while typing and mark songs already in the library, projects from it, opens a song as a grid of slides and puts one on the screen, and searches lyrics through the cabine. Evidence: ${evidence}`);
+  console.log(`PASS: offline, fonts, Bible (one click on a verse projects it, books, chapters and verses always fit the panel with no scrollbar and nothing cut, even Luke 1's 80 verses, − and + setting the largest size, gold buttons in and out of the Bible screen, five versions plus importing a licensed one, its three parts rearranged by dragging and swapping sides, New-Testament-only notice, omitted verse lands on the next), restart persistence, projector, media ranges, preflight, remote control (LAN, entrada por nome, nome fixo na rede, one click from the menu bar beside Permissões, accounts with username and password created in Permissões that sign in already holding their permission while the quick name-only access stays chat-only, permissions by part (only chat, culto, mídia, letras, controle or full access) with the phone showing only the tabs each person can use and nothing but the chat for chat-only, a chat-only phone given a part going straight to it, the phone's header, on-air bar and tabs fixed while only the panel scrolls), update check, review before apply, 1366×768 at 100/125/150% and 800×600, no scroll and exactly one layout at ten sizes from 800×600 to 2560×1440, including every pixel around the 1280 cutover and the chat stays on screen, church logo and name reachable from the menu bar, a folder video behind the logo on the real screen with no faded box around it and the logo opening with Lúmen, a big blinking notice by default with its size chosen before sending, art studio makes a batch of 8 distinct Konva designs from just a title and a Bible reference, opens one in the editor, saves it and exports PNG and JPEG at exactly 1920×1080 (Full HD is the default), VFX has three modes and a dynamic video becomes a real file in the Vídeos tab, a theme column of images, videos and dynamics where one click puts a dynamic behind the lyrics, a gold Criar tema that sends the new theme straight to the screen, no AI, no YouTube and no Auto-Slide anywhere in the app (and what Auto-Slide downloaded is deleted on start), dirigente page signs in, sends a file that lands in the library and opens from the programme marked in yellow with who sent it, chats and files a notice, and its PowerPoint and PDF become slides in the service programme, a real .ppsx drawn by PowerPoint (or LibreOffice) into Full HD slides with its own background colour and each slide's picture in the strip below, the service name in yellow with its day after it (Culto Domingo, dia 27) and no Próximo or Pendente tags in the programme, the church name on two lines with its own colour and shadow on the real screen, a playback bar with 10 s back and forward on the phone's Controle tab and media mini-player, the phone showing the same icon as the PC app, any file accepted in Mídia (a .pptx becomes slides in the programme and anything else is kept in Mídia › Arquivos, never opened), songs exported from Holyrics in batch (.mufl, also .json and .txt) imported from the Arquivo menu while the encrypted single-song .muf explains how to export, a Slides menu between Artes and Mais choosing who opens presentations (Office, LibreOffice or Lúmen itself, with the missing program marked and the others as backup), and a .pptx that neither opens drawn by Lúmen itself into Full HD with its background colour and the white title inside its own box, video as a theme background, find a song by a lyric excerpt, right-click on lyrics edits or removes, double-click to project, fixed text only in the footer and the verse always centred vertically, phone has one play/pause button, the screen volume and a Sair do vídeo that takes media off the screen but never a lyric, sound from the screen only (the cabine preview stays muted), a screen volume slider and mute under the playback time in the cabine that also drive the soundtrack, Tirar vídeo puts the church logo on screen and keeps the sound playing under a lyric and Mostrar vídeo brings the picture back, tapping a media item shows its controls right there in a mini-player, a chat keyboard with a wide text field, a small send arrow and one attach button for photo or voice, voice messages converted to WAV on the phone and arriving with their length, the team chat in bubbles with who is online and who each message is for on the phone and the dirigente page, kept per service in a searchable, exportable history in the cabine, every new chat message pops up in gold on the phone, the cabine and the dirigente page (never for its own author), sees the media folder, gets a file imported in the cabine or copied in by Explorer within 5 s, a library row dragged into the service programme, a right-click menu that deletes media, the lyrics strip reopening by itself when a lyric goes to the screen and scrolling itself to keep the yellow slide and the next two in view, and a 2 blocos option where the lyrics fill the top block with whole cards and continue in the bottom one, which scrolls when even it can't hold the rest, a Culto tab that mirrors the service programme, projects with a tap on the item and deletes (two taps) from it, a + beside songs, media and web results that puts them in the service programme, the phone's Letras, Mídia and Culto lists fitting the screen at 360 and 430 px with the name never squeezed by the + and the singer under the song name, lyrics search results that appear while typing and mark songs already in the library, projects from it, opens a song as a grid of slides and puts one on the screen, and searches lyrics through the cabine. Evidence: ${evidence}`);
 } finally {
   if (app) {
     // O fim do teste deixa uma música no ar, e a cabine (de propósito)
