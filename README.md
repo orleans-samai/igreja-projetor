@@ -3,11 +3,20 @@
 </p>
 
 <p align="center">
-  <a href="#no-culto"><b>No culto</b></a> ·
-  <a href="#instalar-no-pc-da-igreja">Instalar</a> ·
-  <a href="#atalhos-da-cabine">Atalhos</a> ·
-  <a href="#temas">Temas</a> ·
-  <a href="#rodar-o-código">Código</a>
+  <a href="https://github.com/orleans-samai/igreja-projetor/releases"><img src="https://img.shields.io/github/v/release/orleans-samai/igreja-projetor?style=for-the-badge&label=Baixar&color=F2A900" alt="Baixar a última versão"></a>
+  <img src="https://img.shields.io/badge/Windows-desktop-0078D4?style=for-the-badge&logo=windows&logoColor=white" alt="Windows">
+  <img src="https://img.shields.io/badge/Electron-44-47848F?style=for-the-badge&logo=electron&logoColor=white" alt="Electron">
+  <img src="https://img.shields.io/badge/React-19-61DAFB?style=for-the-badge&logo=react&logoColor=black" alt="React">
+  <img src="https://img.shields.io/badge/Tailwind-4-06B6D4?style=for-the-badge&logo=tailwindcss&logoColor=white" alt="Tailwind CSS">
+  <img src="https://img.shields.io/badge/Bíblia-offline-6E4C1E?style=for-the-badge" alt="Bíblia offline">
+</p>
+
+<p align="center">
+  <a href="#-no-culto"><b>No culto</b></a> ·
+  <a href="#-instalar-no-pc-da-igreja">Instalar</a> ·
+  <a href="#-atalhos-da-cabine">Atalhos</a> ·
+  <a href="#-temas">Temas</a> ·
+  <a href="#-rodar-o-código">Código</a>
 </p>
 
 ---
@@ -23,7 +32,7 @@ Bíblia inteira funciona **sem internet**.
   <img src="docs/janelas.svg" alt="As quatro janelas: cabine, telão, palco e pedido do pastor" width="100%">
 </p>
 
-## No culto
+## ⛪ No culto
 
 1. Abra o **Lúmen** pelo Menu Iniciar.
 2. **Windows + P → Estender** — não use *Duplicar*, senão a cabine vai junto para o telão.
@@ -34,13 +43,13 @@ O ponto no canto superior direito é o *tally*, emprestado da luz vermelha de
 câmera de TV: cinza quando está parado, âmbar pulsando quando a igreja está
 vendo, e só o aro âmbar quando o telão está preto ou na logo.
 
-## Instalar no PC da igreja
+## 💻 Instalar no PC da igreja
 
 > **O computador da igreja não precisa de Node.js, nem de nada instalado antes.**
 > O `Lúmen.exe` carrega o próprio motor dentro dele. É baixar o instalador,
 > executar e usar.
 
-Baixe o instalador pronto em **[Releases](https://github.com/orleanss777-sys/igreja-projetor/releases)**
+Baixe o instalador pronto em **[Releases](https://github.com/orleans-samai/igreja-projetor/releases)**
 — ou gere um você mesmo, numa máquina de desenvolvimento:
 
 ```bash
@@ -72,7 +81,7 @@ Ou adicione a pasta do projeto às exclusões do Defender (precisa de administra
 
 </details>
 
-## O que ele faz
+## ✨ O que ele faz
 
 | | |
 |---|---|
@@ -85,7 +94,7 @@ Ou adicione a pasta do projeto às exclusões do Defender (precisa de administra
 | **Emergência** | `F9` põe um versículo de socorro no ar |
 | **Recuperação** | Se o app fechar no meio do culto, ele oferece voltar ao ponto exato |
 
-## Auto-Slide por voz
+## 🎤 Auto-Slide por voz
 
 No aplicativo Windows, abra **Auto-Slide → Instalar reconhecimento local**.
 Essa primeira instalação baixa o motor e o modelo; depois o áudio é processado
@@ -98,7 +107,7 @@ do perfil escolhido. Uma troca manual tem prioridade; apagar o telão ou sair
 da música pausa o reconhecimento. Teste com a entrada de áudio da igreja antes
 de usar a troca automática em um culto.
 
-## Preparar e transportar um culto
+## 🎒 Preparar e transportar um culto
 
 Em **Check-up pré-culto** (`Ctrl+Shift+H`), selecione o monitor externo,
 verifique a reprodução das mídias e teste imagem e som. Confirme as bordas
@@ -111,7 +120,7 @@ colocados na pasta de mídia primeiro. No outro computador, escolha
 **Arquivo → Importar culto com mídias…**. A importação adiciona o culto sem
 apagar a biblioteca existente e verifica a integridade das mídias.
 
-## Atalhos da cabine
+## ⌨ Atalhos da cabine
 
 No escuro, teclado é mais rápido que mouse.
 
@@ -131,7 +140,7 @@ No escuro, teclado é mais rápido que mouse.
 | `F9` | Emergência |
 | `?` | Todos os atalhos |
 
-## Temas
+## 🎨 Temas
 
 Trinta e três, nomeados pelo momento do culto em que servem — quem opera procura
 “Ceia” ou “Batismo”, não “gradiente vermelho”.
@@ -147,15 +156,15 @@ placa de vídeo resolve sem repintar a tela.
 O ajuste **baixo desempenho** desliga o papel de parede inteiro, e
 `prefers-reduced-motion` congela o resto.
 
-## Rodar o código
+## 👨‍💻 Rodar o código
 
 Só quem for **mexer no código** precisa do [Node.js 22 ou mais novo](https://nodejs.org/)
 — e mesmo isso dá para evitar: um `git tag` faz o GitHub compilar o instalador
 na nuvem e publicá-lo em Releases, sem instalar nada na sua máquina
-(veja [Publicar uma versão](#publicar-uma-versão)).
+(veja [Publicar uma versão](#-publicar-uma-versão)).
 
 ```bash
-git clone https://github.com/orleanss777-sys/igreja-projetor.git
+git clone https://github.com/orleans-samai/igreja-projetor.git
 cd igreja-projetor
 npm install
 npm run dev
@@ -170,7 +179,7 @@ npm run dev
 | `npm run desktop:build` | Compila a interface do app Windows |
 | `npm run win:exe` | Gera o app e o instalador |
 
-## Publicar uma versão
+## 🚀 Publicar uma versão
 
 O instalador é compilado pelo GitHub, não na sua máquina. Marque a versão e
 empurre a tag:
@@ -187,7 +196,7 @@ em **Releases**. A igreja baixa de lá.
 Sem tag também dá: a aba **Actions → Instalador Windows → Run workflow** gera
 os arquivos como artefato para baixar e testar.
 
-## Como está organizado
+## 📁 Como está organizado
 
 ```
 src/
@@ -203,7 +212,7 @@ public/                  Almeida 1819 e as imagens de tema
 scripts/                 empacotamento, ícone e testes de desktop
 ```
 
-## Licença e conteúdo
+## 📄 Licença e conteúdo
 
 O código é do projeto. O texto bíblico embutido é a **Almeida 1819, em domínio
 público**. Não acompanham NVI, NAA nem outras versões com direitos — importe só
